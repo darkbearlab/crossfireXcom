@@ -8,6 +8,8 @@ export function init(handlers) {
   $('btn-rally').onclick = () => H.rally();
   $('btn-end').onclick = () => H.pass();
   $('btn-start').onclick = () => H.start();
+  $('cam-l').onclick = () => H.rotL();
+  $('cam-r').onclick = () => H.rotR();
   $('help-toggle').onclick = () => $('help').classList.toggle('open');
 }
 
@@ -129,8 +131,10 @@ export function tip(text, x, y) {
   if (!text) { t.hidden = true; return; }
   t.hidden = false;
   t.innerHTML = text;
-  t.style.left = x + 16 + 'px';
-  t.style.top = y + 12 + 'px';
+  // 保持在畫面內（手機窄螢幕）
+  const w = t.offsetWidth, h = t.offsetHeight;
+  t.style.left = Math.max(8, Math.min(innerWidth - w - 8, x + 16)) + 'px';
+  t.style.top = Math.max(8, Math.min(innerHeight - h - 8, y + 12)) + 'px';
 }
 
 export function showOverlay(title, html, btn, cb) {

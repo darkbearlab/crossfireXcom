@@ -2,7 +2,9 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
   <title>雙人小隊戰術 - 雛形</title>
   <link rel="stylesheet" href="style.css">
   <script type="importmap">
@@ -30,17 +32,21 @@
       <button id="btn-end" class="end"><kbd>⌫</kbd>放棄主動權</button>
       <button id="btn-start" class="start" hidden><kbd>Enter</kbd>部署完成，開始行動</button>
     </div>
+    <div id="cam-btns"><button id="cam-l" title="向左旋轉 (Q)">⟲</button><button id="cam-r" title="向右旋轉 (E)">⟳</button></div>
     <div id="target-panel" hidden></div>
     <div id="log"></div>
     <div id="help">
       <button id="help-toggle">操作說明 ?</button>
       <div class="help-body">
-        <div><b>左鍵</b> 選士兵 / 移動 / 點敵人瞄準</div>
-        <div><b>右鍵拖曳</b> 旋轉視角　<b>滾輪</b> 縮放</div>
-        <div><b>WASD</b> 平移　<b>Q / E</b> 旋轉 45°</div>
-        <div><b>Tab</b> 切換士兵 / 目標</div>
-        <div><b>1</b> 射擊　<b>2</b> 解除壓制</div>
-        <div><b>Enter</b> 開火　<b>Esc</b> 取消　<b>Backspace</b> 放棄主動權</div>
+        <div class="only-touch"><b>點一下</b> 預覽移動，<b>同一格再點一下</b> 確認</div>
+        <div class="only-touch"><b>單指拖曳</b> 平移　<b>雙指</b> 縮放 / 旋轉</div>
+        <div class="only-touch"><b>點士兵卡片</b> 切換士兵　<b>⟲ ⟳</b> 旋轉 45°</div>
+        <div class="only-mouse"><b>左鍵</b> 選士兵 / 移動 / 點敵人瞄準</div>
+        <div class="only-mouse"><b>左鍵拖曳 / WASD</b> 平移　<b>右鍵拖曳</b> 旋轉　<b>滾輪</b> 縮放</div>
+        <div class="only-mouse"><b>Q / E</b> 旋轉 45°</div>
+        <div class="only-mouse"><b>Tab</b> 切換士兵 / 目標</div>
+        <div class="only-mouse"><b>1</b> 射擊　<b>2</b> 解除壓制</div>
+        <div class="only-mouse"><b>Enter</b> 開火　<b>Esc</b> 取消　<b>Backspace</b> 放棄主動權</div>
         <hr>
         <div>沒有回合：行動直到<b>失敗</b>才交出主動權</div>
         <div>失敗＝射擊沒命中、移動中被反應射擊命中</div>

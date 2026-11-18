@@ -93,10 +93,6 @@ kbd { display: inline-block; min-width: 18px; padding: 0 4px; margin-right: 6px;
 #overlay ul { text-align: left; }
 #overlay button { margin-top: 10px; padding: 10px 22px; background: #1d3448; border: 1px solid #4fd6ff; border-radius: 6px; font-size: 15px; }
 
-@media (max-width: 700px) {
-  #squad { width: 180px; } #log { display: none; }
-  #actions { bottom: auto; top: 56px; }
-}
 
 /* 主動權制狀態 */
 .meta .sup, .supi { color: #ff9d4f; }
@@ -106,3 +102,42 @@ kbd { display: inline-block; min-width: 18px; padding: 0 4px; margin-right: 6px;
 #tip .warn { color: #ff7a6a; }
 
 #actions button.start { border-color: #4fe08a; background: #143024dd; }
+
+/* ===== 觸控 / 鏡頭按鈕 ===== */
+#app canvas { touch-action: none; }
+#tip .hint { color: #8fd3ff; font-size: 12px; }
+#cam-btns { position: absolute; left: 130px; top: 10px; display: flex; gap: 6px; }
+#cam-btns button { width: 34px; height: 34px; font-size: 18px; line-height: 1; background: #0b1016cc;
+  border: 1px solid #2c3a48; border-radius: 50%; }
+@media (pointer: coarse) { .only-mouse { display: none; } kbd { display: none; } }
+@media (pointer: fine) { .only-touch { display: none; } }
+
+/* ===== 直式手機版面 ===== */
+@media (max-width: 700px) {
+  body { font-size: 13px; }
+  #topbar { top: calc(6px + env(safe-area-inset-top)); left: 6px; right: 6px; transform: none; flex-wrap: wrap;
+    justify-content: center; gap: 4px 10px; padding: 5px 8px; font-size: 12px; white-space: normal; }
+  #help { top: auto; bottom: calc(150px + env(safe-area-inset-bottom)); left: 6px; }
+  #help-toggle { padding: 6px 10px; }
+  #help .help-body { position: fixed; left: 6px; right: 6px; bottom: calc(196px + env(safe-area-inset-bottom));
+    max-height: 55vh; overflow: auto; }
+  #log { display: flex; top: 54px; left: 6px; right: 6px; width: auto; font-size: 11px; align-items: center; }
+  #log div:nth-child(n+3) { display: none; }
+  #squad { left: 6px; right: 6px; bottom: calc(62px + env(safe-area-inset-bottom)); width: auto; flex-direction: row; gap: 6px; }
+  .card { flex: 1; min-width: 0; padding: 6px 8px; }
+  .card .nm { font-size: 13px; margin-bottom: 3px; }
+  .card .stats { display: none; }
+  .card .meta { margin-top: 3px; font-size: 11px; }
+  #actions { left: 6px; right: 6px; bottom: calc(8px + env(safe-area-inset-bottom)); transform: none; top: auto; gap: 6px; }
+  #actions button { flex: 1; padding: 12px 4px; font-size: 14px; }
+  #cam-btns { left: auto; top: auto; right: 6px; bottom: calc(150px + env(safe-area-inset-bottom)); }
+  #cam-btns button { width: 44px; height: 44px; }
+  #target-panel { left: 6px; right: 6px; bottom: calc(8px + env(safe-area-inset-bottom)); width: auto; max-height: 55vh; overflow: auto; z-index: 2; }
+  .tgt .hit { font-size: 20px; }
+  .tp-btns button { padding: 12px; font-size: 15px; }
+  #banner { font-size: 22px; letter-spacing: 2px; top: 22%; }
+  #tip { max-width: 240px; }
+  #toast { bottom: 150px; }
+  #overlay .panel { min-width: 0; width: calc(100vw - 32px); padding: 18px; }
+  .ulabel { font-size: 10px; }
+}

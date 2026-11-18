@@ -32,6 +32,7 @@ controls.minDistance = 6;
 controls.maxDistance = 30;
 controls.minPolarAngle = 0.35;
 controls.maxPolarAngle = 1.2;
+controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE }; // 單指留給點擊/平移
 
 scene.add(new THREE.HemisphereLight(0xd6e6ff, 0x3a3025, 1.1));
 const sun = new THREE.DirectionalLight(0xfff0d8, 2.4);
@@ -671,6 +672,7 @@ function clearReactMarks() {
 }
 
 function clearOverlays() {
+  pendingTap = null;
   S.moves = null;
   drawRange();
   pathLine.visible = false;
@@ -682,6 +684,9 @@ function clearOverlays() {
 }
 
 let lastMouse = { x: 0, y: 0 };
+let touchMode = false; // 最近一次輸入是觸控
+const tipPos = () => touchMode ? { x: innerWidth / 2 - 110, y: 96 } : lastMouse;
+function showTip(html) { const p = tipPos(); UI.tip(html, p.x, p.y); }
 function updateHover() {
   const t = S.hover;
   coverIcons.clear();
@@ -696,11 +701,11 @@ function updateHover() {
   const u = S.selected;
   const occ = unitAt(t.x, t.z);
   if (occ && occ.team === 'enemy' && occ.mesh.visible && canAct(u)) {
-    if (u.firedOut) UI.tip(`<b>${occ.name}</b><br><small>此單位這次主動權不能再開槍</small>`, lastMouse.x, lastMouse.y);
+    if (u.firedOut) showTip(`<b>${occ.name}</b><br><small>此單位這次主動權不能再開槍</small>`);
     else if (hasLOS(S.map, u, occ)) {
       const o = oddsVs(u, occ);
-      UI.tip(`<b>${occ.name}</b> 命中 <b>${o.hit}%</b><br><small>${UI.coverName(o)}${occ.suppressed ? ' · 壓制中' : ''} · 點擊瞄準</small>`, lastMouse.x, lastMouse.y);
-    } else UI.tip(`<b>${occ.name}</b><br><small>無視線</small>`, lastMouse.x, lastMouse.y);
+      showTip(`<b>${occ.name}</b> 命中 <b>${o.hit}%</b><br><small>${UI.coverName(o)}${occ.suppressed ? ' · 壓制中' : ''} · 點敵人瞄準</small>`);
+    } else showTip(`<b>${occ.name}</b><br><small>無視線</small>`);
     return;
   }
   if (!S.map.walkable(t.x, t.z)) return;
@@ -730,12 +735,12 @@ function updateHover() {
     line.computeLineDistances();
     reactMarks.add(ring, line);
   }
-  const head = mv.vault ? '翻越' : `移動 ${dist(u, mv).toFixed(1)} 格`;
+  const head = (mv.vault ? '翻越' : `移動 ${dist(u, mv).toFixed(1)} 格`) + (touchMode ? '　<span class="hint">再點一次確認</span>' : '');
   if (plan.length) {
     const rows = plan.map(r => `${r.shooter.name} ${r.odds.hit}%`).join('<br>');
-    UI.tip(`<b>${head}</b><br><span class="warn">⚠ 反應射擊</span><br>${rows}<br>被命中機率 <b>${Math.round(hitChance(plan) * 100)}%</b>`, lastMouse.x, lastMouse.y);
+    showTip(`<b>${head}</b><br><span class="warn">⚠ 反應射擊</span><br>${rows}<br>被命中機率 <b>${Math.round(hitChance(plan) * 100)}%</b>`);
   } else {
-    UI.tip(`<b>${head}</b><br><small>已知敵人無法反應射擊</small>`, lastMouse.x, lastMouse.y);
+    showTip(`<b>${head}</b><br><small>已知敵人無法反應射擊</small>`);
   }
 }
 
@@ -810,6 +815,8 @@ const actions = {
   },
   select(u) { if ((S.side === 'player' || S.side === 'deploy') && !S.busy) selectUnit(u); },
   start: startBattle,
+  rotL() { camRot += Math.PI / 4; },
+  rotR() { camRot -= Math.PI / 4; },
   canAct,
   pickTarget(i) { S.targetIdx = i; updateTargeting(); },
   fire,
@@ -924,17 +931,55 @@ function pickTile(ev) {
   return S.map && S.map.inB(x, z) ? { x, z } : null;
 }
 
+// 指標輸入：點一下 = 動作；拖曳 = 平移鏡頭（滑鼠左鍵或單指）；雙指 = 縮放/旋轉（OrbitControls）
+// 觸控時沒有 hover，所以移動要「點一下預覽、同一格再點一下確認」
+const downs = new Map();
+let pendingTap = null;
+
+function dragPan(dx, dy) {
+  const fwd = controls.target.clone().sub(camera.position).setY(0).normalize();
+  const right = new THREE.Vector3().crossVectors(fwd, UP);
+  const scale = camera.position.distanceTo(controls.target) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 2 / innerHeight;
+  const d = right.multiplyScalar(-dx * scale).addScaledVector(fwd, dy * scale * 1.4);
+  camGoal.add(d);
+  controls.target.add(d);
+  camera.position.add(d);
+}
+
+renderer.domElement.addEventListener('pointerdown', ev => {
+  downs.set(ev.pointerId, { x: ev.clientX, y: ev.clientY, lx: ev.clientX, ly: ev.clientY, moved: false, type: ev.pointerType, button: ev.button });
+  if (downs.size > 1) for (const d of downs.values()) d.moved = true; // 雙指手勢不算點擊
+});
+
 renderer.domElement.addEventListener('pointermove', ev => {
+  const d = downs.get(ev.pointerId);
+  if (d) {
+    if (Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > 10) d.moved = true;
+    if (d.moved && downs.size === 1 && d.button === 0) dragPan(ev.clientX - d.lx, ev.clientY - d.ly);
+    d.lx = ev.clientX;
+    d.ly = ev.clientY;
+  }
+  if (ev.pointerType === 'touch') return;
+  touchMode = false;
   lastMouse = { x: ev.clientX, y: ev.clientY };
   const t = pickTile(ev);
   if (t?.x !== S.hover?.x || t?.z !== S.hover?.z) { S.hover = t; updateHover(); }
 });
 
-renderer.domElement.addEventListener('pointerdown', ev => {
-  if (ev.button !== 0 || S.busy || S.gameOver) return;
+const endPointer = ev => {
+  const d = downs.get(ev.pointerId);
+  downs.delete(ev.pointerId);
+  if (ev.type === 'pointerup' && d && !d.moved && d.button === 0) onTap(ev, d.type === 'touch');
+};
+renderer.domElement.addEventListener('pointerup', endPointer);
+renderer.domElement.addEventListener('pointercancel', endPointer);
+
+function onTap(ev, touch) {
+  if (S.busy || S.gameOver) return;
   const t = pickTile(ev);
   if (!t) return;
   const occ = unitAt(t.x, t.z);
+  touchMode = touch;
   if (S.side === 'deploy') {
     if (occ && occ.team === 'player' && occ !== S.selected) { selectUnit(occ); return; }
     if (S.selected && S.deployZone.some(p => p.x === t.x && p.z === t.z)) deployTo(S.selected, t);
@@ -951,10 +996,19 @@ renderer.domElement.addEventListener('pointerdown', ev => {
   if (occ && occ.team === 'enemy' && occ.mesh.visible) { enterTargetMode(occ); return; }
   const u = S.selected;
   if (!canAct(u)) return;
-  if (u.suppressed) { UI.toast('被壓制中，需先解除壓制（2）'); return; }
+  if (u.suppressed) { UI.toast('被壓制中，需先解除壓制'); return; }
   const mv = S.moves && S.moves.get(key(t.x, t.z));
-  if (mv) playerMove(u, mv);
-});
+  if (!mv) { pendingTap = null; S.hover = t; updateHover(); return; }
+  if (touch && pendingTap !== key(t.x, t.z)) {
+    // 第一下：預覽路線與反應射擊
+    pendingTap = key(t.x, t.z);
+    S.hover = t;
+    updateHover();
+    return;
+  }
+  pendingTap = null;
+  playerMove(u, mv);
+}
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
 
 addEventListener('keydown', e => {
@@ -980,11 +1034,14 @@ addEventListener('keydown', e => {
 addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
 
-addEventListener('resize', () => {
+function onResize() {
   camera.aspect = innerWidth / innerHeight;
+  camera.fov = camera.aspect < 0.8 ? 62 : 42; // 直式螢幕視角放寬
   camera.updateProjectionMatrix();
   renderer.setSize(innerWidth, innerHeight);
-});
+}
+addEventListener('resize', onResize);
+onResize();
 
 // ================= 標籤 / 漂浮文字 =================
 const floats = [];
@@ -1044,4 +1101,4 @@ function frame(now) {
 
 newGame();
 requestAnimationFrame(frame);
-window.__game = { S, actions }; // 除錯用
+window.__game = { S, actions, camera, THREE }; // 除錯用
