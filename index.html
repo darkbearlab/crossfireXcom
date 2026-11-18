@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>雙人小隊戰術 - 雛形</title>
+  <link rel="stylesheet" href="style.css">
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+  <div id="hud">
+    <div id="labels"></div>
+    <div id="topbar">
+      <span id="mission"></span>
+      <span id="turn"></span>
+      <span id="enemy-count"></span>
+    </div>
+    <div id="squad"></div>
+    <div id="actions">
+      <button id="btn-shoot"><kbd>1</kbd>射擊</button>
+      <button id="btn-rally"><kbd>2</kbd>解除壓制</button>
+      <button id="btn-end" class="end"><kbd>⌫</kbd>放棄主動權</button>
+      <button id="btn-start" class="start" hidden><kbd>Enter</kbd>部署完成，開始行動</button>
+    </div>
+    <div id="target-panel" hidden></div>
+    <div id="log"></div>
+    <div id="help">
+      <button id="help-toggle">操作說明 ?</button>
+      <div class="help-body">
+        <div><b>左鍵</b> 選士兵 / 移動 / 點敵人瞄準</div>
+        <div><b>右鍵拖曳</b> 旋轉視角　<b>滾輪</b> 縮放</div>
+        <div><b>WASD</b> 平移　<b>Q / E</b> 旋轉 45°</div>
+        <div><b>Tab</b> 切換士兵 / 目標</div>
+        <div><b>1</b> 射擊　<b>2</b> 解除壓制</div>
+        <div><b>Enter</b> 開火　<b>Esc</b> 取消　<b>Backspace</b> 放棄主動權</div>
+        <hr>
+        <div>沒有回合：行動直到<b>失敗</b>才交出主動權</div>
+        <div>失敗＝射擊沒命中、移動中被反應射擊命中</div>
+        <div><span style="color:#3fa9ff">藍格</span>：直線移動（任意角度、不限距離）</div>
+        <div><span style="color:#c07bff">紫格</span>：翻越半掩體（獨立的一次移動）</div>
+        <div><span style="color:#ff5a4a">紅圈</span>：敵人會在那裡開反應槍</div>
+        <div>反應槍打空的單位，這次主動權內不能再開槍 ✕</div>
+        <div>被命中＝壓制 ▼：開槍 -20、被打 -20、不能移動</div>
+        <div>盾牌：<span style="color:#4fc3ff">藍=全掩體 -40</span>　<span style="color:#ffc44f">黃=半掩體 -20</span></div>
+        <div>從沒有掩體的方向射擊 = 側翼，暴擊 +40</div>
+      </div>
+    </div>
+    <div id="banner"></div>
+    <div id="toast"></div>
+    <div id="tip" hidden></div>
+    <div id="overlay" hidden></div>
+  </div>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
