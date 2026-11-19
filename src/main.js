@@ -35,7 +35,8 @@ controls.minDistance = 6;
 controls.maxDistance = 30;
 controls.minPolarAngle = 0.35;
 controls.maxPolarAngle = 1.2;
-controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_ROTATE }; // 單指留給點擊/平移
+// 觸控：單指留給點擊/平移；雙指只縮放不旋轉（旋轉用 ⟲ ⟳ 按鈕，每次 45°）
+controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_PAN }; // enablePan=false → 只剩縮放
 
 scene.add(new THREE.HemisphereLight(0xd6e6ff, 0x3a3025, 1.1));
 const sun = new THREE.DirectionalLight(0xfff0d8, 2.4);
@@ -401,7 +402,8 @@ function startMission() {
 
   const p0 = gen.playerSpawns[0];
   controls.target.set(p0.x + 3, 0, p0.z);
-  camera.position.set(p0.x + 3, 14, p0.z + 11);
+  const near = camera.aspect < 0.8 ? 0.62 : 1; // 直式手機：預設拉近
+  camera.position.set(p0.x + 3, 14 * near, p0.z + 11 * near);
   focusOn(p0.x + 3, p0.z);
 
   UI.log(`── 任務 ${S.level}：${S.theme.name}（敵人 ${gen.enemies.length}）──`, 'sys');
@@ -1361,6 +1363,8 @@ function onTap(ev, touch) {
   playerMove(u, mv);
 }
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+// iOS Safari 會忽略 user-scalable=no：擋掉頁面的雙指縮放與雙擊放大（按鈕另靠 CSS touch-action: manipulation）
+for (const ev of ['gesturestart', 'gesturechange', 'dblclick']) document.addEventListener(ev, e => e.preventDefault(), { passive: false });
 
 addEventListener('keydown', e => {
   const k = e.key.toLowerCase();

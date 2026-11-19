@@ -157,3 +157,7 @@ kbd { display: inline-block; min-width: 18px; padding: 0 4px; margin-right: 6px;
   .card .wl { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   #actions button { padding: 12px 2px; font-size: 13px; }
 }
+
+/* 防止瀏覽器雙擊放大（手機上「點兩下確認」不會觸發縮放） */
+html, body, button, #hud, #hud * { touch-action: manipulation; }
+#app canvas { touch-action: none; }
