@@ -126,7 +126,7 @@ function render() {
       : `<button class="dep ${dep ? 'on' : ''}" data-g="${d.id}">${dep ? '出擊 ✓' : '待命'}</button>`;
     return `<div class="gcard ${dep ? 'on' : ''} ${g.evac > 0 ? 'evac' : ''}">
       <div class="gh"><i class="dot" style="background:${hex(d.hair)}"></i><b>${d.name}</b><span class="t">${d.title}</span>
-        <span class="hp">HP ${g.hp}/${d.maxHp}</span></div>
+        <span class="hp">${'♥'.repeat(Math.ceil(g.hp / 3))}<span class="dim">${'♡'.repeat(d.hearts - Math.ceil(g.hp / 3))}</span> ${g.hp}/${d.maxHp}</span></div>
       <div class="gw">${weap}</div>
       <div class="gw dim">被動：${d.passive}<br>魔法：${d.active}</div>
       ${trees}${det}

@@ -426,6 +426,9 @@ function makeGirlUnit(gs) {
     uses: gs.magic >= 5 && d.ability !== 'transform' ? 2 : 1,
     dodge: d.id === 'akane' ? 1 : 0, dashDodge: 0, hardy: d.id === 'momo',
     transformed: false, raised: false,
+    // 愛心：一顆心 = HEART_HP 點；第一次掉到一半愛心（往下取整）時觸發心線
+    heartHp: RULES.HEART_HP, lineHp: Math.floor(d.hearts / 2) * RULES.HEART_HP,
+    lineUsed: gs.hp <= Math.floor(d.hearts / 2) * RULES.HEART_HP,
   };
 }
 
@@ -437,6 +440,8 @@ function spawnEnemy(type, x, z, zone, alerted = false) {
     gun: { aim: 0, crit: 0, dmg: tpl.dmg, canReact: tpl.canReact !== false, keepFiring: !!tpl.keepFiring,
       ignoreHalf: !!tpl.ignoreHalf, ammo: Infinity, mag: Infinity },
     x, z, alive: true, suppressed: false, firedOut: false, alerted, spotted: false, zone, member: memberOf(type),
+    // 頭目血條分 3 段（由高到低的分段點）
+    cuts: tpl.boss ? [Math.round(tpl.maxHp * 2 / 3), Math.round(tpl.maxHp / 3)] : null, phase: 1,
     // 不留活口（執行人的加持）：每次主動權第一次反應射擊打空不停火
     execBuff: S.buffs.includes('exec') && !tpl.keepFiring, spareUsed: false };
   spawnUnit(u);
@@ -619,6 +624,9 @@ function endMission(win, why) {
 async function giveInitiative(side) {
   if (S.gameOver) return;
   for (const u of S.units) { u.firedOut = false; u.spareUsed = false; }
+  S.grab = false;       // 心線：要把主動權搶回我方
+  S.forceEnemy = false; // 頭目突破階段：主動權要交給敵方
+  S.initDeaths = 0;     // 這次主動權內倒下的敵人數（啟動檢定用）
   S.initNo++;
   S.side = side;
   S.mode = 'move';
@@ -652,6 +660,20 @@ async function resolvePlayerAction(ok, actor = null) {
   refresh();
   if (S.waves > 0 && !enemies().length && !S.gameOver) await spawnWave();
   if (checkEnd()) return;
+  if (S.forceEnemy) {
+    S.forceEnemy = false;
+    S.grab = false;
+    UI.log('頭目突破了階段，主動權交給敵方', 'warn');
+    await wait(0.5);
+    giveInitiative('enemy');
+    return;
+  }
+  if (!ok && S.grab) {
+    S.grab = false;
+    UI.log('心線：這次行動不算失敗，主動權留在我方', 'good');
+    ok = true;
+  }
+  S.grab = false;
   if (!ok && actor && actor.alive && actor.ability === 'transform' && !actor.transformed) {
     S.busy = true;
     await transform(actor, false);
@@ -925,9 +947,20 @@ async function shoot(s, t, { reaction = false, forceMiss = false, triple = false
   return hit;
 }
 
+// 分段血條的下限：愛心（魔法少女）或頭目的階段。每次受傷最多扣到這裡，溢出的傷害作廢
+function segFloor(u) {
+  if (u.heartHp) return (Math.ceil(u.hp / u.heartHp) - 1) * u.heartHp;
+  if (u.cuts) return u.cuts.find(v => v < u.hp) ?? 0;
+  return 0;
+}
+
 async function damage(t, dmg, crit, src = null) {
+  const floor = segFloor(t);
+  let cut = 0;
+  if (floor > 0 && t.hp - dmg < floor) { cut = dmg - (t.hp - floor); dmg = t.hp - floor; }
   t.hp -= dmg;
   floatText(t, (crit ? '暴擊 ' : '') + '-' + dmg, crit ? 'crit' : 'dmg');
+  if (cut) UI.log(`${t.name} 的${t.heartHp ? '愛心' : '階段護盾'}擋下了 ${cut} 點`, 'dim');
   const mats = t.mesh.userData.mats;
   await tween(0.25, k => mats.forEach(m => m.emissive.setRGB((1 - k) * 0.9, 0, 0)));
   if (t.hp <= 0) {
@@ -940,6 +973,66 @@ async function damage(t, dmg, crit, src = null) {
   }
   suppress(t);
   if (src && src.girl === 'yukino' && lv(src, 'gun') >= 4) t.heavySup = true;
+  if (t.heartHp && !t.lineUsed && t.hp <= t.lineHp) await heartLine(t);
+  if (t.cuts && floor > 0 && t.hp === floor) await bossPhase(t);
+}
+
+const standUp = u => {
+  u.suppressed = false;
+  u.heavySup = false;
+  setSuppressedPose(u, false);
+  if (u.label) UI.updateLabel(u.label, u);
+};
+
+// 心線：第一次掉到一半愛心 → 咬牙起身，主動權回到我方
+async function heartLine(u) {
+  u.lineUsed = true;
+  S.grab = true;
+  standUp(u);
+  UI.banner(`${u.name}：心線！`, 'player');
+  floatText(u, '心線！', 'crit');
+  UI.log(`${u.name} 掉到心線，咬牙起身！主動權回到我方`, 'good');
+  refresh();
+  await wait(0.5);
+}
+
+// 頭目突破階段：起身、叫來護衛、主動權交給敵方
+async function bossPhase(b) {
+  b.phase++;
+  standUp(b);
+  UI.banner(`${b.name}：第 ${b.phase} 階段`, 'enemy');
+  floatText(b, '階段突破！', 'crit');
+  const spots = [];
+  for (let z = b.z - 3; z <= b.z + 3; z++) for (let x = b.x - 3; x <= b.x + 3; x++) {
+    if (S.map.inB(x, z) && S.map.walkable(x, z) && !unitAt(x, z) && !iceAt(x, z)) spots.push({ x, z });
+  }
+  spots.sort((a, c) => dist(a, b) - dist(c, b));
+  const n = Math.min(RULES.PHASE_GUARDS, spots.length);
+  for (let i = 0; i < n; i++) spawnEnemy('gunman', spots[i].x, spots[i].z, S.map.zoneAt(spots[i].x, spots[i].z), true);
+  UI.log(`${b.name} 進入第 ${b.phase} 階段，叫來了 ${n} 名護衛${S.side === 'player' ? '，主動權交給敵方' : ''}`, 'warn');
+  if (S.side === 'player') S.forceEnemy = true;
+  updateVisibility();
+  refresh();
+  await wait(0.6);
+}
+
+// 敵人啟動檢定
+function actChance(e) {
+  if (!e.act) return 100;
+  let c = e.act;
+  if (enemies().some(o => o !== e && o.officer && dist(o, e) <= 3)) c += RULES.ACT_OFFICER;
+  if (e.suppressed) c -= RULES.ACT_SUPPRESSED;
+  if (S.initDeaths) c -= RULES.ACT_DEATHS;
+  if (e.hp < e.maxHp / 2) c -= RULES.ACT_HURT;
+  return Math.max(5, Math.min(95, c));
+}
+const activates = e => Math.random() * 100 < actChance(e);
+
+// 起身、換彈這類「暴露」的行動：看得到她的敵人可以原地開一次反應射擊。回傳 true = 被命中
+async function exposeReact(u) {
+  const plan = planReactions(u, [{ x: u.x, z: u.z, t: 1 }]);
+  if (!plan.length) return false;
+  return reactAt(u, plan, 0);
 }
 
 // 雪乃的重機槍：主動射擊不管有沒有命中都壓制目標；「壓制火網」連目標周圍 1 格的敵人也壓制
@@ -976,7 +1069,7 @@ async function die(u) {
   if (u.label) { u.label.remove(); u.label = null; }
   if (u.iceRef) { const ice = u.iceRef; ice.rider = null; u.iceRef = null; u.raised = false; u.frozen = false; S.map.set(ice.x, ice.z, T.FULL); }
   if (u.team === 'player') { u.downed = true; UI.log(`${u.name} 倒下了，緊急後送`, 'bad'); }
-  else UI.log(`${u.name} 倒下了`, 'good');
+  else { UI.log(`${u.name} 倒下了`, 'good'); S.initDeaths = (S.initDeaths || 0) + 1; }
   if (u.boss) UI.banner(`${u.name} 被打倒了！`, 'player');
   if (u.officer && !enemies().some(e => e.officer)) {
     UI.log('軍官陣亡！徵召兵士氣崩潰', 'good');
@@ -1146,7 +1239,7 @@ function updateHover() {
   const pi = ice && (!ice.rider || ice.rider.team === 'player') && canMove(u) ? pushInfo(u, ice) : null;
   if (pi) { pushHover(u, pi); return; }
   if (occ && occ.team === 'enemy' && occ.mesh.visible) {
-    const info = `<div class="desc">${occ.alerted ? '警戒中' : '未察覺：只看黃色責任區'}${occ.raised ? '・在冰塊上（不能移動）' : ''}${occ.desc ? '<br>' + occ.desc : ''}${occ.execBuff ? `<br><span class="warn">不留活口：這次主動權第一次反應打空不停火${occ.spareUsed ? '（已用掉）' : ''}</span>` : ''}</div>`;
+    const info = `<div class="desc">${occ.alerted ? '警戒中' : '未察覺：只看黃色責任區'}${occ.raised ? '・在冰塊上（不能移動）' : ''}${occ.desc ? '<br>' + occ.desc : ''}${occ.act ? `<br>品質：${occ.q}（啟動 ${actChance(occ)}%）` : occ.cuts ? `<br>頭目：不做啟動檢定；血條分 3 段，第 ${occ.phase} 段` : ''}${occ.execBuff ? `<br><span class="warn">不留活口：這次主動權第一次反應打空不停火${occ.spareUsed ? '（已用掉）' : ''}</span>` : ''}</div>`;
     if (!canAct(u)) showTip(`<b>${occ.name}</b>${info}`);
     else if (u.firedOut) showTip(`<b>${occ.name}</b><br><small>此單位這次主動權不能再開槍</small>${info}`);
     else if (weapon(u).ammo <= 0) showTip(`<b>${occ.name}</b><br><small>彈匣空了</small>${info}`);
@@ -1259,6 +1352,8 @@ function confirmGive(kind, text) {
 }
 
 async function endWithHandover(msg) {
+  S.grab = false;
+  S.forceEnemy = false;
   refresh();
   UI.log(msg, 'warn');
   S.busy = true;
@@ -1348,8 +1443,11 @@ const actions = {
   async rally() {
     const u = S.selected;
     if (!canAct(u) || !u.suppressed) return;
+    S.busy = true;
     rally(u);
-    await resolvePlayerAction(true);
+    const hit = await exposeReact(u); // 抬頭的瞬間會被盯上
+    S.busy = false;
+    await resolvePlayerAction(!hit, u);
   },
   async reload() {
     const u = S.selected;
@@ -1363,6 +1461,10 @@ const actions = {
     w.reserve -= n;
     floatText(u, '換彈', 'ow');
     if (!info.gives) { UI.log(`${u.name} ${w.name}換彈（不交出主動權）`, 'dim'); await resolvePlayerAction(true); return; }
+    S.busy = true;
+    await exposeReact(u);
+    S.busy = false;
+    if (checkEnd()) return;
     await endWithHandover(`${u.name} ${w.name}換彈，交出主動權`);
   },
   async swap() {
@@ -1377,6 +1479,10 @@ const actions = {
     swapGunMesh(u);
     floatText(u, `換${nw.short}`, 'ow');
     if (!gives) { UI.log(`${u.name} 拔出${nw.name}`, 'dim'); await resolvePlayerAction(true); return; }
+    S.busy = true;
+    await exposeReact(u);
+    S.busy = false;
+    if (checkEnd()) return;
     await endWithHandover(`${u.name} 換回${nw.name}，交出主動權`);
   },
   async plant() {
@@ -1455,8 +1561,12 @@ function magicOptions(u) {
       out.set(key(x, z), { kind: 'ice', x, z, rider: occ || null });
     }
   } else if (u.ability === 'airdrop') {
+    // 最多 AIRDROP_RANGE 格，而且落點要在隊友（含自己）看得見的地方
+    const ps = players();
     for (let z = 0; z < S.map.h; z++) for (let x = 0; x < S.map.w; x++) {
-      if (!S.map.walkable(x, z) || unitAt(x, z)) continue;
+      const p = { x, z };
+      if (!S.map.walkable(x, z) || unitAt(x, z) || dist(u, p) > RULES.AIRDROP_RANGE) continue;
+      if (!ps.some(q => dist(q, p) <= RULES.SIGHT && hasLOS(S.map, q, p))) continue;
       out.set(key(x, z), { kind: 'airdrop', x, z });
     }
   }
@@ -1577,7 +1687,8 @@ async function knockback(t, dx, dz, n, { collide = false, splash = false } = {})
 async function transform(u, manual = false) {
   u.transformed = true;
   const m = lv(u, 'magic');
-  const bonus = m >= 2 ? 3 : 2;
+  const hearts = m >= 2 ? 2 : 1;
+  const bonus = hearts * RULES.HEART_HP;
   u.maxHp += bonus;
   u.hp += bonus;
   UI.banner(`${u.name} 變身！`, 'player');
@@ -1585,7 +1696,7 @@ async function transform(u, manual = false) {
   addHalo(u.mesh);
   const base = u.mesh.scale.clone();
   await tween(0.5, k => u.mesh.scale.copy(base).multiplyScalar(1 + Math.sin(k * Math.PI) * 0.25));
-  floatText(u, `變身！ +${bonus} HP`, 'crit');
+  floatText(u, `變身！ +${hearts} 心`, 'crit');
   if (m >= 1 && u.suppressed) rally(u);
   if (m >= 3) for (const e of enemies()) if (dist(e, u) <= 3) suppress(e, '閃光！');
   if (m >= 4) for (const p of players()) if (p !== u && p.suppressed) rally(p);
@@ -1884,10 +1995,19 @@ async function enemyInitiative() {
     const act = aiChoose(moveCount, acted);
     if (!act) break;
     acted.add(act.e);
+    const chance = actChance(act.e);
+    if (Math.random() * 100 >= chance) {
+      if (act.e.mesh.visible) { focusUnit(act.e); floatText(act.e, '猶豫…', 'miss'); }
+      UI.log(`${act.e.name} 猶豫了（啟動 ${chance}%），主動權交回我方`, 'good');
+      await wait(0.5);
+      failed = true;
+      break;
+    }
     let ok = true;
     if (act.type === 'rally') {
       rally(act.e);
-      await wait(0.4);
+      await wait(0.3);
+      ok = !(await exposeReact(act.e));
     } else if (act.type === 'shoot') {
       focusOn((act.e.x + act.t.x) / 2, (act.e.z + act.t.z) / 2);
       await wait(0.35);
@@ -1899,6 +2019,7 @@ async function enemyInitiative() {
     }
     refresh();
     if (checkEnd()) return true;
+    if (S.grab) { S.grab = false; UI.banner('心線：敵方主動權被打斷', 'player'); return true; }
     if (!ok) { failed = true; break; }
   }
   // 主動權即將易手：這輪沒行動的敵人執行衝動
@@ -1912,7 +2033,9 @@ async function impulses(acted) {
   const officerAlive = enemies().some(e => e.officer);
   for (const e of enemies()) {
     if (S.gameOver) return;
+    if (S.grab) { S.grab = false; UI.banner('心線：敵方主動權被打斷', 'player'); return; }
     if (!e.alive || acted.has(e) || e.suppressed) continue;
+    if (e.alerted && !activates(e)) { if (e.mesh.visible) floatText(e, '猶豫…', 'miss'); continue; }
     if (!e.alerted) { await patrol(e); }
     else if (e.impulse === 'shoot') {
       const t = visibleTargets(e)[0];
@@ -2199,5 +2322,5 @@ function boot() {
 boot();
 requestAnimationFrame(frame);
 window.__game = { S, actions, camera, THREE, scene, zoneMesh, Camp, // 除錯用
-  dbg: { playerMove, moveOptions, quietSees, enemies, players, weapon, step: updateTweens, magicOptions, execMagic, pushInfo, execPush,
+  dbg: { damage, giveInitiative, actChance, spawnEnemy, segFloor, playerMove, moveOptions, quietSees, enemies, players, weapon, step: updateTweens, magicOptions, execMagic, pushInfo, execPush,
     startMission, enterHQ, transform, spawnWave } };

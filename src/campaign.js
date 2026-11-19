@@ -12,7 +12,7 @@ export function newStory() {
   C = {
     mode: 'story', done: 0, phase: 'facilities', production: 3, manorRaids: 0,
     members: FAMILY.map(m => ({ id: m.id, alive: true, facilities: 2 })),
-    girls: freshGirls(), deploy: [], op: null, retry: false,
+    girls: freshGirls(), deploy: [], op: null, retry: false, hv: 1,
   };
   save();
 }
@@ -21,15 +21,23 @@ export function newEndless() {
   const meta = loadMeta();
   const base = meta.girls || freshGirls();
   C = {
-    mode: 'endless', done: 0, buffs: [], deploy: [], op: null, retry: false, nextOp: null,
+    mode: 'endless', done: 0, buffs: [], deploy: [], op: null, retry: false, nextOp: null, hv: 1,
     girls: base.map(g => ({ ...g, hp: GIRL[g.id].maxHp, evac: 0, medals: g.medals || 0 })),
   };
   save();
 }
 
 export function load() {
-  try { const s = localStorage.getItem(SAVE); if (s) { C = JSON.parse(s); return true; } } catch (e) { /* 沒有存檔 */ }
+  try { const s = localStorage.getItem(SAVE); if (s) { C = JSON.parse(s); migrate(); return true; } } catch (e) { /* 沒有存檔 */ }
   return false;
+}
+// 改成愛心之前的存檔：生命照比例換算到新的上限
+function migrate() {
+  if (C.hv) return;
+  const old = { akane: 7, hikari: 7, yukino: 8, momo: 6 };
+  for (const g of C.girls || []) if (g.hp > 0) g.hp = Math.max(1, Math.round(g.hp / (old[g.id] || GIRL[g.id].maxHp) * GIRL[g.id].maxHp));
+  C.hv = 1;
+  save();
 }
 export function hasSave() { try { return !!localStorage.getItem(SAVE); } catch (e) { return false; } }
 export function save() { try { localStorage.setItem(SAVE, JSON.stringify(C)); } catch (e) { /* 私密模式等 */ } }

@@ -1,30 +1,31 @@
 // 四名魔法少女、成長樹、魔女黑手黨家族、故事台詞。名字與台詞都是暫定。
+// 生命用愛心包裝：一顆心 = 3 點（RULES.HEART_HP），maxHp = hearts × 3。
 
 export const GIRLS = [
   {
     id: 'akane', name: '朱音', title: '熱血', color: 0xe0463c, hair: 0xb5281f,
-    maxHp: 7, aim: 66, crit: 5, weapons: ['duals'], ability: 'dash',
+    hearts: 4, maxHp: 12, aim: 66, crit: 5, weapons: ['duals'], ability: 'dash',
     passive: '每張地圖第一次被反應射擊必定落空',
     active: '突進：移動後，對終點相鄰的一名敵人近戰（不會發出槍聲）',
     line: '衝啊！子彈打不到我的啦！',
   },
   {
     id: 'hikari', name: '光', title: '王道', color: 0xf5f0f5, hair: 0xff8fc0,
-    maxHp: 7, aim: 68, crit: 5, weapons: ['ar', 'pistol'], ability: 'transform',
-    passive: '開戰時是肉身；她自己的行動失敗時自動變身，主動權不易手。變身後生命 +2，敵人優先打她',
+    hearts: 4, maxHp: 12, aim: 68, crit: 5, weapons: ['ar', 'pistol'], ability: 'transform',
+    passive: '開戰時是肉身；她自己的行動失敗時自動變身，主動權不易手。變身後多 1 顆心，敵人優先打她',
     active: '（變身是被動）',
     line: '大家放心，有我在！',
   },
   {
     id: 'yukino', name: '雪乃', title: '文靜', color: 0x34507a, hair: 0xcfeeff,
-    maxHp: 8, aim: 62, crit: 5, weapons: ['hmg', 'pistol'], ability: 'ice',
+    hearts: 5, maxHp: 15, aim: 62, crit: 5, weapons: ['hmg', 'pistol'], ability: 'ice',
     passive: '重機槍主動射擊必定壓制目標（沒命中也算）。看起來很細，其實很壯',
     active: '冰塊：變出全掩體、擋視線的冰塊；放在隊友腳下會把她抬起來（半掩體）。相鄰時點冰塊可以推動',
     line: '……我重訓，是為了讓人好好聽我說話。',
   },
   {
     id: 'momo', name: '小桃', title: '暴躁', color: 0xf2c230, hair: 0xff8a3a,
-    maxHp: 6, aim: 64, crit: 5, weapons: ['tri', 'magnum'], ability: 'airdrop',
+    hearts: 3, maxHp: 9, aim: 64, crit: 5, weapons: ['tri', 'magnum'], ability: 'airdrop',
     passive: '開霰彈槍後自己被擊退 1 格；個子小，掩體常態 +1 級（站在空地也算半掩體）',
     active: '空投：槍口抵地三管齊發，把自己彈到任意一格（備彈 -3，落地時彈匣是滿的）',
     line: '吵死了！我自己飛過去！',
@@ -40,7 +41,7 @@ export const TREES = {
   },
   hikari: {
     gun: ['命中 +5', '備彈 +6', '破防：打被壓制的敵人時，不算壓制給的那 1 級掩體', '變身後命中 +10', '變身後換彈不交主動權'],
-    magic: ['變身時解除自己的壓制', '變身生命加成 +2 → +3', '變身閃光：3 格內的敵人進入壓制', '變身時一併解除隊友的壓制', '肉身時可以主動變身（放棄保險，換即時效果）'],
+    magic: ['變身時解除自己的壓制', '變身多 1 顆心 → 2 顆', '變身閃光：3 格內的敵人進入壓制', '變身時一併解除隊友的壓制', '肉身時可以主動變身（放棄保險，換即時效果）'],
   },
   yukino: {
     gun: ['彈匣 +3', '站在冰塊上命中 +10', '反應射擊打空不停火', '被她壓制的敵人，開槍再 -10', '壓制火網：重機槍主動射擊時，目標周圍 1 格的其他敵人也直接被壓制'],

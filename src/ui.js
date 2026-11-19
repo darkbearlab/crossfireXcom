@@ -66,7 +66,7 @@ export function updateHUD(S) {
     card.style.borderLeftColor = u.hair ? '#' + u.hair.toString(16).padStart(6, '0') : '';
     card.innerHTML = `
       <div class="nm">${u.name}<span class="tag">${u.title || ''}</span>${u.alive ? '' : '<span class="tag kia">後送</span>'}</div>
-      <div class="hpbar"><i style="width:${Math.max(0, u.hp) / u.maxHp * 100}%"></i><span>${Math.max(0, u.hp)}/${u.maxHp}</span></div>
+      <div class="hrow">${heartsHtml(u)}<span>${Math.max(0, u.hp)}/${u.maxHp}${u.lineUsed ? '' : ' · 心線未用'}</span></div>
       <div class="wl">${weaponLine(u)}</div>
       <div class="meta">${st.join('') || '<span class="dim">待命</span>'}</div>
       <div class="stats">命中 ${u.aim} · 暴擊 ${u.crit}</div>`;
@@ -122,6 +122,18 @@ export function showTargeting(list, idx, triple = null) {
 
 export function hideTargeting() { $('target-panel').hidden = true; }
 
+// 魔法少女的愛心：每顆 heartHp 點，部分扣血的心只填一部分；黃線＝心線（還沒用掉時）
+export function heartsHtml(u) {
+  const H = u.heartHp, n = Math.ceil(u.maxHp / H), hp = Math.max(0, u.hp);
+  let s = '';
+  for (let i = 0; i < n; i++) {
+    const f = Math.max(0, Math.min(1, (hp - i * H) / H));
+    s += `<i class="ht" style="--f:${(f * 100).toFixed(0)}%"></i>`;
+    if (!u.lineUsed && (i + 1) * H === u.lineHp) s += '<b class="hl"></b>';
+  }
+  return `<div class="hearts">${s}</div>`;
+}
+
 export function makeLabel(u) {
   const d = document.createElement('div');
   d.className = 'ulabel ' + u.team + (u.boss ? ' boss' : '');
@@ -134,8 +146,9 @@ export function updateLabel(d, u) {
   const icons = (u.team === 'enemy' && !u.alerted ? '<b class="calm">?</b> ' : '') +
     (u.execBuff && !u.spareUsed && !u.firedOut ? '<b class="execi" title="不留活口">⚔</b> ' : '') +
     (u.suppressed ? '<b class="supi">▼</b> ' : '') + (u.firedOut ? '<b class="outi">✕</b> ' : '');
-  const html = `<div class="ln">${icons}${u.name}</div>` +
-    `<div class="pips">${Array.from({ length: u.maxHp }, (_, i) => `<i class="${i < u.hp ? 'on' : ''}"></i>`).join('')}</div>`;
+  const bar = u.heartHp ? heartsHtml(u)
+    : `<div class="pips">${Array.from({ length: u.maxHp }, (_, i) => `<i class="${i < u.hp ? 'on' : ''}${u.cuts && u.cuts.includes(i) ? ' cut' : ''}"></i>`).join('')}</div>`;
+  const html = `<div class="ln">${icons}${u.name}</div>` + bar;
   if (d._html !== html) { d.innerHTML = html; d._html = html; }
 }
 

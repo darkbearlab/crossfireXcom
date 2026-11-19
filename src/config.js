@@ -18,9 +18,17 @@ export const RULES = {
   SUPPRESS_AIM: 20,       // 被壓制者開槍命中 -
   FLANK_CRIT: 40,         // 側翼/暴露時暴擊加成
   CRIT_MULT: 1.5,
-  MEDKIT_HEAL: 3,         // 醫療包回復
+  MEDKIT_HEAL: 3,         // 醫療包回復（一顆心）
+  HEART_HP: 3,            // 一顆心 = 3 點生命。每次受傷最多扣掉目前這顆心（溢出的傷害作廢）
+  AIRDROP_RANGE: 8,       // 空投距離；落點還要在隊友看得見的格子
+  PHASE_GUARDS: 2,        // 頭目每突破一個階段叫來的護衛
+  // 敵人啟動檢定：每次主動行動前骰一次，失敗＝猶豫，主動權交回我方
+  ACT_OFFICER: 10,        // 3 格內有軍官 +
+  ACT_SUPPRESSED: 15,     // 被壓制 -
+  ACT_DEATHS: 10,         // 這次主動權內有隊友倒下 -
+  ACT_HURT: 10,           // 生命低於一半 -
   // 任務之間：彈藥補滿；生命只有沒上場的人每張地圖回 BENCH_HEAL
-  BENCH_HEAL: 1,
+  BENCH_HEAL: 3,
   EVAC_MISSIONS: 2,       // 倒下後送，要再完成幾個任務才回歸
   MELEE_DMG: 2,           // 朱音近戰傷害（必中）
   ICE_HP: 3,              // 冰塊被打幾下會碎
@@ -78,20 +86,21 @@ export const WEAPONS = {
 };
 
 // 敵人：普通武器不追蹤彈藥。impulse = 衝動：主動權易手時，這輪沒行動過的單位會強制做的事。
+// act / q = 啟動值與品質（新兵 45、老手 60、精銳 70、軍官 80）。頭目不檢定，改成血條分 3 段。
 export const ENEMY_TYPES = {
-  gunman:    { name: '槍手',   maxHp: 4, aim: 58, crit: 5,  dmg: [2, 4], color: 0xc0453a, impulse: 'shoot',
+  gunman:    { name: '槍手',   act: 60, q: '老手', maxHp: 4, aim: 58, crit: 5,  dmg: [2, 4], color: 0xc0453a, impulse: 'shoot',
                desc: '衝動：對最近的可見目標開槍' },
-  zealot:    { name: '狂徒',   maxHp: 4, aim: 50, crit: 10, dmg: [2, 4], color: 0xd8752a, impulse: 'charge',
+  zealot:    { name: '狂徒',   act: 60, q: '老手', maxHp: 4, aim: 50, crit: 10, dmg: [2, 4], color: 0xd8752a, impulse: 'charge',
                desc: '衝動：朝最近的我方衝 3 格' },
-  conscript: { name: '徵召兵', maxHp: 3, aim: 48, crit: 0,  dmg: [1, 3], color: 0x8a7a5a, impulse: 'flee', scale: 0.9,
+  conscript: { name: '徵召兵', act: 45, q: '新兵', maxHp: 3, aim: 48, crit: 0,  dmg: [1, 3], color: 0x8a7a5a, impulse: 'flee', scale: 0.9,
                desc: '衝動：軍官不在時往地圖邊緣逃，逃出即消失' },
-  officer:   { name: '軍官',   maxHp: 6, aim: 64, crit: 5,  dmg: [2, 4], color: 0xd0b040, officer: true,
+  officer:   { name: '軍官',   act: 80, q: '軍官', maxHp: 6, aim: 64, crit: 5,  dmg: [2, 4], color: 0xd0b040, officer: true,
                desc: '活著時徵召兵不會逃' },
-  sniper:    { name: '狙擊手', maxHp: 3, aim: 68, crit: 20, dmg: [3, 5], color: 0x5a6a8a, canReact: false, ignoreHalf: true,
+  sniper:    { name: '狙擊手', act: 70, q: '精銳', maxHp: 3, aim: 68, crit: 20, dmg: [3, 5], color: 0x5a6a8a, canReact: false, ignoreHalf: true,
                desc: '主動射擊無視半掩體；不會反應射擊' },
-  mg:        { name: '機槍手', maxHp: 6, aim: 52, crit: 0,  dmg: [2, 4], color: 0x7a3434, keepFiring: true, cumbersome: true,
+  mg:        { name: '機槍手', act: 70, q: '精銳', maxHp: 6, aim: 52, crit: 0,  dmg: [2, 4], color: 0x7a3434, keepFiring: true, cumbersome: true,
                desc: '笨重：每次主動權只行動一次；反應射擊打空不會停火' },
-  brute:     { name: '重裝兵', maxHp: 7, aim: 55, crit: 5,  dmg: [3, 5], color: 0x8e2f6e, armor: 1, scale: 1.2,
+  brute:     { name: '重裝兵', act: 70, q: '精銳', maxHp: 7, aim: 55, crit: 5,  dmg: [3, 5], color: 0x8e2f6e, armor: 1, scale: 1.2,
                desc: '裝甲 1：每次受傷 -1' },
   // 家族成員（boss）
   b_eye:     { name: '薇歐拉', maxHp: 10, aim: 70, crit: 15, dmg: [3, 5], color: 0x5b3f8f, boss: true, impulse: 'shoot', ignoreHalf: true,
