@@ -18,10 +18,12 @@ export function init(handlers) {
 }
 
 export function coverName(o) {
-  if (o.ignored) return '無視半掩體';
-  if (o.cover === 2) return '全掩體';
-  if (o.cover === 1) return '半掩體';
-  return o.flanked ? '側翼！' : '暴露';
+  const why = [o.duck && '壓制 +1', o.small && '小個子 +1', o.broke && '破防'].filter(Boolean);
+  const tail = why.length ? `（${why.join('、')}）` : '';
+  if (o.cover === 2) return '全掩體' + tail + ' 傷害 -1';
+  if (o.cover === 1) return '半掩體' + tail;
+  if (o.ignored) return '無視半掩體' + tail;
+  return (o.flanked ? '側翼！' : '暴露') + tail;
 }
 
 export function missionText(m) {
@@ -108,7 +110,7 @@ export function showTargeting(list, idx, triple = null) {
       <div class="tgt ${i === idx ? 'on' : ''}" data-i="${i}">
         <div><b>${t.unit.name}</b> <small>HP ${t.unit.hp}/${t.unit.maxHp}${t.unit.alerted ? '' : ' · 未察覺'}</small></div>
         <div class="hit">${t.odds.hit}%</div>
-        <small>暴擊 ${t.odds.crit}% · ${coverName(t.odds)} · 距離 ${t.odds.dist.toFixed(1)}</small>
+        <small>暴擊 ${t.odds.crit}% · ${coverName(t.odds)} · 距離 ${t.odds.dist.toFixed(1)}${t.odds.sweet ? ' · 甜蜜距離' : ''}</small>
       </div>`).join('') +
     (triple === null ? '' : `<button id="tp-triple" class="${triple ? 'on' : ''}">三管齊發：${triple ? '開' : '關'}（耗 3 發、傷害相加）</button>`) +
     `<div class="tp-btns"><button id="tp-fire">開火 (Enter)</button><button id="tp-cancel">取消 (Esc)</button></div>`;

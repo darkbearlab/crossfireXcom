@@ -129,27 +129,32 @@ export function quietLOS(map, a, b, sight = RULES.QUIET_SIGHT) {
   return true;
 }
 
-// weapon：可選的武器修正 { aim, crit, ignoreHalf, closeBonus, farRange, farPenalty }
-// aimBonus：射手的條件加成；raised：目標站在冰塊上（至少半掩體）；hardy：半掩體算全掩體（小桃）
-export function shotOdds(map, s, sPos, tPos, { reaction = false, targetSuppressed = false, weapon = null, aimBonus = 0, raised = false, hardy = false } = {}) {
+// weapon：可選的武器修正 { aim, crit, ignoreHalf, sweet, sweetBonus, exposedBonus, farRange, farPenalty }
+// aimBonus：射手的條件加成；raised：目標站在冰塊上（至少半掩體）
+// 掩體等級（無 / 半 / 全，最高全）：hardy＝目標個子小，常態 +1 級（小桃）；suppressed＝目標被壓制縮起來，+1 級；
+// breach＝射手會破防，不算壓制給的那 1 級
+export function shotOdds(map, s, sPos, tPos, { reaction = false, suppressed = false, breach = false, weapon = null, aimBonus = 0, raised = false, hardy = false } = {}) {
   const w = weapon || {};
   let raw = coverAt(map, tPos, sPos);
   if (raised) raw = Math.max(raw, 1);
-  if (hardy && raw === 1) raw = 2;
   const ignored = !!w.ignoreHalf && !reaction && raw === 1;
-  const cover = ignored ? 0 : raw;
+  const base = ignored ? 0 : raw;
+  const duck = suppressed && !breach && base < 2;
+  const small = hardy && base + (duck ? 1 : 0) < 2;
+  const cover = Math.min(2, base + (duck ? 1 : 0) + (small ? 1 : 0));
   const d = dist(sPos, tPos);
   let hit = s.aim + (w.aim || 0) + aimBonus - RULES.COVER_DEF[cover];
-  const closeBonus = w.closeBonus ?? RULES.CLOSE_BONUS;
+  const [sweetLo, sweetHi] = w.sweet || RULES.SWEET;
+  const sweet = Math.round(d) >= sweetLo && Math.round(d) <= sweetHi;
   const farRange = w.farRange ?? RULES.FAR_RANGE;
   const farPenalty = w.farPenalty ?? RULES.FAR_PENALTY;
-  if (d <= RULES.CLOSE_RANGE) hit += closeBonus;
+  if (sweet) hit += w.sweetBonus ?? RULES.SWEET_BONUS;
   if (cover === 0) hit += w.exposedBonus || 0; // 突擊武器打沒掩體的目標
   else if (d > farRange) hit -= Math.round((d - farRange) * farPenalty);
   if (reaction && !w.noReactPenalty) hit -= RULES.REACTION_PENALTY;
   if (s.suppressed) hit -= RULES.SUPPRESS_AIM;
-  if (targetSuppressed) hit -= RULES.SUPPRESS_DEF;
   hit = clamp(Math.round(hit), 0, 100);
   const crit = clamp(s.crit + (w.crit || 0) + (d <= RULES.CLOSE_RANGE ? (w.closeCrit || 0) : 0) + (cover === 0 ? RULES.FLANK_CRIT : 0), 0, 100);
-  return { hit, crit, cover, ignored, flanked: cover === 0 && !ignored && coverSides(map, tPos).length > 0, dist: d };
+  return { hit, crit, cover, ignored, sweet, duck, small, broke: suppressed && breach && base < 2,
+    flanked: cover === 0 && !ignored && coverSides(map, tPos).length > 0, dist: d };
 }

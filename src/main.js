@@ -142,12 +142,13 @@ function aimBonus(s) {
   let b = 0;
   if (s.girl === 'yukino' && s.raised && lv(s, 'gun') >= 2) b += 10;
   if (s.transformed && lv(s, 'gun') >= 4) b += 10;
-  if (s.braced) b += 10;
   if (s.suppressed && s.heavySup) b -= 10;
   return b;
 }
+// 破防：打被壓制的敵人時，不算壓制給的那 1 級掩體
+const breach = s => s.team === 'player' && lv(s, 'gun') >= ({ akane: 2, hikari: 3, momo: 3 }[s.girl] || 99);
 const oddsVs = (s, t, opts = {}) => shotOdds(S.map, s, s, t, {
-  targetSuppressed: !!t.suppressed, weapon: weapon(s), aimBonus: aimBonus(s), raised: !!t.raised, hardy: !!t.hardy, ...opts });
+  suppressed: !!t.suppressed, breach: breach(s), weapon: weapon(s), aimBonus: aimBonus(s), raised: !!t.raised, hardy: !!t.hardy, ...opts });
 const iceAt = (x, z) => S.ice.find(i => i.x === x && i.z === z);
 const isExit = p => S.mission && S.mission.exits.some(e => e.x === p.x && e.z === p.z);
 const adjObjective = u => {
@@ -400,18 +401,16 @@ function outfit(d, gs) {
   const p = ws[0], g = gs.gun;
   if (d.id === 'akane') {
     if (g >= 1) p.aim += 5;
-    if (g >= 2) { p.mag += 2; p.ammo = p.mag; }
     if (g >= 3) p.closeCrit = 15;
     if (g >= 4) p.noReactPenalty = true;
   } else if (d.id === 'hikari') {
     if (g >= 1) p.aim += 5;
     if (g >= 2) p.reserve += 6;
-    if (g >= 3) p.crit += 10;
   } else if (d.id === 'yukino') {
     if (g >= 1) { p.mag += 3; p.ammo = p.mag; }
     if (g >= 3) p.keepFiring = true;
   } else if (d.id === 'momo') {
-    if (g >= 1) p.closeBonus += 10;
+    if (g >= 1) p.sweetBonus += 10;
     if (g >= 2) ws[1].dmg = ws[1].dmg.map(v => v + 1);
     if (g >= 4) ws[1].canReact = true;
   }
@@ -426,7 +425,7 @@ function makeGirlUnit(gs) {
     ability: d.ability, weapons: outfit(d, gs), wi: 0,
     uses: gs.magic >= 5 && d.ability !== 'transform' ? 2 : 1,
     dodge: d.id === 'akane' ? 1 : 0, dashDodge: 0, hardy: d.id === 'momo',
-    transformed: false, raised: false, braced: false,
+    transformed: false, raised: false,
   };
 }
 
@@ -769,7 +768,7 @@ function planReactions(mover, cells, knownOnly = false) {
     let best = null;
     cells.forEach((c, i) => {
       if (!hasLOS(S.map, r, c)) return;
-      const o = shotOdds(S.map, r, r, c, { reaction: true, weapon: w, aimBonus: aimBonus(r), raised: !!mover.raised, hardy: !!mover.hardy });
+      const o = shotOdds(S.map, r, r, c, { reaction: true, weapon: w, aimBonus: aimBonus(r), raised: !!mover.raised, hardy: !!mover.hardy, suppressed: !!mover.suppressed, breach: breach(r) });
       if (o.hit >= RULES.REACTION_MIN && (!best || o.hit > best.odds.hit)) best = { shooter: r, idx: i, odds: o };
     });
     if (best) out.push(best);
@@ -875,7 +874,6 @@ function spawnTracer(a, b) {
 async function shoot(s, t, { reaction = false, forceMiss = false, triple = false } = {}) {
   const w = weapon(s);
   const odds = oddsVs(s, t, { reaction });
-  s.braced = false;
   if (s.team === 'player') w.ammo = Math.max(0, w.ammo - (triple ? 3 : 1)); // 反應射擊也耗彈
   s.mesh.rotation.y = Math.atan2(t.x - s.x, t.z - s.z);
   s.mesh.updateMatrixWorld(true);
@@ -909,12 +907,15 @@ async function shoot(s, t, { reaction = false, forceMiss = false, triple = false
     if (triple) dmg += ri(w.dmg[0], w.dmg[1]) + ri(w.dmg[0], w.dmg[1]);
     if (crit) dmg = Math.ceil(dmg * RULES.CRIT_MULT);
     if (t.armor) dmg = Math.max(1, dmg - t.armor);
-    UI.log(`${tag} ${crit ? '暴擊' : '命中'} -${dmg}`, s.team === 'player' ? 'good' : 'bad');
+    const dr = odds.cover === 2 && dmg > 1;
+    if (dr) dmg = Math.max(1, dmg - RULES.FULL_COVER_DR);
+    UI.log(`${tag} ${crit ? '暴擊' : '命中'} -${dmg}${dr ? '（全掩體減傷）' : ''}`, s.team === 'player' ? 'good' : 'bad');
     await damage(t, dmg, crit, s);
   } else {
     floatText(t, '未命中', 'miss');
     UI.log(`${tag} 未命中`, 'dim');
   }
+  if (!reaction && s.team === 'player' && w.pin) pinFire(s, t);
   chipIce(s, t);
   makeNoise(s, t);
   await wait(0.35);
@@ -939,6 +940,18 @@ async function damage(t, dmg, crit, src = null) {
   }
   suppress(t);
   if (src && src.girl === 'yukino' && lv(src, 'gun') >= 4) t.heavySup = true;
+}
+
+// 雪乃的重機槍：主動射擊不管有沒有命中都壓制目標；「壓制火網」連目標周圍 1 格的敵人也壓制
+function pinFire(s, t) {
+  const heavy = s.girl === 'yukino' && lv(s, 'gun') >= 4;
+  const pin = u => { suppress(u); if (heavy && u.suppressed) u.heavySup = true; };
+  if (t.alive) pin(t);
+  if (s.girl === 'yukino' && lv(s, 'gun') >= 5) {
+    const near = S.units.filter(e => e.alive && e !== t && e.team !== s.team && dist(e, t) < 1.5);
+    if (near.length) UI.log(`${s.name} 壓制火網！`, 'good');
+    near.forEach(pin);
+  }
 }
 
 function suppress(t, label = '壓制') {
@@ -1305,12 +1318,9 @@ function cancelTarget() {
 
 const canTriple = u => !!u && u.girl === 'momo' && lv(u, 'gun') >= 5 && weapon(u).id === 'tri' && weapon(u).ammo >= 3;
 
-// 朱音雙槍齊射 / 雪乃掃射的第二個目標
+// 朱音雙槍齊射的第二個目標
 function secondTarget(u, prim) {
   if (u.girl === 'akane' && lv(u, 'gun') >= 5) return visibleTargets(u).map(o => o.unit).find(e => e !== prim) || null;
-  if (u.girl === 'yukino' && lv(u, 'gun') >= 5 && u.wi === 0) {
-    return enemies().find(e => e !== prim && e.mesh.visible && dist(e, prim) < 1.5 && hasLOS(S.map, u, e)) || null;
-  }
   return null;
 }
 
@@ -1326,7 +1336,7 @@ async function fire() {
   const second = secondTarget(u, t.unit);
   let hit = await shoot(u, t.unit, { triple });
   if (second && second.alive && u.alive && weapon(u).ammo > 0) {
-    UI.log(u.girl === 'akane' ? `${u.name} 雙槍齊射！` : `${u.name} 掃射！`, 'dim');
+    UI.log(`${u.name} 雙槍齊射！`, 'dim');
     hit = (await shoot(u, second)) || hit;
   }
   S.busy = false;
@@ -1790,7 +1800,6 @@ async function recoil(s, t) {
   s.x = to.x;
   s.z = to.z;
   floatText(s, '後座力！', 'ow');
-  if (lv(s, 'gun') >= 3 && coverSides(S.map, s).length) s.braced = true;
   pickupCrate(s);
   landed(s);
   updateVisibility();
@@ -1822,7 +1831,7 @@ function evalTile(e, pos, ps) {
     if (hasLOS(S.map, pos, p)) {
       const def = shotOdds(S.map, p, p, pos); // 玩家打這格的命中率
       s -= def.hit * 0.35;
-      const o = shotOdds(S.map, e, pos, p, { targetSuppressed: !!p.suppressed });
+      const o = shotOdds(S.map, e, pos, p, { weapon: e.gun, suppressed: !!p.suppressed, hardy: !!p.hardy, raised: !!p.raised });
       if (o.hit > bestHit) bestHit = o.hit;
       if (o.cover === 0) flank = true;
     } else s += 6;

@@ -6,15 +6,16 @@ export const RULES = {
   SIGHT: 10,              // 警戒中的視野距離（格）。我方永遠算警戒中
   QUIET_SIGHT: 5,         // 未警戒敵人的視野距離；且看不穿半掩體、看不穿也看不進隱蔽區、只看自己的責任區
   NOISE: 6,               // 開槍會驚動射手與目標周圍這麼多格內的敵人
-  COVER_DEF: [0, 20, 40], // 無 / 半掩體 / 全掩體 的防禦值
-  CLOSE_RANGE: 3,         // 近距離加成範圍
-  CLOSE_BONUS: 10,
+  COVER_DEF: [0, 30, 50], // 無 / 半掩體 / 全掩體 的防禦值
+  FULL_COVER_DR: 1,       // 全掩體後面的人每次受傷 -1（最低 1）
+  CLOSE_RANGE: 3,         // 朱音「近距離暴擊」的範圍
+  SWEET: [1, 3],          // 沒有指定甜蜜距離的武器（敵人）用這個
+  SWEET_BONUS: 10,
   FAR_RANGE: 8,           // 超過此距離每格扣命中
   FAR_PENALTY: 3,
   REACTION_PENALTY: 10,   // 反應射擊命中懲罰
   REACTION_MIN: 20,       // 命中率低於此值不會自動反應射擊（避免白白浪費）
   SUPPRESS_AIM: 20,       // 被壓制者開槍命中 -
-  SUPPRESS_DEF: 20,       // 打被壓制者命中 -
   FLANK_CRIT: 40,         // 側翼/暴露時暴擊加成
   CRIT_MULT: 1.5,
   MEDKIT_HEAL: 3,         // 醫療包回復
@@ -51,26 +52,29 @@ export const THEMES = [
 ];
 
 // 玩家武器：有彈匣與備彈（戰役資源）。
-// closeBonus：3 格內的命中加成（預設 RULES.CLOSE_BONUS）；exposedBonus：目標沒有掩體（暴露/被側翼）時的命中加成。
-// 手槍與霰彈槍是突擊武器：近距離、打沒掩體的目標都特別準。
+// sweet：甜蜜距離 [近, 遠]（格，四捨五入），sweetBonus：在甜蜜距離內的命中加成。
+// exposedBonus：目標沒有掩體（暴露/被側翼）時的命中加成。
+// 手槍與霰彈槍是突擊武器：甜蜜距離很近、加成很大，打沒掩體的目標也特別準。
 // 換主武器、主武器換彈 → 做完交出主動權；換手槍、手槍換彈很快 → 不交出主動權。
 export const WEAPONS = {
-  ar:     { name: '突擊步槍', short: '步槍', aim: 8,  crit: 10, dmg: [4, 6], mag: 6,  reserve: 24, canReact: true },
+  ar:     { name: '突擊步槍', short: '步槍', aim: 8,  crit: 10, dmg: [4, 6], mag: 6,  reserve: 24, canReact: true,
+            sweet: [4, 7], sweetBonus: 10, note: '甜蜜距離 4–7 格 +10' },
   sg:     { name: '霰彈槍',   short: '霰彈', aim: 4,  crit: 20, dmg: [5, 8], mag: 4,  reserve: 16, canReact: true,
-            closeBonus: 35, exposedBonus: 20, farRange: 5, farPenalty: 8, note: '近距離 +35、打沒掩體的目標 +20，5 格外每格 -8' },
+            sweet: [1, 2], sweetBonus: 35, exposedBonus: 20, farRange: 5, farPenalty: 8, note: '甜蜜距離 1–2 格 +35、打沒掩體的目標 +20，5 格外每格 -8' },
   sn:     { name: '狙擊步槍', short: '狙擊', aim: 15, crit: 25, dmg: [5, 7], mag: 3,  reserve: 12, canReact: false,
-            ignoreHalf: true, closeBonus: -10, farRange: 99, note: '主動射擊無視半掩體；不能反應射擊' },
+            ignoreHalf: true, sweet: [9, 99], sweetBonus: 15, farRange: 99, note: '甜蜜距離 9 格以上 +15；主動射擊無視半掩體；不能反應射擊' },
   lmg:    { name: '輕機槍',   short: '機槍', aim: 0,  crit: 5,  dmg: [3, 5], mag: 10, reserve: 30, canReact: true,
-            keepFiring: true, note: '反應射擊打空也不會停火' },
+            keepFiring: true, sweet: [5, 8], sweetBonus: 10, note: '甜蜜距離 5–8 格 +10；反應射擊打空也不會停火' },
   pistol: { name: '手槍',     short: '手槍', aim: -5, crit: 5,  dmg: [2, 3], mag: 8,  canReact: false, sidearm: true,
-            closeBonus: 25, exposedBonus: 15, note: '無限備彈；不能反應射擊；近距離 +25、打沒掩體的目標 +15' },
+            sweet: [1, 3], sweetBonus: 25, exposedBonus: 15, note: '無限備彈；不能反應射擊；甜蜜距離 1–3 格 +25、打沒掩體的目標 +15' },
   duals:  { name: '雙自動手槍', short: '雙槍', aim: 2, crit: 10, dmg: [3, 4], mag: 10, reserve: 30, canReact: true,
-            closeBonus: 30, exposedBonus: 20, fastReload: true, note: '換彈不交出主動權；近距離 +30、打沒掩體的目標 +20' },
-  hmg:    { name: '重機槍',   short: '重機槍', aim: -2, crit: 5, dmg: [4, 6], mag: 8, reserve: 24, canReact: true },
+            sweet: [1, 3], sweetBonus: 30, exposedBonus: 20, fastReload: true, note: '換彈不交出主動權；甜蜜距離 1–3 格 +30、打沒掩體的目標 +20' },
+  hmg:    { name: '重機槍',   short: '重機槍', aim: 4, crit: 5, dmg: [4, 6], mag: 8, reserve: 24, canReact: true,
+            sweet: [5, 8], sweetBonus: 10, pin: true, note: '甜蜜距離 5–8 格 +10；主動射擊沒命中也會壓制目標' },
   tri:    { name: '三管霰彈槍', short: '霰彈', aim: 4, crit: 20, dmg: [5, 8], mag: 3, reserve: 12, canReact: true,
-            closeBonus: 35, exposedBonus: 20, farRange: 5, farPenalty: 8, recoil: true, note: '中折式三管；開槍後自己被擊退 1 格；近距離 +35、打沒掩體的目標 +20' },
+            sweet: [1, 2], sweetBonus: 35, exposedBonus: 20, farRange: 5, farPenalty: 8, recoil: true, note: '中折式三管；開槍後自己被擊退 1 格；甜蜜距離 1–2 格 +35、打沒掩體的目標 +20' },
   magnum: { name: '麥格農左輪', short: '左輪', aim: 0, crit: 15, dmg: [4, 5], mag: 6, canReact: false, sidearm: true,
-            closeBonus: 25, exposedBonus: 15, note: '無限備彈；近距離 +25、打沒掩體的目標 +15' },
+            sweet: [1, 3], sweetBonus: 25, exposedBonus: 15, note: '無限備彈；甜蜜距離 1–3 格 +25、打沒掩體的目標 +15' },
 };
 
 // 敵人：普通武器不追蹤彈藥。impulse = 衝動：主動權易手時，這輪沒行動過的單位會強制做的事。
