@@ -1,7 +1,8 @@
 // 單位模型（暫用方塊人，之後可換成正式模型）。正面朝 +Z。
 import * as THREE from 'three';
 
-export function makeUnitMesh(team, kind, color) {
+// gun: 'ar' | 'sg' | 'sn' | 'lmg' | 'pistol'（只影響外觀）
+export function makeUnitMesh(team, kind, color, gun = 'ar', scale = 1) {
   const g = new THREE.Group();
   const isP = team === 'player';
   const body = new THREE.MeshStandardMaterial({ color, roughness: 0.6, metalness: 0.15 });
@@ -34,16 +35,27 @@ export function makeUnitMesh(team, kind, color) {
     add(new THREE.BoxGeometry(0.3, 0.26, 0.3), body, 0, 1.15, 0.04);
     add(new THREE.BoxGeometry(0.05, 0.05, 0.03), glow, -0.07, 1.18, 0.2);
     add(new THREE.BoxGeometry(0.05, 0.05, 0.03), glow, 0.07, 1.18, 0.2);
-    if (kind === 'brute') {
+    if (kind === 'brute' || kind === 'mg') {
       add(new THREE.BoxGeometry(0.2, 0.2, 0.32), body, -0.3, 1.0, 0); // 肩甲
       add(new THREE.BoxGeometry(0.2, 0.2, 0.32), body, 0.3, 1.0, 0);
     }
+    if (kind === 'officer') add(new THREE.BoxGeometry(0.36, 0.06, 0.4), glow, 0, 1.31, 0.04); // 帽簷
+    if (kind === 'zealot') add(new THREE.BoxGeometry(0.46, 0.08, 0.3), glow, 0, 0.92, 0);     // 頭巾/布條
   }
-  // 槍
-  add(new THREE.BoxGeometry(0.08, 0.1, 0.55), dark, 0.22, 0.85, 0.32);
+  if (kind === 'sniper') gun = 'sn';
+  if (kind === 'mg') gun = 'lmg';
 
-  g.scale.setScalar(kind === 'brute' ? 1.2 : 1);
+  // 槍
+  const G = {
+    ar: [0.08, 0.1, 0.55, 0.32], sg: [0.1, 0.11, 0.45, 0.28], sn: [0.06, 0.08, 0.8, 0.45],
+    lmg: [0.13, 0.14, 0.6, 0.34], pistol: [0.06, 0.09, 0.2, 0.2],
+  }[gun] || [0.08, 0.1, 0.55, 0.32];
+  const gm = add(new THREE.BoxGeometry(G[0], G[1], G[2]), dark, 0.22, 0.85, G[3]);
+  g.userData.gunMesh = gm;
+
+  g.scale.setScalar(scale);
+  g.userData.baseScale = scale;
   g.userData.mats = mats;
-  g.userData.muzzle = new THREE.Vector3(0.22, 0.86, 0.62);
+  g.userData.muzzle = new THREE.Vector3(0.22, 0.86, G[3] + G[2] / 2);
   return g;
 }

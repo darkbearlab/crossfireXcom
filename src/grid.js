@@ -114,16 +114,38 @@ export function vaultTargets(map, p, blocked) {
   return out;
 }
 
-export function shotOdds(map, s, sPos, tPos, { reaction = false, targetSuppressed = false } = {}) {
-  const cover = coverAt(map, tPos, sPos);
+// 未警戒的視線：距離較短、看不穿半掩體、看不穿也看不進隱蔽區、不能探身
+export function quietLOS(map, a, b, sight = RULES.QUIET_SIGHT) {
+  if (dist(a, b) > sight) return false;
+  if (map.isConceal(b.x, b.z)) return false;
+  const dx = b.x - a.x, dz = b.z - a.z;
+  const steps = Math.ceil(Math.hypot(dx, dz) * 6);
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const x = Math.round(a.x + dx * t), z = Math.round(a.z + dz * t);
+    if ((x === a.x && z === a.z) || (x === b.x && z === b.z)) continue;
+    if (map.get(x, z) !== T.FLOOR || map.isConceal(x, z)) return false;
+  }
+  return true;
+}
+
+// weapon：可選的武器修正 { aim, crit, ignoreHalf, closeBonus, farRange, farPenalty }
+export function shotOdds(map, s, sPos, tPos, { reaction = false, targetSuppressed = false, weapon = null } = {}) {
+  const w = weapon || {};
+  const raw = coverAt(map, tPos, sPos);
+  const ignored = !!w.ignoreHalf && !reaction && raw === 1;
+  const cover = ignored ? 0 : raw;
   const d = dist(sPos, tPos);
-  let hit = s.aim - RULES.COVER_DEF[cover];
-  if (d <= RULES.CLOSE_RANGE) hit += RULES.CLOSE_BONUS;
-  else if (d > RULES.FAR_RANGE) hit -= Math.round((d - RULES.FAR_RANGE) * RULES.FAR_PENALTY);
+  let hit = s.aim + (w.aim || 0) - RULES.COVER_DEF[cover];
+  const closeBonus = w.closeBonus ?? RULES.CLOSE_BONUS;
+  const farRange = w.farRange ?? RULES.FAR_RANGE;
+  const farPenalty = w.farPenalty ?? RULES.FAR_PENALTY;
+  if (d <= RULES.CLOSE_RANGE) hit += closeBonus;
+  else if (d > farRange) hit -= Math.round((d - farRange) * farPenalty);
   if (reaction) hit -= RULES.REACTION_PENALTY;
   if (s.suppressed) hit -= RULES.SUPPRESS_AIM;
   if (targetSuppressed) hit -= RULES.SUPPRESS_DEF;
   hit = clamp(Math.round(hit), 0, 100);
-  const crit = clamp(s.crit + (cover === 0 ? RULES.FLANK_CRIT : 0), 0, 100);
-  return { hit, crit, cover, flanked: cover === 0 && coverSides(map, tPos).length > 0, dist: d };
+  const crit = clamp(s.crit + (w.crit || 0) + (cover === 0 ? RULES.FLANK_CRIT : 0), 0, 100);
+  return { hit, crit, cover, ignored, flanked: cover === 0 && !ignored && coverSides(map, tPos).length > 0, dist: d };
 }

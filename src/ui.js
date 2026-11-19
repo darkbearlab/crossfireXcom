@@ -5,7 +5,10 @@ let H = {};
 export function init(handlers) {
   H = handlers;
   $('btn-shoot').onclick = () => H.shoot();
+  $('btn-reload').onclick = () => H.reload();
+  $('btn-swap').onclick = () => H.swap();
   $('btn-rally').onclick = () => H.rally();
+  $('btn-plant').onclick = () => H.plant();
   $('btn-end').onclick = () => H.pass();
   $('btn-start').onclick = () => H.start();
   $('cam-l').onclick = () => H.rotL();
@@ -14,19 +17,33 @@ export function init(handlers) {
 }
 
 export function coverName(o) {
+  if (o.ignored) return '無視半掩體';
   if (o.cover === 2) return '全掩體';
   if (o.cover === 1) return '半掩體';
   return o.flanked ? '側翼！' : '暴露';
 }
 
+export function missionText(m) {
+  if (m.type === 'extract') return '目標：抵達右側撤離點';
+  return m.objective.planted ? '目標：撤回左側撤離點' : '目標：在終端安裝炸藥';
+}
+
+function weaponLine(u) {
+  const w = u.weapons[u.wi], p = u.weapons[0];
+  const amm = `<b class="${w.ammo === 0 ? 'empty' : ''}">${w.ammo}/${w.mag}</b>`;
+  if (u.wi === 0) return `${w.name} ${amm} <span class="dim">備 ${w.reserve}</span>`;
+  return `${w.name} ${amm} <span class="dim">· ${p.short} ${p.ammo}/${p.mag} 備 ${p.reserve}</span>`;
+}
+
 export function updateHUD(S) {
   $('mission').textContent = `任務 ${S.level}｜${S.theme.name}`;
+  $('objective').textContent = S.mission ? missionText(S.mission) : '';
   const t = $('turn');
   t.textContent = S.side === 'deploy' ? '部署階段' : `主動權：${S.side === 'player' ? '我方' : '敵方'} · 第 ${S.initNo} 輪`;
   t.className = S.side === 'deploy' ? 'player' : S.side;
   const deploying = S.side === 'deploy';
   $('btn-start').hidden = !deploying;
-  for (const id of ['btn-shoot', 'btn-rally', 'btn-end']) $(id).hidden = deploying;
+  for (const id of ['btn-shoot', 'btn-reload', 'btn-swap', 'btn-end']) $(id).hidden = deploying;
   const seen = S.units.filter(u => u.team === 'enemy' && u.alive && u.mesh.visible).length;
   $('enemy-count').textContent = `可見敵人 ${seen}`;
 
@@ -41,16 +58,30 @@ export function updateHUD(S) {
     card.innerHTML = `
       <div class="nm">${u.name}${u.recruit ? '<span class="tag">新兵</span>' : ''}${u.alive ? '' : '<span class="tag kia">陣亡</span>'}</div>
       <div class="hpbar"><i style="width:${Math.max(0, u.hp) / u.maxHp * 100}%"></i><span>${Math.max(0, u.hp)}/${u.maxHp}</span></div>
+      <div class="wl">${weaponLine(u)}</div>
       <div class="meta">${st.join('') || '<span class="dim">待命</span>'}</div>
-      <div class="stats">命中 ${u.aim} · 暴擊 ${u.crit} · 傷害 ${u.dmg[0]}-${u.dmg[1]}</div>`;
+      <div class="stats">命中 ${u.aim} · 暴擊 ${u.crit}</div>`;
     if (u.alive) card.onclick = () => H.select(u);
     sq.appendChild(card);
   }
 
   const sel = S.selected;
   const can = H.canAct(sel);
-  $('btn-shoot').disabled = !can || sel.firedOut;
+  const w = sel && sel.weapons ? sel.weapons[sel.wi] : null;
+  $('btn-shoot').disabled = !can || sel.firedOut || !w || w.ammo <= 0;
+
+  const rl = can ? H.reloadInfo(sel) : null;
+  $('btn-reload').disabled = !rl;
+  $('btn-reload').classList.toggle('gives', !!(w && !w.sidearm));
+
+  const sw = sel && sel.weapons ? sel.weapons[sel.wi === 0 ? 1 : 0] : null;
+  $('btn-swap').disabled = !can || !sw;
+  $('btn-swap').classList.toggle('gives', !!(sw && !sw.sidearm));
+  $('swap-label').textContent = sw ? `換${sw.short}` : '換槍';
+
+  $('btn-rally').hidden = deploying || !(sel && sel.alive && sel.suppressed);
   $('btn-rally').disabled = !can || !sel.suppressed;
+  $('btn-plant').hidden = deploying || !(can && H.canPlant(sel));
   $('btn-end').disabled = S.side !== 'player' || S.busy || S.gameOver;
 
   for (const u of S.units) if (u.label) updateLabel(u.label, u);
@@ -62,7 +93,7 @@ export function showTargeting(list, idx) {
   el.innerHTML = `<div class="tp-title">選擇目標 <small>Tab 切換 · 點擊敵人也可</small></div>` +
     list.map((t, i) => `
       <div class="tgt ${i === idx ? 'on' : ''}" data-i="${i}">
-        <div><b>${t.unit.name}</b> <small>HP ${t.unit.hp}/${t.unit.maxHp}</small></div>
+        <div><b>${t.unit.name}</b> <small>HP ${t.unit.hp}/${t.unit.maxHp}${t.unit.alerted ? '' : ' · 未察覺'}</small></div>
         <div class="hit">${t.odds.hit}%</div>
         <small>暴擊 ${t.odds.crit}% · ${coverName(t.odds)} · 距離 ${t.odds.dist.toFixed(1)}</small>
       </div>`).join('') +
@@ -83,7 +114,8 @@ export function makeLabel(u) {
 }
 
 export function updateLabel(d, u) {
-  const icons = (u.suppressed ? '<b class="supi">▼</b> ' : '') + (u.firedOut ? '<b class="outi">✕</b> ' : '');
+  const icons = (u.team === 'enemy' && !u.alerted ? '<b class="calm">?</b> ' : '') +
+    (u.suppressed ? '<b class="supi">▼</b> ' : '') + (u.firedOut ? '<b class="outi">✕</b> ' : '');
   const html = `<div class="ln">${icons}${u.name}</div>` +
     `<div class="pips">${Array.from({ length: u.maxHp }, (_, i) => `<i class="${i < u.hp ? 'on' : ''}"></i>`).join('')}</div>`;
   if (d._html !== html) { d.innerHTML = html; d._html = html; }
@@ -107,12 +139,12 @@ export function banner(text, cls = '') {
 }
 
 let toastTimer;
-export function toast(text) {
+export function toast(text, ms = 1600) {
   const t = $('toast');
   t.textContent = text;
   t.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => t.classList.remove('show'), 1600);
+  toastTimer = setTimeout(() => t.classList.remove('show'), ms);
 }
 
 export function log(text, cls = '') {

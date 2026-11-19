@@ -22,14 +22,18 @@
     <div id="labels"></div>
     <div id="topbar">
       <span id="mission"></span>
+      <span id="objective"></span>
       <span id="turn"></span>
       <span id="enemy-count"></span>
     </div>
     <div id="squad"></div>
     <div id="actions">
       <button id="btn-shoot"><kbd>1</kbd>射擊</button>
-      <button id="btn-rally"><kbd>2</kbd>解除壓制</button>
-      <button id="btn-end" class="end"><kbd>⌫</kbd>放棄主動權</button>
+      <button id="btn-reload"><kbd>R</kbd>換彈</button>
+      <button id="btn-swap"><kbd>X</kbd><span id="swap-label">換槍</span></button>
+      <button id="btn-rally" hidden><kbd>2</kbd>解除壓制</button>
+      <button id="btn-plant" class="plant" hidden><kbd>F</kbd>安裝炸藥</button>
+      <button id="btn-end" class="end"><kbd>⌫</kbd>放棄<span class="wide-only">主動權</span></button>
       <button id="btn-start" class="start" hidden><kbd>Enter</kbd>部署完成，開始行動</button>
     </div>
     <div id="cam-btns"><button id="cam-l" title="向左旋轉 (Q)">⟲</button><button id="cam-r" title="向右旋轉 (E)">⟳</button></div>
@@ -45,7 +49,7 @@
         <div class="only-mouse"><b>左鍵拖曳 / WASD</b> 平移　<b>右鍵拖曳</b> 旋轉　<b>滾輪</b> 縮放</div>
         <div class="only-mouse"><b>Q / E</b> 旋轉 45°</div>
         <div class="only-mouse"><b>Tab</b> 切換士兵 / 目標</div>
-        <div class="only-mouse"><b>1</b> 射擊　<b>2</b> 解除壓制</div>
+        <div class="only-mouse"><b>1</b> 射擊　<b>R</b> 換彈　<b>X</b> 換槍　<b>2</b> 解除壓制　<b>F</b> 安裝炸藥</div>
         <div class="only-mouse"><b>Enter</b> 開火　<b>Esc</b> 取消　<b>Backspace</b> 放棄主動權</div>
         <hr>
         <div>沒有回合：行動直到<b>失敗</b>才交出主動權</div>
@@ -57,6 +61,17 @@
         <div>被命中＝壓制 ▼：開槍 -20、被打 -20、不能移動</div>
         <div>盾牌：<span style="color:#4fc3ff">藍=全掩體 -40</span>　<span style="color:#ffc44f">黃=半掩體 -20</span></div>
         <div>從沒有掩體的方向射擊 = 側翼，暴擊 +40</div>
+        <hr>
+        <div><b>潛入</b>：敵人一開始未察覺 <b class="calm">?</b></div>
+        <div>未察覺的敵人只看 5 格、只看自己的<span style="color:#ffcc33">黃色責任區</span>，看不穿半掩體，看不穿也看不進隱蔽區（草叢等）</div>
+        <div><span style="color:#ffcc33">黃圈</span>：移動到那裡會被發現（移動停在那格）</div>
+        <div>開槍會驚動射手與目標周圍 6 格的敵人；警戒後就照常看得到</div>
+        <hr>
+        <div><b>彈藥</b>：反應射擊也耗彈；彈藥與生命在任務間不會補充，靠地圖上的補給箱</div>
+        <div><span style="color:#ff9d4f">橘框按鈕</span>＝做完交出主動權（換主武器、主武器換彈）</div>
+        <div>換手槍、手槍換彈不交出主動權；手槍無限備彈但不能反應射擊</div>
+        <hr>
+        <div><b>敵人衝動</b>：主動權交回我方時，這輪沒行動的敵人會做自己的衝動行為（點敵人看說明）</div>
       </div>
     </div>
     <div id="banner"></div>

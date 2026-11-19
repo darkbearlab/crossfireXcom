@@ -141,3 +141,19 @@ kbd { display: inline-block; min-width: 18px; padding: 0 4px; margin-right: 6px;
   #overlay .panel { min-width: 0; width: calc(100vw - 32px); padding: 18px; }
   .ulabel { font-size: 10px; }
 }
+
+/* ===== 武器 / 潛入 / 任務 ===== */
+#objective { color: #ffd98a; }
+.card .wl { margin-top: 4px; font-size: 12px; }
+.card .wl b { color: #8fe0ff; }
+.card .wl b.empty { color: #ff6a5a; }
+#actions button.gives { border-color: #ff9d4f; }
+#actions button.plant { border-color: #ffcf3a; background: #3a2e10dd; }
+.calm { color: #c8d0d8; }
+#tip .spot { color: #ffcc33; }
+#tip .desc { color: #c8d0d8; font-size: 12px; }
+@media (max-width: 700px) {
+  .wide-only { display: none; }
+  .card .wl { font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #actions button { padding: 12px 2px; font-size: 13px; }
+}

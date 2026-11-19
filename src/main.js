@@ -5,11 +5,14 @@
 // - 反應射擊：自動。每個敵人每次移動最多一槍，挑命中率最高的點（同分取離起點近的）。
 //   反應射擊打空 → 該單位在這次主動權內不能再開槍。
 // - 被命中 → 壓制：開槍與被打命中都下降、不能移動；解除壓制是一個行動（目前必定成功）。
+// - 潛入：敵人一開始未警戒，只看自己的責任區、視距短、看不穿半掩體與隱蔽區。被看到或聽到槍聲才警戒。
+// - 玩家武器有彈匣；換主武器、主武器換彈 → 交出主動權。手槍則不會。
+// - 敵人衝動：主動權交回玩家時，這輪沒行動的敵人會做自己的衝動行為。
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { T, RULES, THEMES, SOLDIER_TEMPLATES, RECRUIT, RECRUIT_NAMES, RECRUIT_COLORS, ENEMY_TYPES } from './config.js';
+import { T, RULES, THEMES, SOLDIER_TEMPLATES, RECRUIT, RECRUIT_NAMES, RECRUIT_COLORS, RECRUIT_WEAPONS, ENEMY_TYPES, WEAPONS } from './config.js';
 import { generateMap, ri } from './map.js';
-import { hasLOS, coverSides, shotOdds, key, dist, clearMove, lineCells, vaultTargets } from './grid.js';
+import { hasLOS, quietLOS, coverSides, shotOdds, key, dist, clearMove, lineCells, vaultTargets } from './grid.js';
 import { makeUnitMesh } from './units.js';
 import * as UI from './ui.js';
 
@@ -89,11 +92,24 @@ const reactGeo = new THREE.RingGeometry(0.18, 0.3, 20).rotateX(-Math.PI / 2);
 const reactMat = new THREE.MeshBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.9, depthWrite: false });
 const reactLineMat = new THREE.LineDashedMaterial({ color: 0xff5a4a, dashSize: 0.15, gapSize: 0.1, transparent: true, opacity: 0.8 });
 
+// 責任區 / 撤離點底色
+const zoneMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+  new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.3, depthWrite: false }), 600);
+zoneMesh.setColorAt(0, new THREE.Color());
+zoneMesh.frustumCulled = false;
+zoneMesh.count = 0;
+overlay.add(zoneMesh);
+const ZONE_C = new THREE.Color(0xffcc33), EXIT_C = new THREE.Color(0x3fe0b0);
+const spotGeo = new THREE.RingGeometry(0.26, 0.4, 24).rotateX(-Math.PI / 2);
+const spotMat = new THREE.MeshBasicMaterial({ color: 0xffcc33, transparent: true, opacity: 0.9, depthWrite: false });
+const spotLineMat = new THREE.LineDashedMaterial({ color: 0xffcc33, dashSize: 0.12, gapSize: 0.12, transparent: true, opacity: 0.8 });
+
 // ================= 狀態 =================
 const S = {
   level: 1, initNo: 1, side: 'player', map: null, theme: THEMES[0],
   units: [], selected: null, mode: 'move', targets: [], targetIdx: 0,
   busy: false, moves: null, hover: null, roster: null, gameOver: false,
+  mission: null, crates: [], objMesh: null, confirm: null,
 };
 
 const players = () => S.units.filter(u => u.team === 'player' && u.alive);
@@ -103,7 +119,14 @@ const occupied = (x, z, except) => S.units.some(u => u.alive && u !== except && 
 const canAct = u => !!u && u.alive && u.team === 'player' && S.side === 'player' && !S.busy && !S.gameOver && S.mode === 'move';
 const canMove = u => canAct(u) && !u.suppressed;
 const refresh = () => UI.updateHUD(S);
-const oddsVs = (s, t, opts = {}) => shotOdds(S.map, s, s, t, { targetSuppressed: !!t.suppressed, ...opts });
+const weapon = u => u.team === 'player' ? u.weapons[u.wi] : u.gun;
+const oddsVs = (s, t, opts = {}) => shotOdds(S.map, s, s, t, { targetSuppressed: !!t.suppressed, weapon: weapon(s), ...opts });
+const isExit = p => S.mission && S.mission.exits.some(e => e.x === p.x && e.z === p.z);
+const adjObjective = u => {
+  const o = S.mission && S.mission.objective;
+  return !!o && Math.abs(u.x - o.x) <= 1 && Math.abs(u.z - o.z) <= 1;
+};
+const canPlant = u => canAct(u) && S.mission.type === 'sabotage' && !S.mission.objective.planted && adjObjective(u);
 
 // ================= 補間 / 動畫 =================
 const tweens = [];
@@ -189,6 +212,7 @@ function buildWorld() {
     m4.makeTranslation(x, -0.05, z);
     tiles.setMatrixAt(n, m4);
     c.copy((x + z) % 2 ? cA : cB).multiplyScalar(0.94 + Math.random() * 0.1);
+    if (map.isConceal(x, z)) c.lerp(new THREE.Color(th.conceal), 0.35).multiplyScalar(0.8);
     tiles.setColorAt(n, c);
     n++;
   }
@@ -198,6 +222,63 @@ function buildWorld() {
     const t = map.get(x, z);
     if (t === T.HALF) world.add(makeHalf(th, x, z));
     if (t === T.FULL) world.add(makeFull(th, x, z));
+  }
+
+  // 隱蔽區：草叢/瓦礫的細長突起
+  const cTiles = [];
+  for (let z = 0; z < h; z++) for (let x = 0; x < w; x++) if (map.isConceal(x, z)) cTiles.push([x, z]);
+  if (cTiles.length) {
+    const per = 7;
+    const tufts = new THREE.InstancedMesh(new THREE.ConeGeometry(0.07, 0.62, 4),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }), cTiles.length * per);
+    tufts.castShadow = true;
+    let i = 0;
+    const q = new THREE.Quaternion(), sc = new THREE.Vector3(), pos = new THREE.Vector3(), e = new THREE.Euler();
+    for (const [x, z] of cTiles) for (let j = 0; j < per; j++) {
+      const hgt = 0.7 + Math.random() * 0.6;
+      pos.set(x + (Math.random() - 0.5) * 0.85, 0.31 * hgt, z + (Math.random() - 0.5) * 0.85);
+      q.setFromEuler(e.set((Math.random() - 0.5) * 0.4, Math.random() * 6, (Math.random() - 0.5) * 0.4));
+      sc.set(1, hgt, 1);
+      tufts.setMatrixAt(i, m4.compose(pos, q, sc));
+      tufts.setColorAt(i, c.set(th.conceal).multiplyScalar(0.75 + Math.random() * 0.4));
+      i++;
+    }
+    world.add(tufts);
+  }
+
+  // 任務目標：終端機
+  S.objMesh = null;
+  const obj = S.mission.objective;
+  if (obj) {
+    const g = new THREE.Group();
+    g.add(shadowed(new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.9, 0.45), new THREE.MeshStandardMaterial({ color: 0x2c333b, roughness: 0.6 }))));
+    g.children[0].position.y = 0.45;
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.3),
+      new THREE.MeshStandardMaterial({ color: 0x66ffcc, emissive: 0x33ffaa, emissiveIntensity: 1.4 }));
+    scr.position.set(0, 0.62, 0.231);
+    const scr2 = scr.clone(); scr2.rotation.y = Math.PI; scr2.position.z = -0.231;
+    g.add(scr, scr2);
+    g.userData.screen = scr.material;
+    g.position.set(obj.x, 0, obj.z);
+    world.add(g);
+    S.objMesh = g;
+  }
+
+  // 補給箱
+  for (const cr of S.crates) {
+    const ammo = cr.type === 'ammo';
+    const g = new THREE.Group();
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.28, 0.32),
+      new THREE.MeshStandardMaterial({ color: ammo ? 0x4f6b3a : 0xe8e8e8, roughness: 0.7 }));
+    box.position.y = 0.14;
+    const mark = new THREE.Mesh(new THREE.BoxGeometry(ammo ? 0.3 : 0.2, 0.02, ammo ? 0.08 : 0.06),
+      new THREE.MeshStandardMaterial({ color: ammo ? 0xffcf3a : 0xd03030, emissive: ammo ? 0x664400 : 0x500000 }));
+    mark.position.y = 0.29;
+    g.add(shadowed(box), mark);
+    if (!ammo) { const m2 = mark.clone(); m2.rotation.y = Math.PI / 2; g.add(m2); }
+    g.position.set(cr.x, 0, cr.z);
+    world.add(g);
+    cr.mesh = g;
   }
 
   const R = Math.max(w, h) * 0.8;
@@ -254,7 +335,7 @@ function makeFull(th, x, z) {
 
 // ================= 單位 =================
 function spawnUnit(u) {
-  u.mesh = makeUnitMesh(u.team, u.kind, u.color);
+  u.mesh = makeUnitMesh(u.team, u.kind, u.color, u.weapons ? u.weapons[u.wi].id : 'ar', u.scale || 1);
   u.mesh.position.set(u.x, 0, u.z);
   u.mesh.rotation.y = u.team === 'player' ? Math.PI / 2 : -Math.PI / 2;
   u.mesh.userData.unit = u;
@@ -273,13 +354,19 @@ function clearUnits() {
   S.units = [];
 }
 
+function makeWeapon(id) {
+  const w = WEAPONS[id];
+  return { ...w, id, dmg: [...w.dmg], ammo: w.mag, reserve: w.sidearm ? Infinity : w.reserve };
+}
+
 function newSoldier(tpl) {
-  return { ...tpl, dmg: [...tpl.dmg], hp: tpl.maxHp, team: 'player', kind: 'soldier' };
+  return { ...tpl, hp: tpl.maxHp, team: 'player', kind: 'soldier', weapons: [makeWeapon(tpl.weapon), makeWeapon('pistol')], wi: 0 };
 }
 
 function newRecruit() {
   const name = RECRUIT_NAMES[ri(0, RECRUIT_NAMES.length - 1)];
-  return { ...newSoldier({ ...RECRUIT, name, color: RECRUIT_COLORS[ri(0, RECRUIT_COLORS.length - 1)] }), recruit: true };
+  const weapon = RECRUIT_WEAPONS[ri(0, RECRUIT_WEAPONS.length - 1)];
+  return { ...newSoldier({ ...RECRUIT, name, weapon, color: RECRUIT_COLORS[ri(0, RECRUIT_COLORS.length - 1)] }), recruit: true };
 }
 
 // ================= 任務流程 =================
@@ -294,6 +381,8 @@ function startMission() {
   clearUnits();
   const gen = generateMap(S.level);
   S.map = gen.map;
+  S.mission = gen.mission;
+  S.crates = gen.crates;
   S.theme = THEMES[ri(0, THEMES.length - 1)];
   S.gameOver = false;
   buildWorld();
@@ -302,24 +391,27 @@ function startMission() {
     Object.assign(r, { x: gen.playerSpawns[i].x, z: gen.playerSpawns[i].z, alive: true, suppressed: false, firedOut: false });
     spawnUnit(r);
   });
-  gen.pods.forEach((pod, podId) => pod.forEach(p => {
+  for (const p of gen.enemies) {
     const tpl = ENEMY_TYPES[p.type];
     spawnUnit({ ...tpl, dmg: [...tpl.dmg], kind: p.type, team: 'enemy', hp: tpl.maxHp,
-      x: p.x, z: p.z, alive: true, suppressed: false, firedOut: false, alerted: false, podId });
-  }));
+      gun: { aim: 0, crit: 0, dmg: tpl.dmg, canReact: tpl.canReact !== false, keepFiring: !!tpl.keepFiring,
+        ignoreHalf: !!tpl.ignoreHalf, ammo: Infinity, mag: Infinity },
+      x: p.x, z: p.z, alive: true, suppressed: false, firedOut: false, alerted: false, spotted: false, zone: p.zone });
+  }
 
   const p0 = gen.playerSpawns[0];
   controls.target.set(p0.x + 3, 0, p0.z);
   camera.position.set(p0.x + 3, 14, p0.z + 11);
   focusOn(p0.x + 3, p0.z);
 
-  UI.log(`── 任務 ${S.level}：${S.theme.name}（敵人 ${gen.pods.flat().length}）──`, 'sys');
+  UI.log(`── 任務 ${S.level}：${S.theme.name}（敵人 ${gen.enemies.length}）──`, 'sys');
+  UI.log(UI.missionText(S.mission) + (S.mission.type === 'sabotage' ? '，再撤回左側' : ''), 'sys');
   S.initNo = 0;
   S.deployZone = gen.deployZone;
   S.side = 'deploy';
   S.busy = false;
   updateVisibility();
-  UI.banner('部署階段', 'player');
+  UI.banner(S.mission.type === 'extract' ? '任務：突破撤離' : '任務：破壞終端', 'player');
   UI.log('部署：點士兵再點綠色格子擺位，按 Enter 開始', 'sys');
   selectUnit(players()[0]);
 }
@@ -328,6 +420,7 @@ function startBattle() {
   if (S.side !== 'deploy' || S.gameOver) return;
   clearOverlays();
   updateVisibility();
+  detect();
   giveInitiative('player');
 }
 
@@ -345,11 +438,8 @@ function deployTo(u, t) {
 
 function nextMission() {
   S.level++;
-  S.roster = S.roster.map(r => {
-    if (!r.alive) return newRecruit();
-    r.hp = Math.min(r.maxHp, r.hp + RULES.HEAL_BETWEEN_MAPS);
-    return r;
-  });
+  // 生命與彈藥不自動補充；陣亡者由新兵遞補（新兵帶滿彈藥）
+  S.roster = S.roster.map(r => r.alive ? r : newRecruit());
   startMission();
 }
 
@@ -361,12 +451,21 @@ function checkEnd() {
     setTimeout(() => UI.showOverlay('任務失敗', `<p>小隊全滅。</p><p>你完成了 <b>${S.level - 1}</b> 張地圖。</p>`, '重新開始', newGame), 900);
     return true;
   }
-  if (!enemies().length) {
+  const cleared = !enemies().length;
+  const objDone = S.mission.type !== 'sabotage' || S.mission.objective.planted;
+  const out = objDone && players().every(isExit);
+  if (cleared || out) {
     S.gameOver = true;
     clearOverlays();
-    const rows = S.units.filter(u => u.team === 'player').map(u =>
-      `<li>${u.name}：${u.alive ? `HP ${u.hp}/${u.maxHp} → 回復 +${RULES.HEAL_BETWEEN_MAPS}` : '陣亡（由新兵遞補）'}</li>`).join('');
-    setTimeout(() => UI.showOverlay(`任務 ${S.level} 完成`, `<p>區域已清除，主動權交換了 ${S.initNo - 1} 次。</p><ul>${rows}</ul>`, '前往下一張地圖 ▶', nextMission), 900);
+    const rows = S.units.filter(u => u.team === 'player').map(u => {
+      if (!u.alive) return `<li>${u.name}：陣亡（由新兵遞補）</li>`;
+      const w = u.weapons[0];
+      return `<li>${u.name}：HP ${u.hp}/${u.maxHp} · ${w.name} ${w.ammo}/${w.mag} 備 ${w.reserve}</li>`;
+    }).join('');
+    const why = cleared ? '區域已清除' : (S.mission.type === 'extract' ? '小隊成功突破撤離' : '終端已破壞，小隊成功撤離');
+    setTimeout(() => UI.showOverlay(`任務 ${S.level} 完成`,
+      `<p>${why}，主動權交換了 ${S.initNo - 1} 次。</p><ul>${rows}</ul><p style="opacity:.6">生命與彈藥不會在任務之間補充。</p>`,
+      '前往下一張地圖 ▶', nextMission), 900);
     return true;
   }
   return false;
@@ -415,21 +514,71 @@ async function resolvePlayerAction(ok) {
 }
 
 // ================= 視野 / 警覺 =================
+// 我方永遠算警戒中：用完整視線看敵人。看到敵人不會驚動他。
 function updateVisibility() {
   const ps = players();
   for (const e of enemies()) {
     const vis = ps.some(p => hasLOS(S.map, p, e));
     e.mesh.visible = vis;
-    if (vis && !e.alerted) alertPod(e.podId);
+    if (vis) e.spotted = true;
   }
+  drawZones();
 }
 
-function alertPod(podId) {
-  let any = false;
-  for (const e of enemies()) {
-    if (e.podId === podId && !e.alerted) { e.alerted = true; any = true; }
+// 未警戒的敵人看不看得到 p：只看自己的責任區、視距短、看不穿半掩體與隱蔽區
+const quietSees = (e, p) => S.map.zoneAt(p.x, p.z) === e.zone && quietLOS(S.map, e, p);
+
+function alertEnemies(list, why) {
+  const fresh = list.filter(e => e.alive && !e.alerted);
+  if (!fresh.length) return false;
+  for (const e of fresh) {
+    e.alerted = true;
+    if (e.mesh.visible) floatText(e, '！警戒', 'sup');
+    if (e.label) UI.updateLabel(e.label, e);
   }
-  if (any) { UI.banner('發現敵人！', 'enemy'); UI.log('發現敵方小隊！', 'warn'); }
+  if (why === 'spot') {
+    UI.banner('被發現了！', 'enemy');
+    UI.log('被發現了！敵人進入警戒', 'warn');
+  } else if (why === 'noise') {
+    UI.log(`槍聲驚動了 ${fresh.length} 名敵人`, 'warn');
+  }
+  drawZones();
+  return true;
+}
+
+// 檢查有沒有未警戒的敵人看到我方。被看到的敵人會呼叫同責任區的同伴。
+function detect() {
+  const ps = players();
+  const found = enemies().filter(e => !e.alerted && ps.some(p => quietSees(e, p)));
+  if (!found.length) return false;
+  const zones = new Set(found.map(e => e.zone));
+  alertEnemies(enemies().filter(e => zones.has(e.zone)), 'spot');
+  return true;
+}
+
+function makeNoise(...where) {
+  alertEnemies(enemies().filter(e => where.some(p => dist(e, p) <= RULES.NOISE)), 'noise');
+}
+
+// 已知（看過）且未警戒的敵人，畫出他們的責任區；撤離點也畫出來
+function drawZones() {
+  if (!S.map) return;
+  const zs = new Set(enemies().filter(e => !e.alerted && e.spotted).map(e => e.zone));
+  const ex = new Set(S.mission.exits.map(p => key(p.x, p.z)));
+  const m4 = new THREE.Matrix4();
+  let n = 0;
+  for (let z = 0; z < S.map.h; z++) for (let x = 0; x < S.map.w; x++) {
+    if (!S.map.walkable(x, z) || n >= 600) continue;
+    const isEx = ex.has(key(x, z));
+    if (!isEx && !zs.has(S.map.zoneAt(x, z))) continue;
+    m4.makeTranslation(x, 0.008, z);
+    zoneMesh.setMatrixAt(n, m4);
+    zoneMesh.setColorAt(n, isEx ? EXIT_C : ZONE_C);
+    n++;
+  }
+  zoneMesh.count = n;
+  zoneMesh.instanceMatrix.needsUpdate = true;
+  if (zoneMesh.instanceColor) zoneMesh.instanceColor.needsUpdate = true;
 }
 
 // ================= 移動 + 反應射擊 =================
@@ -455,11 +604,15 @@ function planReactions(mover, cells, knownOnly = false) {
   for (const r of S.units) {
     if (!r.alive || r.team === mover.team || r.firedOut) continue;
     if (r.team === 'enemy' && !r.alerted) continue;
+    // 我方不會對還沒察覺的敵人自動開槍（會暴露位置）
+    if (r.team === 'player' && mover.team === 'enemy' && !mover.alerted) continue;
     if (knownOnly && r.team === 'enemy' && !r.mesh.visible) continue;
+    const w = weapon(r);
+    if (!w.canReact || w.ammo <= 0) continue;
     let best = null;
     cells.forEach((c, i) => {
       if (!hasLOS(S.map, r, c)) return;
-      const o = shotOdds(S.map, r, r, c, { reaction: true });
+      const o = shotOdds(S.map, r, r, c, { reaction: true, weapon: w });
       if (o.hit >= RULES.REACTION_MIN && (!best || o.hit > best.odds.hit)) best = { shooter: r, idx: i, odds: o };
     });
     if (best) out.push(best);
@@ -496,7 +649,7 @@ async function performMove(u, dest) {
 
     for (const r of plan.filter(p => p.idx === i)) {
       const s = r.shooter;
-      if (!s.alive || s.firedOut || !u.alive) continue;
+      if (!s.alive || s.firedOut || !u.alive || weapon(s).ammo <= 0) continue;
       floatText(s, '反應射擊！', 'ow');
       const hit = await shoot(s, u, { reaction: true });
       if (hit) {
@@ -504,10 +657,18 @@ async function performMove(u, dest) {
         await tween(0.12, k => u.mesh.position.lerpVectors(p, new THREE.Vector3(c.x, 0, c.z), k));
         return false;
       }
-      s.firedOut = true;
+      if (!weapon(s).keepFiring) s.firedOut = true;
       if (s.label) UI.updateLabel(s.label, s);
     }
+    // 被未警戒的敵人看到 → 移動停在這一格（不算失敗）
+    if (u.alive && i < cells.length - 1 && detect()) {
+      const p = u.mesh.position.clone();
+      await tween(0.1, k => u.mesh.position.lerpVectors(p, new THREE.Vector3(c.x, 0, c.z), k));
+      refresh();
+      return true;
+    }
   }
+  detect();
   u.mesh.position.set(dest.x, 0, dest.z);
   refresh();
   return true;
@@ -531,11 +692,12 @@ function spawnTracer(a, b) {
 
 // 回傳是否命中（命中必定造成傷害）
 async function shoot(s, t, { reaction = false } = {}) {
+  const w = weapon(s);
   const odds = oddsVs(s, t, { reaction });
+  if (s.team === 'player') w.ammo = Math.max(0, w.ammo - 1); // 反應射擊也耗彈
   s.mesh.rotation.y = Math.atan2(t.x - s.x, t.z - s.z);
   s.mesh.updateMatrixWorld(true);
   s.mesh.visible = true;
-  if (t.team === 'enemy' && !t.alerted) alertPod(t.podId);
 
   const hit = Math.random() * 100 < odds.hit;
   const crit = hit && Math.random() * 100 < odds.crit;
@@ -561,14 +723,16 @@ async function shoot(s, t, { reaction = false } = {}) {
 
   const tag = `${s.name}${reaction ? '（反應）' : ''} → ${t.name}（${odds.hit}%）`;
   if (hit) {
-    let dmg = ri(s.dmg[0], s.dmg[1]);
+    let dmg = ri(w.dmg[0], w.dmg[1]);
     if (crit) dmg = Math.ceil(dmg * RULES.CRIT_MULT);
+    if (t.armor) dmg = Math.max(1, dmg - t.armor);
     UI.log(`${tag} ${crit ? '暴擊' : '命中'} -${dmg}`, s.team === 'player' ? 'good' : 'bad');
     await damage(t, dmg, crit);
   } else {
     floatText(t, '未命中', 'miss');
     UI.log(`${tag} 未命中`, 'dim');
   }
+  makeNoise(s, t);
   await wait(0.35);
   updateVisibility();
   refresh();
@@ -590,7 +754,7 @@ async function damage(t, dmg, crit) {
 
 function setSuppressedPose(u, on) {
   // 被壓制：蹲低
-  const base = u.kind === 'brute' ? 1.2 : 1;
+  const base = u.mesh.userData.baseScale || 1;
   const from = u.mesh.scale.y, to = base * (on ? 0.78 : 1);
   tween(0.2, k => { u.mesh.scale.y = from + (to - from) * k; });
 }
@@ -601,6 +765,10 @@ async function die(u) {
   u.suppressed = false;
   if (u.label) { u.label.remove(); u.label = null; }
   UI.log(`${u.name} 倒下了`, u.team === 'player' ? 'bad' : 'good');
+  if (u.officer && !enemies().some(e => e.officer)) {
+    UI.log('軍官陣亡！徵召兵士氣崩潰', 'good');
+    UI.banner('軍官陣亡', 'player');
+  }
   const m = u.mesh;
   await tween(0.5, k => {
     m.rotation.x = -k * Math.PI / 2;
@@ -621,6 +789,7 @@ function selectUnit(u) {
   if (!u || !u.alive) return;
   S.selected = u;
   S.mode = 'move';
+  S.confirm = null;
   UI.hideTargeting();
   tgtRing.visible = false;
   focusUnit(u);
@@ -700,12 +869,15 @@ function updateHover() {
   if (S.mode !== 'move') return;
   const u = S.selected;
   const occ = unitAt(t.x, t.z);
-  if (occ && occ.team === 'enemy' && occ.mesh.visible && canAct(u)) {
-    if (u.firedOut) showTip(`<b>${occ.name}</b><br><small>此單位這次主動權不能再開槍</small>`);
+  if (occ && occ.team === 'enemy' && occ.mesh.visible) {
+    const info = `<div class="desc">${occ.alerted ? '警戒中' : '未察覺：只看黃色責任區'}${occ.desc ? '<br>' + occ.desc : ''}</div>`;
+    if (!canAct(u)) showTip(`<b>${occ.name}</b>${info}`);
+    else if (u.firedOut) showTip(`<b>${occ.name}</b><br><small>此單位這次主動權不能再開槍</small>${info}`);
+    else if (weapon(u).ammo <= 0) showTip(`<b>${occ.name}</b><br><small>彈匣空了</small>${info}`);
     else if (hasLOS(S.map, u, occ)) {
       const o = oddsVs(u, occ);
-      showTip(`<b>${occ.name}</b> 命中 <b>${o.hit}%</b><br><small>${UI.coverName(o)}${occ.suppressed ? ' · 壓制中' : ''} · 點敵人瞄準</small>`);
-    } else showTip(`<b>${occ.name}</b><br><small>無視線</small>`);
+      showTip(`<b>${occ.name}</b> 命中 <b>${o.hit}%</b><br><small>${UI.coverName(o)}${occ.suppressed ? ' · 壓制中' : ''} · 點敵人瞄準</small>${info}`);
+    } else showTip(`<b>${occ.name}</b><br><small>無視線</small>${info}`);
     return;
   }
   if (!S.map.walkable(t.x, t.z)) return;
@@ -723,9 +895,26 @@ function updateHover() {
   pathLine.material.color.set(mv.vault ? 0xd6a6ff : 0x8fd3ff);
   pathLine.visible = true;
 
-  // 反應射擊預覽
+  // 被發現預覽：看得到的未警戒敵人
   const cells = pathCells(u, mv);
-  const plan = planReactions(u, cells, true);
+  let spot = null;
+  const watchers = enemies().filter(e => !e.alerted && e.mesh.visible);
+  for (let i = 0; i < cells.length && !spot; i++) {
+    const e = watchers.find(e => quietSees(e, cells[i]));
+    if (e) spot = { e, idx: i };
+  }
+  if (spot) {
+    const c = cells[spot.idx];
+    const ring = new THREE.Mesh(spotGeo, spotMat);
+    ring.position.set(c.x, 0.05, c.z);
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(spot.e.x, 1.1, spot.e.z), new THREE.Vector3(c.x, 0.5, c.z)]), spotLineMat);
+    line.computeLineDistances();
+    reactMarks.add(ring, line);
+  }
+
+  // 反應射擊預覽
+  const plan = planReactions(u, cells, true).filter(r => !spot || r.idx <= spot.idx);
   for (const r of plan) {
     const c = cells[r.idx];
     const ring = new THREE.Mesh(reactGeo, reactMat);
@@ -735,12 +924,19 @@ function updateHover() {
     line.computeLineDistances();
     reactMarks.add(ring, line);
   }
-  const head = (mv.vault ? '翻越' : `移動 ${dist(u, mv).toFixed(1)} 格`) + (touchMode ? '　<span class="hint">再點一次確認</span>' : '');
+  const extra = [];
+  if (S.map.isConceal(t.x, t.z)) extra.push(S.theme.concealName);
+  if (isExit(t)) extra.push('撤離點');
+  const cr = S.crates.find(c => c.x === t.x && c.z === t.z);
+  if (cr) extra.push(cr.type === 'ammo' ? '彈藥箱' : '醫療包');
+  const head = (mv.vault ? '翻越' : `移動 ${dist(u, mv).toFixed(1)} 格`) + (extra.length ? `（${extra.join('・')}）` : '') +
+    (touchMode ? '　<span class="hint">再點一次確認</span>' : '');
+  const spotRow = spot ? `<br><span class="spot">👁 會被 ${spot.e.name} 發現，移動停在黃圈</span>` : '';
   if (plan.length) {
     const rows = plan.map(r => `${r.shooter.name} ${r.odds.hit}%`).join('<br>');
-    showTip(`<b>${head}</b><br><span class="warn">⚠ 反應射擊</span><br>${rows}<br>被命中機率 <b>${Math.round(hitChance(plan) * 100)}%</b>`);
+    showTip(`<b>${head}</b>${spotRow}<br><span class="warn">⚠ 反應射擊</span><br>${rows}<br>被命中機率 <b>${Math.round(hitChance(plan) * 100)}%</b>`);
   } else {
-    showTip(`<b>${head}</b><br><small>已知敵人無法反應射擊</small>`);
+    showTip(`<b>${head}</b>${spotRow}<br><small>已知敵人無法反應射擊</small>`);
   }
 }
 
@@ -748,14 +944,76 @@ async function playerMove(u, mv) {
   S.busy = true;
   clearOverlays();
   const ok = await performMove(u, mv);
+  if (u.alive) pickupCrate(u);
   S.busy = false;
   await resolvePlayerAction(ok);
+}
+
+function pickupCrate(u) {
+  const i = S.crates.findIndex(c => c.x === u.x && c.z === u.z);
+  if (i < 0) return;
+  const cr = S.crates[i];
+  S.crates.splice(i, 1);
+  if (cr.mesh) { world.remove(cr.mesh); disposeTree(cr.mesh); }
+  if (cr.type === 'ammo') {
+    const w = u.weapons[0];
+    const n = w.mag * 2;
+    w.reserve += n;
+    floatText(u, `+${n} 發`, 'ow');
+    UI.log(`${u.name} 撿到彈藥：${w.name} 備彈 +${n}`, 'good');
+  } else {
+    const n = Math.min(RULES.MEDKIT_HEAL, u.maxHp - u.hp);
+    u.hp += n;
+    floatText(u, `+${n} HP`, 'ow');
+    UI.log(`${u.name} 使用醫療包 +${n} HP`, 'good');
+  }
+}
+
+// ---------- 武器操作 ----------
+function reloadInfo(u) {
+  if (!u || !u.weapons) return null;
+  const w = weapon(u);
+  if (w.ammo >= w.mag) return null;
+  if (!w.sidearm && w.reserve <= 0) return null;
+  return { gives: !w.sidearm };
+}
+
+// 會交出主動權的操作要按兩次確認（手機上避免誤觸）
+function confirmGive(kind, text) {
+  if (S.confirm === kind) { S.confirm = null; return true; }
+  S.confirm = kind;
+  UI.toast(`再按一次確認：${text}後會交出主動權`, 2500);
+  setTimeout(() => { if (S.confirm === kind) S.confirm = null; }, 2500);
+  return false;
+}
+
+async function endWithHandover(msg) {
+  refresh();
+  UI.log(msg, 'warn');
+  S.busy = true;
+  await wait(0.5);
+  S.busy = false;
+  giveInitiative('enemy');
+}
+
+function swapGunMesh(u) {
+  const keep = { pos: u.mesh.position.clone(), rot: u.mesh.rotation.y, vis: u.mesh.visible, sy: u.mesh.scale.y };
+  unitGroup.remove(u.mesh);
+  disposeTree(u.mesh);
+  u.mesh = makeUnitMesh(u.team, u.kind, u.color, u.weapons[u.wi].id, u.scale || 1);
+  u.mesh.position.copy(keep.pos);
+  u.mesh.rotation.y = keep.rot;
+  u.mesh.visible = keep.vis;
+  u.mesh.scale.y = keep.sy;
+  u.mesh.userData.unit = u;
+  unitGroup.add(u.mesh);
 }
 
 function enterTargetMode(pref) {
   const u = S.selected;
   if (!canAct(u)) return;
   if (u.firedOut) { UI.toast('此單位這次主動權不能再開槍'); return; }
+  if (weapon(u).ammo <= 0) { UI.toast('彈匣空了：換彈或換槍'); return; }
   const ts = visibleTargets(u);
   if (!ts.length) { UI.toast('沒有視線內的目標'); return; }
   S.mode = 'target';
@@ -807,6 +1065,45 @@ const actions = {
     rally(u);
     await resolvePlayerAction(true);
   },
+  async reload() {
+    const u = S.selected;
+    if (!canAct(u)) return;
+    const info = reloadInfo(u);
+    if (!info) { UI.toast(weapon(u).ammo >= weapon(u).mag ? '彈匣是滿的' : '沒有備彈了'); return; }
+    const w = weapon(u);
+    if (info.gives && !confirmGive('reload', `${w.name}換彈`)) return;
+    const n = Math.min(w.mag - w.ammo, w.reserve);
+    w.ammo += n;
+    w.reserve -= n;
+    floatText(u, '換彈', 'ow');
+    if (!info.gives) { UI.log(`${u.name} 手槍換彈`, 'dim'); await resolvePlayerAction(true); return; }
+    await endWithHandover(`${u.name} ${w.name}換彈，交出主動權`);
+  },
+  async swap() {
+    const u = S.selected;
+    if (!canAct(u)) return;
+    const to = u.wi === 0 ? 1 : 0;
+    const nw = u.weapons[to];
+    const gives = !nw.sidearm;
+    if (gives && !confirmGive('swap', `換回${nw.name}`)) return;
+    u.wi = to;
+    swapGunMesh(u);
+    floatText(u, `換${nw.short}`, 'ow');
+    if (!gives) { UI.log(`${u.name} 拔出手槍`, 'dim'); await resolvePlayerAction(true); return; }
+    await endWithHandover(`${u.name} 換回${nw.name}，交出主動權`);
+  },
+  async plant() {
+    const u = S.selected;
+    if (!canPlant(u)) return;
+    S.mission.objective.planted = true;
+    floatText(u, '炸藥安裝完成', 'ow');
+    UI.log(`${u.name} 在終端安裝了炸藥，撤回左側！`, 'good');
+    UI.banner('炸藥已安裝', 'player');
+    drawZones();
+    await resolvePlayerAction(true);
+  },
+  reloadInfo,
+  canPlant,
   pass() {
     if (S.side !== 'player' || S.busy || S.gameOver) return;
     if (S.mode === 'target') cancelTarget();
@@ -838,13 +1135,15 @@ function evalTile(e, pos, ps) {
     } else s += 6;
   }
   s += bestHit * 0.5 + (flank ? 15 : 0);
-  if (nearest > 8) s -= (nearest - 8) * 5;
-  if (nearest < 2) s -= 10;
+  if (e.kind === 'zealot') s -= nearest * 4;            // 狂徒：越近越好
+  else if (e.kind === 'sniper') { if (nearest < 5) s -= (5 - nearest) * 6; }
+  else if (nearest > 8) s -= (nearest - 8) * 5;
+  if (nearest < 2 && e.kind !== 'zealot') s -= 10;
   return s;
 }
 
-function aiChoose(moveCount) {
-  const es = enemies().filter(e => e.alerted);
+function aiChoose(moveCount, acted) {
+  const es = enemies().filter(e => e.alerted && !(e.cumbersome && acted.has(e)));
   if (!es.length) return null;
   const sup = es.find(e => e.suppressed);
   if (sup) return { type: 'rally', e: sup };
@@ -876,20 +1175,13 @@ function aiChoose(moveCount) {
 
 // 回傳 true = 因行動失敗而交出主動權
 async function enemyInitiative() {
-  // 未警覺的敵人：巡邏
-  for (const e of enemies().filter(e => !e.alerted)) {
-    if (Math.random() < 0.5) continue;
-    const opts = [...moveOptions(e).values()].filter(m => !m.vault && dist(e, m) <= 3);
-    if (!opts.length) continue;
-    const ok = await performMove(e, opts[ri(0, opts.length - 1)]);
-    if (checkEnd()) return true;
-    if (!ok) return true;
-  }
-
   const moveCount = new Map();
+  const acted = new Set();
+  let failed = false;
   for (let i = 0; i < RULES.AI_MAX_ACTIONS && !S.gameOver; i++) {
-    const act = aiChoose(moveCount);
-    if (!act) return false;
+    const act = aiChoose(moveCount, acted);
+    if (!act) break;
+    acted.add(act.e);
     let ok = true;
     if (act.type === 'rally') {
       rally(act.e);
@@ -905,9 +1197,68 @@ async function enemyInitiative() {
     }
     refresh();
     if (checkEnd()) return true;
-    if (!ok) return true;
+    if (!ok) { failed = true; break; }
   }
-  return false;
+  // 主動權即將易手：這輪沒行動的敵人執行衝動
+  await impulses(acted);
+  return failed;
+}
+
+const edgeDist = p => Math.min(p.x, p.z, S.map.w - 1 - p.x, S.map.h - 1 - p.z);
+
+async function impulses(acted) {
+  const officerAlive = enemies().some(e => e.officer);
+  for (const e of enemies()) {
+    if (S.gameOver) return;
+    if (!e.alive || acted.has(e) || e.suppressed) continue;
+    if (!e.alerted) { await patrol(e); }
+    else if (e.impulse === 'shoot') {
+      const t = visibleTargets(e)[0];
+      if (!t || e.firedOut) continue;
+      impulseNote(e, '開槍');
+      await shoot(e, t.unit);
+    } else if (e.impulse === 'charge') {
+      const ps = players();
+      if (!ps.length) return;
+      const near = p => Math.min(...ps.map(q => dist(p, q)));
+      const opts = [...moveOptions(e).values()].filter(m => !m.vault && dist(e, m) <= 3);
+      if (!opts.length) continue;
+      const best = opts.reduce((a, b) => near(b) < near(a) ? b : a);
+      if (near(best) >= near(e)) continue;
+      impulseNote(e, '衝鋒');
+      await performMove(e, best);
+    } else if (e.impulse === 'flee' && !officerAlive) {
+      const opts = [...moveOptions(e).values()].filter(m => !m.vault && dist(e, m) <= 3);
+      if (!opts.length) continue;
+      const best = opts.reduce((a, b) => edgeDist(b) < edgeDist(a) ? b : a);
+      impulseNote(e, '逃跑');
+      const ok = await performMove(e, best);
+      if (ok && e.alive && edgeDist(e) === 0) flee(e);
+    } else continue;
+    refresh();
+    if (checkEnd()) return;
+  }
+}
+
+function impulseNote(e, what) {
+  if (e.mesh.visible) floatText(e, `衝動：${what}`, 'ow');
+  UI.log(`${e.name}（衝動）${what}`, 'dim');
+}
+
+// 未警戒：在自己的責任區內巡邏
+async function patrol(e) {
+  if (Math.random() < 0.5) return;
+  const opts = [...moveOptions(e).values()].filter(m => !m.vault && dist(e, m) <= 3 && S.map.zoneAt(m.x, m.z) === e.zone);
+  if (!opts.length) return;
+  await performMove(e, opts[ri(0, opts.length - 1)]);
+}
+
+function flee(e) {
+  e.alive = false;
+  e.fled = true;
+  e.mesh.visible = false;
+  if (e.label) { e.label.remove(); e.label = null; }
+  UI.log(`${e.name} 逃離了戰場`, 'good');
 }
 
 // ================= 輸入 =================
@@ -1023,6 +1374,9 @@ addEventListener('keydown', e => {
   }
   if (k === '1') actions.shoot();
   if (k === '2') actions.rally();
+  if (k === 'r') actions.reload();
+  if (k === 'x') actions.swap();
+  if (k === 'f') actions.plant();
   if (e.key === 'Enter' || e.key === ' ') {
     e.preventDefault();
     if (S.side === 'deploy') startBattle();
@@ -1093,6 +1447,11 @@ function frame(now) {
   }
   if (tgtRing.visible) tgtRing.rotation.y += dt * 1.5;
   reactMat.opacity = 0.6 + Math.sin(time * 8) * 0.3;
+  spotMat.opacity = 0.6 + Math.sin(time * 6) * 0.3;
+  if (S.objMesh && S.mission.objective.planted) {
+    const on = Math.sin(time * 10) > 0;
+    S.objMesh.userData.screen.emissive.setHex(on ? 0xff2020 : 0x330000);
+  }
 
   updateLabels(dt);
   renderer.render(scene, camera);
@@ -1101,4 +1460,4 @@ function frame(now) {
 
 newGame();
 requestAnimationFrame(frame);
-window.__game = { S, actions, camera, THREE }; // 除錯用
+window.__game = { S, actions, camera, THREE, scene, zoneMesh, dbg: { playerMove, moveOptions, quietSees, enemies, players, weapon, step: updateTweens } }; // 除錯用
