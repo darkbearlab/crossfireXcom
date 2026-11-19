@@ -102,9 +102,12 @@ export const ENEMY_TYPES = {
                desc: '教母：裝甲 1，反應射擊打空不停火。打倒她就結束了' },
 };
 
+// 難度 → 一般敵人數量：難度 1 = 4 人，之後大約每升 2 級多 1 人，最多 10 人
+export const enemyCount = level => Math.min(10, 3 + Math.ceil(level * 0.6));
+
 // 每張地圖的敵人編組（同一組會擺在同一個責任區）
 export function enemyGroups(level, bonus = 0) {
-  let n = Math.min(10, 4 + Math.floor((level - 1) * 0.7)) + bonus;
+  let n = enemyCount(level) + bonus;
   const groups = [];
   if (level >= 2 && n >= 5 && Math.random() < 0.6) { groups.push(['officer', 'conscript', 'conscript']); n -= 3; }
   const pool = ['gunman', 'gunman', 'zealot'];

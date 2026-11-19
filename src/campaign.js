@@ -1,5 +1,5 @@
 // 戰役狀態：家族成員、設施、莊園、隊伍（後送/獎章/成長樹）、存檔。
-import { RULES } from './config.js';
+import { RULES, enemyCount } from './config.js';
 import { GIRLS, GIRL, FAMILY, FAMILY_BY_ID, FACILITIES, GODMOTHER } from './girls.js';
 
 const SAVE = 'mgx_save_v1', META = 'mgx_meta_v1';
@@ -37,10 +37,20 @@ export function clearSave() { try { localStorage.removeItem(SAVE); } catch (e) {
 export function loadMeta() { try { return JSON.parse(localStorage.getItem(META)) || {}; } catch (e) { return {}; } }
 function saveMeta(m) { try { localStorage.setItem(META, JSON.stringify(m)); } catch (e) { /* */ } }
 
-// 這張地圖生效的家族 buff（成員 id；無盡模式可重複）
-export function activeBuffs() {
+// 這張地圖生效的家族加持（成員 id；無盡模式可重複）
+// 莊園之前：成員的加持只在她自己的設施（和她現身的那一戰）生效。莊園裡：所有仍存活成員的加持都生效。
+export function activeBuffs(op = C.op) {
   if (C.mode === 'endless') return C.buffs;
+  const alive = id => C.members.some(m => m.id === id && m.alive);
+  if (op && (op.kind === 'facility' || op.kind === 'boss')) return op.member && alive(op.member) ? [op.member] : [];
   return C.members.filter(m => m.alive).map(m => m.id);
+}
+
+// 這場作戰的敵人數（一般敵人 + 帳房加持 + 成員本人與護衛）
+export function enemyEstimate(op) {
+  const book = activeBuffs(op).filter(b => b === 'book').length;
+  const extra = { boss: 2, finale: 2 }[op.kind] || 0;
+  return enemyCount(level(op)) + 2 * book + extra;
 }
 
 // 可以選的作戰

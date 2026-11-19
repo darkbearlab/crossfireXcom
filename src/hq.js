@@ -58,6 +58,11 @@ function opDesc(op) {
   return `增援 ${Camp.C.production} 波。打倒教母就結束`;
 }
 
+function opBuffs(op) {
+  const bs = [...new Set(Camp.activeBuffs(op))];
+  return bs.length ? '加持：' + bs.map(b => `${FAMILY_BY_ID[b].buff}（${FAMILY_BY_ID[b].desc}）`).join('、') : '沒有家族加持';
+}
+
 function opStory(op) {
   if (!op) return '';
   if (op.kind === 'facility') return STORY.facility(op.name);
@@ -79,6 +84,7 @@ function render() {
       const left = m.alive && C.phase === 'facilities' ? ` · 設施 ${m.facilities}` : '';
       return `<div class="fam ${m.alive ? '' : 'down'}"><b>${d.title}・${d.name}</b>${left}<br><small>${d.buff}：${d.desc}</small></div>`;
     }).join('');
+    if (C.phase === 'facilities') fam += `<div class="fam note"><small>莊園之前，每個成員的加持只在她自己的設施生效；退守莊園後，所有仍存活成員的加持一起生效。</small></div>`;
     if (C.phase === 'manor') fam += `<div class="fam prod"><b>莊園增援產能 ${C.production}</b><br><small>決戰時的增援波數</small></div>`;
   } else {
     const counts = {};
@@ -94,7 +100,8 @@ function render() {
 
   const opsHtml = C.phase === 'done' ? '' : ops.map((o, i) => `
     <button class="op ${i === st.op ? 'on' : ''} ${o.kind}" data-o="${i}">
-      <b>${C.retry ? '重打：' : ''}${o.name}</b><small>${opDesc(o)} · 難度 ${Camp.level(o)}</small>
+      <b>${C.retry ? '重打：' : ''}${o.name}</b><small>${opDesc(o)} · 難度 ${Camp.level(o)}（敵人 ${Camp.enemyEstimate(o)}${o.kind === 'manor' ? '，可能有成員在場' : o.kind === 'finale' ? `，增援 ${C.production} 波×3` : ''}）</small>
+      <small class="opbuff">${opBuffs(o)}</small>
     </button>`).join('');
 
   const girls = GIRLS.map(d => {

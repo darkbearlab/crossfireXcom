@@ -485,7 +485,7 @@ function startMission() {
   const C = Camp.C, op = C.op;
   clearUnits();
   S.ice = [];
-  S.buffs = Camp.activeBuffs();
+  S.buffs = Camp.activeBuffs(op);
   S.quietSight = S.buffs.includes('eye') ? 7 : RULES.QUIET_SIGHT;
   const opKey = op.kind + ':' + op.name;
   let gen;

@@ -229,3 +229,5 @@ html, body, button, #hud, #hud * { touch-action: manipulation; }
 }
 
 .execi { color: #ff7a6a; }
+.hq .op .opbuff { color: #e0a0ff; opacity: .9; }
+.hq .fam.note { border-color: #3a4652; background: transparent; grid-column: 1 / -1; }
