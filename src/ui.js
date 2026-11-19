@@ -130,6 +130,7 @@ export function makeLabel(u) {
 
 export function updateLabel(d, u) {
   const icons = (u.team === 'enemy' && !u.alerted ? '<b class="calm">?</b> ' : '') +
+    (u.execBuff && !u.spareUsed && !u.firedOut ? '<b class="execi" title="不留活口">⚔</b> ' : '') +
     (u.suppressed ? '<b class="supi">▼</b> ' : '') + (u.firedOut ? '<b class="outi">✕</b> ' : '');
   const html = `<div class="ln">${icons}${u.name}</div>` +
     `<div class="pips">${Array.from({ length: u.maxHp }, (_, i) => `<i class="${i < u.hp ? 'on' : ''}"></i>`).join('')}</div>`;

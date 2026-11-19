@@ -435,9 +435,11 @@ const memberOf = type => (FAMILY.find(m => m.boss === type) || {}).id || null;
 function spawnEnemy(type, x, z, zone, alerted = false) {
   const tpl = ENEMY_TYPES[type];
   const u = { ...tpl, dmg: [...tpl.dmg], kind: type, team: 'enemy', hp: tpl.maxHp,
-    gun: { aim: 0, crit: 0, dmg: tpl.dmg, canReact: tpl.canReact !== false, keepFiring: !!tpl.keepFiring || S.buffs.includes('exec'),
+    gun: { aim: 0, crit: 0, dmg: tpl.dmg, canReact: tpl.canReact !== false, keepFiring: !!tpl.keepFiring,
       ignoreHalf: !!tpl.ignoreHalf, ammo: Infinity, mag: Infinity },
-    x, z, alive: true, suppressed: false, firedOut: false, alerted, spotted: false, zone, member: memberOf(type) };
+    x, z, alive: true, suppressed: false, firedOut: false, alerted, spotted: false, zone, member: memberOf(type),
+    // 不留活口（執行人的加持）：每次主動權第一次反應射擊打空不停火
+    execBuff: S.buffs.includes('exec') && !tpl.keepFiring, spareUsed: false };
   spawnUnit(u);
   return u;
 }
@@ -617,7 +619,7 @@ function endMission(win, why) {
 // ================= 主動權 =================
 async function giveInitiative(side) {
   if (S.gameOver) return;
-  for (const u of S.units) u.firedOut = false;
+  for (const u of S.units) { u.firedOut = false; u.spareUsed = false; }
   S.initNo++;
   S.side = side;
   S.mode = 'move';
@@ -794,7 +796,13 @@ async function reactAt(u, plan, i) {
     const hit = await shoot(s, u, { reaction: true, forceMiss });
     if (forceMiss) { floatText(u, '閃過！', 'ow'); UI.log(`${u.name} 閃過了子彈！`, 'good'); }
     if (hit) return true;
-    if (!weapon(s).keepFiring) s.firedOut = true;
+    if (!weapon(s).keepFiring) {
+      if (s.execBuff && !s.spareUsed) {
+        s.spareUsed = true;
+        floatText(s, '不留活口！', 'sup');
+        UI.log(`${s.name}（不留活口）打空了，但這次還能繼續開槍`, 'warn');
+      } else s.firedOut = true;
+    }
     if (s.label) UI.updateLabel(s.label, s);
   }
   return false;
@@ -1125,7 +1133,7 @@ function updateHover() {
   const pi = ice && (!ice.rider || ice.rider.team === 'player') && canMove(u) ? pushInfo(u, ice) : null;
   if (pi) { pushHover(u, pi); return; }
   if (occ && occ.team === 'enemy' && occ.mesh.visible) {
-    const info = `<div class="desc">${occ.alerted ? '警戒中' : '未察覺：只看黃色責任區'}${occ.raised ? '・在冰塊上（不能移動）' : ''}${occ.desc ? '<br>' + occ.desc : ''}</div>`;
+    const info = `<div class="desc">${occ.alerted ? '警戒中' : '未察覺：只看黃色責任區'}${occ.raised ? '・在冰塊上（不能移動）' : ''}${occ.desc ? '<br>' + occ.desc : ''}${occ.execBuff ? `<br><span class="warn">不留活口：這次主動權第一次反應打空不停火${occ.spareUsed ? '（已用掉）' : ''}</span>` : ''}</div>`;
     if (!canAct(u)) showTip(`<b>${occ.name}</b>${info}`);
     else if (u.firedOut) showTip(`<b>${occ.name}</b><br><small>此單位這次主動權不能再開槍</small>${info}`);
     else if (weapon(u).ammo <= 0) showTip(`<b>${occ.name}</b><br><small>彈匣空了</small>${info}`);

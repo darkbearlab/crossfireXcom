@@ -227,3 +227,5 @@ html, body, button, #hud, #hud * { touch-action: manipulation; }
   .hq .girls { grid-template-columns: 1fr; }
   #overlay .hq .node { width: 40px; height: 36px; }
 }
+
+.execi { color: #ff7a6a; }

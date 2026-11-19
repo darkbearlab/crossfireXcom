@@ -56,7 +56,7 @@ export const TREES = {
 export const FAMILY = [
   { id: 'eye', name: '薇歐拉', title: '眼線', buff: '千里眼', desc: '未警戒敵人的視野 5 → 7 格', boss: 'b_eye',
     line: '「妳們的一舉一動，我在望遠鏡裡都看得清清楚楚喔。」' },
-  { id: 'exec', name: '蕾貝卡', title: '執行人', buff: '不留活口', desc: '所有敵人反應射擊打空不停火', boss: 'b_exec',
+  { id: 'exec', name: '蕾貝卡', title: '執行人', buff: '不留活口', desc: '每個敵人每次主動權第一次反應射擊打空不停火（頭上 ⚔）', boss: 'b_exec',
     line: '「家族的規矩只有一條：別留活口。」' },
   { id: 'book', name: '莫妮卡', title: '帳房', buff: '人手充足', desc: '每張地圖敵人 +2', boss: 'b_book',
     line: '「人手？要多少有多少。帳本上的數字，可不能少一個喔。」' },
