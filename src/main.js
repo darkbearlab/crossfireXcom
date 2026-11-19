@@ -604,7 +604,8 @@ function pathCells(u, dest) {
 function planReactions(mover, cells, knownOnly = false) {
   const out = [];
   for (const r of S.units) {
-    if (!r.alive || r.team === mover.team || r.firedOut) continue;
+    // 被壓制中的單位抬不起頭，不能反應射擊
+    if (!r.alive || r.team === mover.team || r.firedOut || r.suppressed) continue;
     if (r.team === 'enemy' && !r.alerted) continue;
     // 我方不會對還沒察覺的敵人自動開槍（會暴露位置）
     if (r.team === 'player' && mover.team === 'enemy' && !mover.alerted) continue;
