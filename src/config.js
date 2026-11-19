@@ -51,24 +51,26 @@ export const THEMES = [
 ];
 
 // 玩家武器：有彈匣與備彈（戰役資源）。
+// closeBonus：3 格內的命中加成（預設 RULES.CLOSE_BONUS）；exposedBonus：目標沒有掩體（暴露/被側翼）時的命中加成。
+// 手槍與霰彈槍是突擊武器：近距離、打沒掩體的目標都特別準。
 // 換主武器、主武器換彈 → 做完交出主動權；換手槍、手槍換彈很快 → 不交出主動權。
 export const WEAPONS = {
   ar:     { name: '突擊步槍', short: '步槍', aim: 8,  crit: 10, dmg: [4, 6], mag: 6,  reserve: 24, canReact: true },
   sg:     { name: '霰彈槍',   short: '霰彈', aim: 4,  crit: 20, dmg: [5, 8], mag: 4,  reserve: 16, canReact: true,
-            closeBonus: 25, farRange: 5, farPenalty: 8, note: '近距離 +25，5 格外每格 -8' },
+            closeBonus: 35, exposedBonus: 20, farRange: 5, farPenalty: 8, note: '近距離 +35、打沒掩體的目標 +20，5 格外每格 -8' },
   sn:     { name: '狙擊步槍', short: '狙擊', aim: 15, crit: 25, dmg: [5, 7], mag: 3,  reserve: 12, canReact: false,
             ignoreHalf: true, closeBonus: -10, farRange: 99, note: '主動射擊無視半掩體；不能反應射擊' },
   lmg:    { name: '輕機槍',   short: '機槍', aim: 0,  crit: 5,  dmg: [3, 5], mag: 10, reserve: 30, canReact: true,
             keepFiring: true, note: '反應射擊打空也不會停火' },
   pistol: { name: '手槍',     short: '手槍', aim: -5, crit: 5,  dmg: [2, 3], mag: 8,  canReact: false, sidearm: true,
-            note: '無限備彈；不能反應射擊' },
-  duals:  { name: '雙自動手槍', short: '雙槍', aim: 2, crit: 10, dmg: [2, 4], mag: 10, reserve: 30, canReact: true,
-            fastReload: true, note: '換彈不交出主動權' },
+            closeBonus: 25, exposedBonus: 15, note: '無限備彈；不能反應射擊；近距離 +25、打沒掩體的目標 +15' },
+  duals:  { name: '雙自動手槍', short: '雙槍', aim: 2, crit: 10, dmg: [3, 4], mag: 10, reserve: 30, canReact: true,
+            closeBonus: 30, exposedBonus: 20, fastReload: true, note: '換彈不交出主動權；近距離 +30、打沒掩體的目標 +20' },
   hmg:    { name: '重機槍',   short: '重機槍', aim: -2, crit: 5, dmg: [4, 6], mag: 8, reserve: 24, canReact: true },
   tri:    { name: '三管霰彈槍', short: '霰彈', aim: 4, crit: 20, dmg: [5, 8], mag: 3, reserve: 12, canReact: true,
-            closeBonus: 25, farRange: 5, farPenalty: 8, recoil: true, note: '中折式三管；開槍後自己被擊退 1 格' },
-  magnum: { name: '麥格農左輪', short: '左輪', aim: 0, crit: 15, dmg: [3, 5], mag: 6, canReact: false, sidearm: true,
-            note: '無限備彈' },
+            closeBonus: 35, exposedBonus: 20, farRange: 5, farPenalty: 8, recoil: true, note: '中折式三管；開槍後自己被擊退 1 格；近距離 +35、打沒掩體的目標 +20' },
+  magnum: { name: '麥格農左輪', short: '左輪', aim: 0, crit: 15, dmg: [4, 5], mag: 6, canReact: false, sidearm: true,
+            closeBonus: 25, exposedBonus: 15, note: '無限備彈；近距離 +25、打沒掩體的目標 +15' },
 };
 
 // 敵人：普通武器不追蹤彈藥。impulse = 衝動：主動權易手時，這輪沒行動過的單位會強制做的事。

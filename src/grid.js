@@ -144,6 +144,7 @@ export function shotOdds(map, s, sPos, tPos, { reaction = false, targetSuppresse
   const farRange = w.farRange ?? RULES.FAR_RANGE;
   const farPenalty = w.farPenalty ?? RULES.FAR_PENALTY;
   if (d <= RULES.CLOSE_RANGE) hit += closeBonus;
+  if (cover === 0) hit += w.exposedBonus || 0; // 突擊武器打沒掩體的目標
   else if (d > farRange) hit -= Math.round((d - farRange) * farPenalty);
   if (reaction && !w.noReactPenalty) hit -= RULES.REACTION_PENALTY;
   if (s.suppressed) hit -= RULES.SUPPRESS_AIM;
