@@ -9,6 +9,7 @@ export function init(handlers) {
   $('btn-swap').onclick = () => H.swap();
   $('btn-rally').onclick = () => H.rally();
   $('btn-plant').onclick = () => H.plant();
+  $('btn-magic').onclick = () => H.magic();
   $('btn-end').onclick = () => H.pass();
   $('btn-start').onclick = () => H.start();
   $('cam-l').onclick = () => H.rotL();
@@ -24,6 +25,7 @@ export function coverName(o) {
 }
 
 export function missionText(m) {
+  if (m.type === 'hunt') return `目標：打倒${m.bossName || '家族成員'}`;
   if (m.type === 'extract') return '目標：抵達右側撤離點';
   return m.objective.planted ? '目標：撤回左側撤離點' : '目標：在終端安裝炸藥';
 }
@@ -32,18 +34,19 @@ function weaponLine(u) {
   const w = u.weapons[u.wi], p = u.weapons[0];
   const amm = `<b class="${w.ammo === 0 ? 'empty' : ''}">${w.ammo}/${w.mag}</b>`;
   if (u.wi === 0) return `${w.name} ${amm} <span class="dim">備 ${w.reserve}</span>`;
+  if (!p) return `${w.name} ${amm}`;
   return `${w.name} ${amm} <span class="dim">· ${p.short} ${p.ammo}/${p.mag} 備 ${p.reserve}</span>`;
 }
 
 export function updateHUD(S) {
-  $('mission').textContent = `任務 ${S.level}｜${S.theme.name}`;
+  $('mission').textContent = `${S.opName}｜${S.theme.name}`;
   $('objective').textContent = S.mission ? missionText(S.mission) : '';
   const t = $('turn');
   t.textContent = S.side === 'deploy' ? '部署階段' : `主動權：${S.side === 'player' ? '我方' : '敵方'} · 第 ${S.initNo} 輪`;
   t.className = S.side === 'deploy' ? 'player' : S.side;
   const deploying = S.side === 'deploy';
   $('btn-start').hidden = !deploying;
-  for (const id of ['btn-shoot', 'btn-reload', 'btn-swap', 'btn-end']) $(id).hidden = deploying;
+  for (const id of ['btn-shoot', 'btn-reload', 'btn-swap', 'btn-magic', 'btn-end']) $(id).hidden = deploying;
   const seen = S.units.filter(u => u.team === 'enemy' && u.alive && u.mesh.visible).length;
   $('enemy-count').textContent = `可見敵人 ${seen}`;
 
@@ -55,8 +58,12 @@ export function updateHUD(S) {
     const st = [];
     if (u.alive && u.suppressed) st.push('<span class="sup">壓制中</span>');
     if (u.alive && u.firedOut) st.push('<span class="dim">不能再開槍</span>');
+    if (u.alive && u.transformed) st.push('<span class="mg">變身中</span>');
+    if (u.alive && u.raised) st.push('<span class="ice">冰上</span>');
+    if (u.alive && u.dodge) st.push('<span class="mg">閃避</span>');
+    card.style.borderLeftColor = u.hair ? '#' + u.hair.toString(16).padStart(6, '0') : '';
     card.innerHTML = `
-      <div class="nm">${u.name}${u.recruit ? '<span class="tag">新兵</span>' : ''}${u.alive ? '' : '<span class="tag kia">陣亡</span>'}</div>
+      <div class="nm">${u.name}<span class="tag">${u.title || ''}</span>${u.alive ? '' : '<span class="tag kia">後送</span>'}</div>
       <div class="hpbar"><i style="width:${Math.max(0, u.hp) / u.maxHp * 100}%"></i><span>${Math.max(0, u.hp)}/${u.maxHp}</span></div>
       <div class="wl">${weaponLine(u)}</div>
       <div class="meta">${st.join('') || '<span class="dim">待命</span>'}</div>
@@ -72,10 +79,15 @@ export function updateHUD(S) {
 
   const rl = can ? H.reloadInfo(sel) : null;
   $('btn-reload').disabled = !rl;
-  $('btn-reload').classList.toggle('gives', !!(w && !w.sidearm));
+  $('btn-reload').classList.toggle('gives', !!(rl && rl.gives));
 
   const sw = sel && sel.weapons ? sel.weapons[sel.wi === 0 ? 1 : 0] : null;
   $('btn-swap').disabled = !can || !sw;
+  const mi = sel ? H.magicInfo(sel) : null;
+  const inMagic = H.magicMode();
+  $('magic-label').textContent = inMagic ? '取消' : mi ? mi.label : '魔法';
+  $('btn-magic').disabled = !inMagic && !(can && mi && mi.usable);
+  $('btn-magic').classList.toggle('on', inMagic);
   $('btn-swap').classList.toggle('gives', !!(sw && !sw.sidearm));
   $('swap-label').textContent = sw ? `換${sw.short}` : '換槍';
 
@@ -87,7 +99,8 @@ export function updateHUD(S) {
   for (const u of S.units) if (u.label) updateLabel(u.label, u);
 }
 
-export function showTargeting(list, idx) {
+// triple：null = 不能三管齊發；true/false = 目前的開關
+export function showTargeting(list, idx, triple = null) {
   const el = $('target-panel');
   el.hidden = false;
   el.innerHTML = `<div class="tp-title">選擇目標 <small>Tab 切換 · 點擊敵人也可</small></div>` +
@@ -97,17 +110,19 @@ export function showTargeting(list, idx) {
         <div class="hit">${t.odds.hit}%</div>
         <small>暴擊 ${t.odds.crit}% · ${coverName(t.odds)} · 距離 ${t.odds.dist.toFixed(1)}</small>
       </div>`).join('') +
+    (triple === null ? '' : `<button id="tp-triple" class="${triple ? 'on' : ''}">三管齊發：${triple ? '開' : '關'}（耗 3 發、傷害相加）</button>`) +
     `<div class="tp-btns"><button id="tp-fire">開火 (Enter)</button><button id="tp-cancel">取消 (Esc)</button></div>`;
   el.querySelectorAll('.tgt').forEach(d => d.onclick = () => H.pickTarget(+d.dataset.i));
   $('tp-fire').onclick = () => H.fire();
   $('tp-cancel').onclick = () => H.cancelTarget();
+  if (triple !== null) $('tp-triple').onclick = () => H.toggleTriple();
 }
 
 export function hideTargeting() { $('target-panel').hidden = true; }
 
 export function makeLabel(u) {
   const d = document.createElement('div');
-  d.className = 'ulabel ' + u.team;
+  d.className = 'ulabel ' + u.team + (u.boss ? ' boss' : '');
   $('labels').appendChild(d);
   updateLabel(d, u);
   return d;

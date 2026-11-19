@@ -61,15 +61,16 @@ function wobbly(len, base) {
   return out;
 }
 
-export function generateMap(level) {
+// opts: { type: 'extract'|'sabotage'|'hunt', bonus: 額外敵人數, extra: 先擺的編組（boss 等）}
+export function generateMap(level, opts = {}) {
   for (let i = 0; i < MAPGEN.ATTEMPTS; i++) {
-    const r = tryGenerate(level);
+    const r = tryGenerate(level, opts);
     if (r) { r.attempts = i + 1; return r; }
   }
   throw new Error('地圖生成失敗');
 }
 
-function tryGenerate(level) {
+function tryGenerate(level, opts) {
   const w = ri(16, 19), h = ri(12, 15);
   const m = new GameMap(w, h);
   const DC = MAPGEN.DEPLOY_COLS;
@@ -151,7 +152,7 @@ function tryGenerate(level) {
   const spawnC = { x: 1, z: zc + 1 };
 
   // ---- 任務 ----
-  const type = Math.random() < 0.5 ? 'extract' : 'sabotage';
+  const type = opts.type || (Math.random() < 0.5 ? 'extract' : 'sabotage');
   let objective = null;
   if (type === 'sabotage') {
     for (let t = 0; t < 40 && !objective; t++) {
@@ -166,8 +167,9 @@ function tryGenerate(level) {
   if (!reach.has(k(playerSpawns[1].x, playerSpawns[1].z))) return null;
 
   // 撤離點：撤離任務在右側邊緣；破壞任務要撤回左側邊緣
-  const exits = reachList.filter(p => type === 'extract' ? p.x === w - 1 : p.x <= 1);
-  if (exits.length < 2) return null;
+  // 獵殺任務（打倒家族成員）沒有撤離點
+  const exits = type === 'hunt' ? [] : reachList.filter(p => type === 'extract' ? p.x === w - 1 : p.x <= 1);
+  if (type !== 'hunt' && exits.length < 2) return null;
   if (objective && ![[1, 0], [-1, 0], [0, 1], [0, -1]].some(([dx, dz]) => reach.has(k(objective.x + dx, objective.z + dz)))) return null;
 
   // ---- 部署區 ----
@@ -196,9 +198,17 @@ function tryGenerate(level) {
     if (oz !== undefined) { zoneIds.splice(zoneIds.indexOf(oz), 1); zoneIds.unshift(oz); }
   }
 
+  const extra = opts.extra || [];
+  if (extra.length) {
+    // boss 編組放在離部署區最遠的責任區
+    const cx = z => zoneTiles.get(z).reduce((s, p) => s + p.x, 0) / zoneTiles.get(z).length;
+    const far = [...zoneIds].sort((a, b) => cx(b) - cx(a))[0];
+    zoneIds.splice(zoneIds.indexOf(far), 1);
+    zoneIds.unshift(far);
+  }
   const used = new Set();
   const enemies = [];
-  const groups = enemyGroups(level);
+  const groups = [...extra, ...enemyGroups(level, opts.bonus || 0)];
   for (let gi = 0; gi < groups.length; gi++) {
     const g = groups[gi];
     const zid = zoneIds[gi % zoneIds.length];

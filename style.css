@@ -161,3 +161,69 @@ kbd { display: inline-block; min-width: 18px; padding: 0 4px; margin-right: 6px;
 /* 防止瀏覽器雙擊放大（手機上「點兩下確認」不會觸發縮放） */
 html, body, button, #hud, #hud * { touch-action: manipulation; }
 #app canvas { touch-action: none; }
+
+/* ===== 魔法少女 ===== */
+#actions button { white-space: nowrap; }
+#actions button.magic { border-color: #ff8fc0; background: #2e1428dd; }
+#actions button.magic.on { background: #6a2450; border-color: #ffc0e0; }
+.meta .mg { color: #ff9fd0; }
+.meta .ice { color: #9fe8ff; }
+.ulabel.boss .ln { color: #e0a0ff; font-weight: bold; }
+.ulabel.boss .pips i.on { background: #c040ff; }
+#tp-triple { width: 100%; margin-bottom: 6px; padding: 8px; border-radius: 4px; border: 1px solid #ffb080; background: transparent; }
+#tp-triple.on { background: #6a3a1a; }
+
+/* 標題 / 作戰室 */
+#overlay { overflow-y: auto; }
+#overlay .panel.title { text-align: center; }
+#overlay .panel.title h1 { font-size: 30px; color: #ffb0d8; }
+#overlay .sub { opacity: .65; margin-top: -6px; }
+.title-btns { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
+#overlay .title-btns button { margin: 0; }
+#overlay .story { text-align: left; line-height: 1.8; margin: 8px 0 12px; }
+#overlay .story.small { font-size: 13px; opacity: .85; margin-top: 6px; }
+#overlay ul.notes { color: #ffd98a; font-size: 13px; }
+#overlay .panel.hq { width: min(820px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow-y: auto; text-align: left; padding: 18px 20px; }
+#overlay .panel.hq h1 { font-size: 20px; }
+.hq .sec { margin: 14px 0 6px; font-size: 13px; color: #8fc8ff; border-bottom: 1px solid #2c3a48; padding-bottom: 3px; }
+.hq .fams { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 6px; }
+.hq .fam { padding: 6px 8px; border: 1px solid #5a3a6a; border-radius: 5px; background: #1e1426; font-size: 13px; }
+.hq .fam small { opacity: .75; }
+.hq .fam.down { opacity: .4; text-decoration: line-through; }
+.hq .fam.prod { border-color: #7a5a3a; background: #261c12; }
+.hq .ops { display: flex; flex-direction: column; gap: 6px; }
+#overlay .hq .op { margin: 0; text-align: left; padding: 8px 12px; background: #13202d; border: 1px solid #3a5a78; display: flex; flex-direction: column; gap: 2px; }
+#overlay .hq .op.on { border-color: #ffc44f; background: #2a2412; }
+#overlay .hq .op.boss b, #overlay .hq .op.finale b { color: #e0a0ff; }
+.hq .op small { opacity: .7; font-size: 12px; }
+.hq .girls { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 8px; }
+.hq .gcard { border: 1px solid #2c3a48; border-radius: 6px; padding: 8px 10px; background: #0b1016; font-size: 13px; }
+.hq .gcard.on { border-color: #4fd6ff; box-shadow: 0 0 10px #4fd6ff33; }
+.hq .gcard.evac { opacity: .6; }
+.hq .gh { display: flex; align-items: center; gap: 6px; font-size: 15px; }
+.hq .gh .dot { width: 12px; height: 12px; border-radius: 50%; display: inline-block; }
+.hq .gh .t { font-size: 11px; padding: 1px 5px; border-radius: 3px; background: #33495e; }
+.hq .gh .hp { margin-left: auto; font-size: 12px; color: #8fe0a6; }
+.hq .gw { margin-top: 4px; font-size: 12px; }
+.hq .dim { opacity: .65; }
+.hq .tree { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
+.hq .tl { width: 34px; font-size: 12px; opacity: .8; }
+#overlay .hq .node { margin: 0; width: 34px; height: 30px; padding: 0; font-size: 13px; border-radius: 4px; background: #161c24; border: 1px solid #3a4652; }
+#overlay .hq .node.got { background: #2a5a7a; border-color: #4fd6ff; }
+#overlay .hq .node.next { border-color: #ffc44f; }
+#overlay .hq .node.sel { outline: 2px solid #fff; }
+.hq .det { margin-top: 6px; padding: 6px 8px; background: #161c24; border-radius: 4px; font-size: 12px; }
+#overlay .hq .learn { margin: 6px 0 0; padding: 6px 12px; font-size: 13px; border-color: #ffc44f; background: #3a2e10; }
+.hq .gf { display: flex; align-items: center; justify-content: space-between; margin-top: 8px; }
+.hq .medal { color: #ffd98a; }
+#overlay .hq .dep { margin: 0; padding: 6px 14px; font-size: 13px; background: #161c24; border-color: #3a4652; }
+#overlay .hq .dep.on { background: #1d3448; border-color: #4fd6ff; }
+.hq .evac-tag { color: #ff9a8a; font-size: 12px; }
+#overlay #hq-go { width: 100%; margin-top: 14px; font-size: 17px; }
+#hq-go:disabled { opacity: .4; }
+@media (max-width: 700px) {
+  #overlay { place-items: start center; padding: 8px 0; }
+  #overlay .panel.hq { width: calc(100vw - 12px); max-height: none; padding: 12px; }
+  .hq .girls { grid-template-columns: 1fr; }
+  #overlay .hq .node { width: 40px; height: 36px; }
+}

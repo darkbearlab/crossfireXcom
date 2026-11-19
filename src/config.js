@@ -18,7 +18,14 @@ export const RULES = {
   FLANK_CRIT: 40,         // 側翼/暴露時暴擊加成
   CRIT_MULT: 1.5,
   MEDKIT_HEAL: 3,         // 醫療包回復
-  // 任務之間不會自動回血、補彈：生命和彈藥都是戰役資源
+  // 任務之間：彈藥補滿；生命只有沒上場的人每張地圖回 BENCH_HEAL
+  BENCH_HEAL: 1,
+  EVAC_MISSIONS: 2,       // 倒下後送，要再完成幾個任務才回歸
+  MELEE_DMG: 2,           // 朱音近戰傷害（必中）
+  ICE_HP: 3,              // 冰塊被打幾下會碎
+  ICE_RANGE: 5,           // 冰塊放置距離
+  CURSE_TILES: 6,         // 詛咒地 buff 的詛咒格數量
+  WAVE_SIZE: 3,           // 決戰每波增援人數
 
   // 敵人 AI
   AI_SHOOT: 60,           // 命中率 ≥ 此值就開槍
@@ -55,17 +62,14 @@ export const WEAPONS = {
             keepFiring: true, note: '反應射擊打空也不會停火' },
   pistol: { name: '手槍',     short: '手槍', aim: -5, crit: 5,  dmg: [2, 3], mag: 8,  canReact: false, sidearm: true,
             note: '無限備彈；不能反應射擊' },
+  duals:  { name: '雙自動手槍', short: '雙槍', aim: 2, crit: 10, dmg: [2, 4], mag: 10, reserve: 30, canReact: true,
+            fastReload: true, note: '換彈不交出主動權' },
+  hmg:    { name: '重機槍',   short: '重機槍', aim: -2, crit: 5, dmg: [4, 6], mag: 8, reserve: 24, canReact: true },
+  tri:    { name: '三管霰彈槍', short: '霰彈', aim: 4, crit: 20, dmg: [5, 8], mag: 3, reserve: 12, canReact: true,
+            closeBonus: 25, farRange: 5, farPenalty: 8, recoil: true, note: '中折式三管；開槍後自己被擊退 1 格' },
+  magnum: { name: '麥格農左輪', short: '左輪', aim: 0, crit: 15, dmg: [3, 5], mag: 6, canReact: false, sidearm: true,
+            note: '無限備彈' },
 };
-
-export const SOLDIER_TEMPLATES = [
-  { name: '獵鷹', maxHp: 7, aim: 70, crit: 5, weapon: 'ar', color: 0x3d7bd9 },
-  { name: '灰狼', maxHp: 8, aim: 64, crit: 5, weapon: 'sg', color: 0x2fa37a },
-];
-
-export const RECRUIT = { maxHp: 6, aim: 60, crit: 0 };
-export const RECRUIT_WEAPONS = ['ar', 'ar', 'lmg', 'sn', 'sg'];
-export const RECRUIT_NAMES = ['渡鴉', '黑蛇', '山貓', '夜鶯', '鐵砧', '野火', '白鷺', '石像', '寒鴉', '赤狐'];
-export const RECRUIT_COLORS = [0x6a8fd0, 0x4fb08a, 0xc9a23a, 0x8a6fd0];
 
 // 敵人：普通武器不追蹤彈藥。impulse = 衝動：主動權易手時，這輪沒行動過的單位會強制做的事。
 export const ENEMY_TYPES = {
@@ -83,11 +87,22 @@ export const ENEMY_TYPES = {
                desc: '笨重：每次主動權只行動一次；反應射擊打空不會停火' },
   brute:     { name: '重裝兵', maxHp: 7, aim: 55, crit: 5,  dmg: [3, 5], color: 0x8e2f6e, armor: 1, scale: 1.2,
                desc: '裝甲 1：每次受傷 -1' },
+  // 家族成員（boss）
+  b_eye:     { name: '薇歐拉', maxHp: 10, aim: 70, crit: 15, dmg: [3, 5], color: 0x5b3f8f, boss: true, impulse: 'shoot', ignoreHalf: true,
+               desc: '眼線：主動射擊無視半掩體。打倒她「千里眼」就失效' },
+  b_exec:    { name: '蕾貝卡', maxHp: 12, aim: 64, crit: 10, dmg: [3, 5], color: 0x3b2a4a, boss: true, impulse: 'charge', armor: 1, keepFiring: true,
+               desc: '執行人：裝甲 1，反應射擊打空不停火。打倒她「不留活口」就失效' },
+  b_book:    { name: '莫妮卡', maxHp: 10, aim: 62, crit: 5, dmg: [3, 4], color: 0x2f4a3a, boss: true, impulse: 'shoot',
+               desc: '帳房。打倒她「人手充足」就失效' },
+  b_sis:     { name: '莉莉絲', maxHp: 10, aim: 62, crit: 10, dmg: [3, 4], color: 0x7a2a6a, boss: true, impulse: 'curse',
+               desc: '魔女姊姊。衝動：把詛咒下在最近的我方腳下。打倒她「詛咒地」就失效' },
+  b_mother:  { name: '瑪格麗特', maxHp: 16, aim: 68, crit: 10, dmg: [3, 5], color: 0x1e1428, boss: true, impulse: 'shoot', armor: 1, keepFiring: true,
+               desc: '教母：裝甲 1，反應射擊打空不停火。打倒她就結束了' },
 };
 
 // 每張地圖的敵人編組（同一組會擺在同一個責任區）
-export function enemyGroups(level) {
-  let n = Math.min(10, 4 + Math.floor((level - 1) * 0.7));
+export function enemyGroups(level, bonus = 0) {
+  let n = Math.min(10, 4 + Math.floor((level - 1) * 0.7)) + bonus;
   const groups = [];
   if (level >= 2 && n >= 5 && Math.random() < 0.6) { groups.push(['officer', 'conscript', 'conscript']); n -= 3; }
   const pool = ['gunman', 'gunman', 'zealot'];

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>雙人小隊戰術 - 雛形</title>
+  <title>魔法少女 vs 魔女黑手黨（雛形）</title>
   <link rel="stylesheet" href="style.css">
   <script type="importmap">
   {
@@ -31,6 +31,7 @@
       <button id="btn-shoot"><kbd>1</kbd>射擊</button>
       <button id="btn-reload"><kbd>R</kbd>換彈</button>
       <button id="btn-swap"><kbd>X</kbd><span id="swap-label">換槍</span></button>
+      <button id="btn-magic" class="magic"><kbd>G</kbd><span id="magic-label">魔法</span></button>
       <button id="btn-rally" hidden><kbd>2</kbd>解除壓制</button>
       <button id="btn-plant" class="plant" hidden><kbd>F</kbd>安裝炸藥</button>
       <button id="btn-end" class="end"><kbd>⌫</kbd>放棄<span class="wide-only">主動權</span></button>
@@ -44,12 +45,12 @@
       <div class="help-body">
         <div class="only-touch"><b>點一下</b> 預覽移動，<b>同一格再點一下</b> 確認</div>
         <div class="only-touch"><b>單指拖曳</b> 平移　<b>雙指捏合</b> 縮放</div>
-        <div class="only-touch"><b>點士兵卡片</b> 切換士兵　<b>⟲ ⟳</b> 旋轉 45°</div>
+        <div class="only-touch"><b>點角色卡片</b> 切換角色　<b>⟲ ⟳</b> 旋轉 45°</div>
         <div class="only-mouse"><b>左鍵</b> 選士兵 / 移動 / 點敵人瞄準</div>
         <div class="only-mouse"><b>左鍵拖曳 / WASD</b> 平移　<b>右鍵拖曳</b> 旋轉　<b>滾輪</b> 縮放</div>
         <div class="only-mouse"><b>Q / E</b> 旋轉 45°</div>
         <div class="only-mouse"><b>Tab</b> 切換士兵 / 目標</div>
-        <div class="only-mouse"><b>1</b> 射擊　<b>R</b> 換彈　<b>X</b> 換槍　<b>2</b> 解除壓制　<b>F</b> 安裝炸藥</div>
+        <div class="only-mouse"><b>1</b> 射擊　<b>R</b> 換彈　<b>X</b> 換槍　<b>G</b> 魔法　<b>2</b> 解除壓制　<b>F</b> 安裝炸藥</div>
         <div class="only-mouse"><b>Enter</b> 開火　<b>Esc</b> 取消　<b>Backspace</b> 放棄主動權</div>
         <hr>
         <div>沒有回合：行動直到<b>失敗</b>才交出主動權</div>
@@ -67,11 +68,19 @@
         <div><span style="color:#ffcc33">黃圈</span>：移動到那裡會被發現（移動停在那格）</div>
         <div>開槍會驚動射手與目標周圍 6 格的敵人；警戒後就照常看得到</div>
         <hr>
-        <div><b>彈藥</b>：反應射擊也耗彈；彈藥與生命在任務間不會補充，靠地圖上的補給箱</div>
+        <div><b>彈藥</b>：反應射擊也耗彈；每張地圖開始時補滿，地圖內靠補給箱</div>
+        <div><b>生命</b>：不會自動回復；沒上場的人每張地圖回 1。倒下＝後送，完成 2 個任務後歸隊</div>
         <div><span style="color:#ff9d4f">橘框按鈕</span>＝做完交出主動權（換主武器、主武器換彈）</div>
-        <div>換手槍、手槍換彈不交出主動權；手槍無限備彈但不能反應射擊</div>
+        <div>換副武器、副武器換彈不交出主動權；朱音的雙槍換彈也不交</div>
+        <hr>
+        <div><b>魔法</b>（G，每張地圖一次，<span style="color:#ff9a3c">橘格</span>可用）</div>
+        <div>朱音：突進到敵人旁邊近戰（不發出槍聲）；第一發反應射擊必定落空</div>
+        <div>光：自己的行動失敗時自動變身，主動權不易手；變身後敵人優先打她</div>
+        <div>雪乃：變出冰塊（全掩體、擋視線，被打 3 下碎）；放在隊友腳下＝抬到冰上（半掩體）。站在冰塊旁點冰塊＝推到撞上東西為止</div>
+        <div>小桃：空投到任意一格（備彈 -3）；開霰彈槍會被後座力擊退；半掩體對她算全掩體</div>
         <hr>
         <div><b>敵人衝動</b>：主動權交回我方時，這輪沒行動的敵人會做自己的衝動行為（點敵人看說明）</div>
+        <div><b>家族加持</b>：每個活著的家族成員給所有敵人一種加持，打倒她就消失</div>
       </div>
     </div>
     <div id="banner"></div>
