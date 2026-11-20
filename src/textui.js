@@ -112,7 +112,7 @@ function girlLine(S, u) {
   const w = u.weapons[u.wi];
   const hearts = Math.ceil(Math.max(0, u.hp) / u.heartHp), maxH = Math.ceil(u.maxHp / u.heartHp);
   const mi = G.magicInfo(u);
-  const flags = [u.firedOut && '這次主動權不能再開槍', u.transformed && '變身中', u.raised && '冰上', u.dodge && '閃避×' + u.dodge,
+  const flags = [u.locked && '被人偶纏住（這次主動權不能再行動）', u.firedOut && '這次主動權不能再開槍', u.transformed && '變身中', u.raised && '冰上', u.dodge && '閃避×' + u.dodge,
     S.selected === u && '◀ 選取中'].filter(Boolean);
   const ri = G.reloadInfo(u);
   return `${gKey(u)} ${u.name} (${u.x},${u.z})  心 ${hearts}/${maxH}（${u.hp}/${u.maxHp}）${u.lineUsed ? ' 心線：已用或沒有' : ` 心線：掉到 ${u.lineHp / u.heartHp} 心時`}  累積 ${pips(u)} ${status(u)}` +
@@ -128,7 +128,8 @@ function enemyLine(S, e, all) {
   return `${eKey(S, e)} ${e.name} (${e.x},${e.z})  生命 ${e.hp}/${e.maxHp}  累積 ${pips(e)} ${status(e)}  ${e.alerted ? '警戒' : '未察覺'}` +
     `  ${e.dice} 骰${e.dieMod ? `(${e.dieMod > 0 ? '+' : ''}${e.dieMod}%)` : ''}` +
     (e.act ? `  啟動 ${G.actChance(e)}%` : e.boss ? `  頭目第 ${e.phase} 段` : '') +
-    (e.impulse ? `  衝動:${e.impulse}` : '') + (e.firedOut ? '  ✕不能再開槍' : '') + (seen ? '' : '  （看不到）');
+    (e.impulse ? `  衝動:${e.impulse}` : '') + (e.firedOut ? '  ✕不能再開槍' : '') +
+    (e.unflinching ? `  不會受阻/壓制、每中一顆受 1 傷、移動 ${e.moveRange} 射程 ${e.range}、不反應射擊；攻擊它沒打倒的人這次主動權不能再行動` : '') + (seen ? '' : '  （看不到）');
 }
 
 function targetsText(S, u) {
@@ -140,7 +141,8 @@ function targetsText(S, u) {
     const o = t.odds;
     const ef = t.unit.armor ? UI.effHit(o, t.unit.armor) : 0;
     const armor = t.unit.armor ? `，裝甲 ${t.unit.armor}：實際生效 ${ef}%${ef ? '' : '（不可能有效，開不了）'}` : '';
-    return `  ${eKey(S, t.unit)} ${t.unit.name}：${o.dice} 骰 × ${o.die}% → 至少中一顆 ${o.hit}%，平均中 ${(o.dice * o.die / 100).toFixed(1)}${armor}` +
+    const lock = t.unit.lockOnHit ? '，⛓沒打倒的話這次主動權不能再行動' : '';
+    return `  ${eKey(S, t.unit)} ${t.unit.name}：${o.dice} 骰 × ${o.die}% → 至少中一顆 ${o.hit}%，平均中 ${(o.dice * o.die / 100).toFixed(1)}${armor}${lock}` +
       `  ${UI.coverName(o)}  距離 ${o.dist.toFixed(1)}${o.sweet ? ' 甜蜜距離' : ''}`;
   }).join('\n');
 }
@@ -220,6 +222,7 @@ async function run(line) {
   const girlArg = () => (args[0] && /^[a-z]$/i.test(args[0]) && findGirl(S, args[0])) ? findGirl(S, args.shift()) : findGirl(S, null);
   const needAct = u => {
     if (!u) return '先選角色（sel A）';
+    if (u.locked && S.side === 'player') return `${u.name} 被人偶纏住了，這次主動權不能再行動（換另一個人，或 pass）`;
     if (!G.canAct(u)) return `${u.name} 現在不能行動（主動權：${S.side}${S.busy ? '，處理中' : ''}）`;
     return '';
   };

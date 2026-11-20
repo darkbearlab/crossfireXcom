@@ -109,6 +109,11 @@ export const ENEMY_TYPES = {
                desc: '3 骰。笨重：每次主動權只行動一次；反應射擊打空不會停火' },
   brute:     { name: '重裝兵', act: 70, q: '精銳', maxHp: 1, dice: 2, color: 0x8e2f6e, armor: 1, scale: 1.2,
                desc: '裝甲：每次攻擊少算 1 下命中' },
+  // 人偶：專門打亂單騎戰術。不會受阻/壓制、每中一顆骰受 1 傷（打它每顆骰 +bigTarget%）。
+  // 攻擊它卻沒打倒的少女，這次主動權不能再行動（lockOnHit）。動作慢：移動 3、射程 2、笨重、不反應射擊
+  doll:      { name: '人偶',   act: 70, q: '精銳', maxHp: 6, dice: 2, dieMod: 25, sweetDice: 0, color: 0xd8c8b8, scale: 1.25,
+               canReact: false, cumbersome: true, unflinching: true, lockOnHit: true, moveRange: 3, range: 2, bigTarget: 15, impulse: 'charge',
+               desc: '魔女的人偶：不會受阻、不會被壓制，每中一顆骰就受 1 傷（打它每顆骰 +15%）。動作慢：移動 3 格、射程 2、每次主動權只行動一次、不反應射擊。<b>攻擊它卻沒打倒的少女，這次主動權不能再行動</b>' },
   // 家族成員（boss）：生命分 3 段，每段 2 傷
   b_eye:     { name: '薇歐拉', maxHp: 6, dice: 3, dieMod: 10, color: 0x5b3f8f, boss: true, impulse: 'shoot', ignoreHalf: true,
                desc: '眼線：主動射擊無視半掩體。打倒她「千里眼」就失效' },
@@ -134,7 +139,13 @@ export function enemyGroups(level, bonus = 0) {
   if (level >= 3) pool.push('mg', 'sniper');
   if (level >= 4) pool.push('brute');
   if (level >= 8) pool.push('brute', 'brute'); // 後期小兵多穿裝甲
-  const pick = () => pool[Math.floor(Math.random() * pool.length)];
+  if (level >= 5) pool.push('doll');
+  let dolls = 0; // 人偶每張地圖最多 1 個
+  const pick = () => {
+    let k = pool[Math.floor(Math.random() * pool.length)];
+    if (k === 'doll') { if (dolls) k = 'gunman'; else dolls++; }
+    return k;
+  };
   while (n > 0) {
     if (n >= 2 && Math.random() < 0.3) { groups.push([pick(), pick()]); n -= 2; }
     else { groups.push([pick()]); n--; }

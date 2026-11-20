@@ -138,7 +138,7 @@ const players = () => S.units.filter(u => u.team === 'player' && u.alive);
 const enemies = () => S.units.filter(u => u.team === 'enemy' && u.alive);
 const unitAt = (x, z) => S.units.find(u => u.alive && u.x === x && u.z === z);
 const occupied = (x, z, except) => S.units.some(u => u.alive && u !== except && u.x === x && u.z === z);
-const canAct = u => !!u && u.alive && u.team === 'player' && S.side === 'player' && !S.busy && !S.gameOver && S.mode === 'move';
+const canAct = u => !!u && u.alive && u.team === 'player' && !u.locked && S.side === 'player' && !S.busy && !S.gameOver && S.mode === 'move';
 const canMove = u => canAct(u) && !u.suppressed && !u.pinned;
 const refresh = () => UI.updateHUD(S);
 const weapon = u => u.team === 'player' ? u.weapons[u.wi] : u.gun;
@@ -154,7 +154,7 @@ function diceBonus(s) {
 // 破防：打被壓制的敵人時，不算壓制給的那 1 級掩體
 const breach = s => s.team === 'player' && lv(s, 'gun') >= ({ akane: 2, hikari: 3, momo: 3 }[s.girl] || 99);
 const oddsVs = (s, t, opts = {}) => shotOdds(S.map, s, s, t, {
-  suppressed: !!t.suppressed, breach: breach(s), weapon: weapon(s), diceBonus: diceBonus(s), raised: !!t.raised, hardy: !!t.hardy, ...opts });
+  suppressed: !!t.suppressed, breach: breach(s), weapon: weapon(s), diceBonus: diceBonus(s), dieBonus: t.bigTarget || 0, raised: !!t.raised, hardy: !!t.hardy, ...opts });
 const iceAt = (x, z) => S.ice.find(i => i.x === x && i.z === z);
 const isExit = p => S.mission && S.mission.exits.some(e => e.x === p.x && e.z === p.z);
 const adjObjective = u => {
@@ -453,7 +453,7 @@ function spawnEnemy(type, x, z, zone, alerted = false) {
   const tag = ENEMY_TAGS[n] || '#' + (n + 1);
   const u = { ...tpl, kind: type, team: 'enemy', hp: tpl.maxHp, stress: 0, pinned: false, tag,
     name: tpl.boss ? tpl.name : tpl.name + tag,
-    gun: { dice: tpl.dice, canReact: tpl.canReact !== false, keepFiring: !!tpl.keepFiring,
+    gun: { dice: tpl.dice, sweetDice: tpl.sweetDice, canReact: tpl.canReact !== false, keepFiring: !!tpl.keepFiring,
       ignoreHalf: !!tpl.ignoreHalf, ammo: Infinity, mag: Infinity },
     x, z, alive: true, suppressed: false, firedOut: false, alerted, spotted: false, zone, member: memberOf(type),
     // 頭目血條分 3 段（由高到低的分段點）
@@ -647,7 +647,7 @@ function endMission(win, why) {
 // ================= 主動權 =================
 async function giveInitiative(side) {
   if (S.gameOver) return;
-  for (const u of S.units) { u.firedOut = false; u.spareUsed = false; u.shield = false; }
+  for (const u of S.units) { u.firedOut = false; u.spareUsed = false; u.shield = false; u.locked = false; }
   S.grab = false;       // 心線：要把主動權搶回我方
   S.forceEnemy = false; // 頭目突破階段：主動權要交給敵方
   S.initDeaths = 0;     // 這次主動權內倒下的敵人數（啟動檢定用）
@@ -716,7 +716,15 @@ async function resolvePlayerAction(ok, actor = null) {
     giveInitiative('enemy');
     return;
   }
-  selectUnit(S.selected && S.selected.alive ? S.selected : players()[0]);
+  // 人偶：被纏住的少女這次主動權不能再行動；全員都被纏住就交出主動權（不算失敗）
+  const free = players().filter(p => !p.locked);
+  if (!free.length) {
+    UI.log('大家都被人偶纏住了，主動權交給敵方', 'warn');
+    await wait(0.5);
+    giveInitiative('enemy');
+    return;
+  }
+  selectUnit(S.selected && S.selected.alive && !S.selected.locked ? S.selected : free[0]);
 }
 
 // ================= 視野 / 警覺 =================
@@ -792,11 +800,12 @@ function moveOptions(u) {
   const blocked = (x, z) => occupied(x, z, u);
   const out = new Map();
   if (u.frozen) return out; // 被抬到冰塊上的敵人不能移動
+  const far = p => u.moveRange && dist(u, p) > u.moveRange + 0.01; // 人偶：移動距離短
   for (let z = 0; z < S.map.h; z++) for (let x = 0; x < S.map.w; x++) {
-    if (clearMove(S.map, u, { x, z }, blocked)) out.set(key(x, z), { x, z, vault: false });
+    if (!far({ x, z }) && clearMove(S.map, u, { x, z }, blocked)) out.set(key(x, z), { x, z, vault: false });
   }
   for (const v of vaultTargets(S.map, u, blocked)) {
-    if (!out.has(key(v.x, v.z))) out.set(key(v.x, v.z), { ...v, vault: true });
+    if (!far(v) && !out.has(key(v.x, v.z))) out.set(key(v.x, v.z), { ...v, vault: true });
   }
   return out;
 }
@@ -820,7 +829,7 @@ function planReactions(mover, cells, knownOnly = false) {
     let best = null;
     cells.forEach((c, i) => {
       if (!hasLOS(S.map, r, c)) return;
-      const o = shotOdds(S.map, r, r, c, { reaction: true, weapon: w, diceBonus: diceBonus(r), raised: !!mover.raised, hardy: !!mover.hardy, suppressed: !!mover.suppressed, breach: breach(r) });
+      const o = shotOdds(S.map, r, r, c, { reaction: true, weapon: w, diceBonus: diceBonus(r), dieBonus: mover.bigTarget || 0, raised: !!mover.raised, hardy: !!mover.hardy, suppressed: !!mover.suppressed, breach: breach(r) });
       if (o.hit >= RULES.REACTION_MIN && (!best || o.hit > best.odds.hit)) best = { shooter: r, idx: i, odds: o };
     });
     if (best) out.push(best);
@@ -912,7 +921,7 @@ async function performMove(u, dest) {
 // ================= 射擊 =================
 function visibleTargets(u) {
   return S.units
-    .filter(e => e.alive && e.team !== u.team && hasLOS(S.map, u, e))
+    .filter(e => e.alive && e.team !== u.team && hasLOS(S.map, u, e) && (!u.range || dist(u, e) <= u.range + 0.5)) // 人偶：射程短
     .map(e => ({ unit: e, odds: oddsVs(u, e) }))
     // 仇恨：變身後的光是敵人的優先目標
     .sort((a, b) => (b.odds.hit + (b.unit.transformed ? 25 : 0)) - (a.odds.hit + (a.unit.transformed ? 25 : 0)));
@@ -995,7 +1004,8 @@ async function strike(t, hits, src = null) {
   if (t.shield) { floatText(t, '階段護盾', 'miss'); UI.log(`${t.name} 剛突破階段，這個行動內打不動`, 'dim'); return; }
   const floor = segFloor(t);
   let wounds = 0;
-  for (let i = 0; i < hits; i++) {
+  if (t.unflinching) wounds = hits; // 人偶：不經過三階，每中一顆骰受 1 傷
+  else for (let i = 0; i < hits; i++) {
     if (t.stress < RULES.SUP_AT) t.stress++;
     else wounds++;
   }
@@ -1020,7 +1030,8 @@ async function strike(t, hits, src = null) {
     }
     return;
   }
-  if (t.stress >= RULES.SUP_AT) suppress(t);
+  if (t.unflinching) { /* 不會受阻、不會被壓制 */ }
+  else if (t.stress >= RULES.SUP_AT) suppress(t);
   else if (t.stress >= RULES.PIN_AT) pin(t);
   if (src && src.girl === 'yukino' && lv(src, 'gun') >= 4 && t.suppressed) t.heavySup = true;
   if (t.heartHp && !t.lineUsed && t.hp <= t.lineHp) await heartLine(t);
@@ -1146,7 +1157,7 @@ function pinFire(s, t) {
 
 // 受阻：不能移動（還能開槍、反應射擊）
 function pin(t, label = '受阻') {
-  if (!t.alive || t.suppressed || t.pinned) return;
+  if (!t.alive || t.suppressed || t.pinned || t.unflinching) return;
   t.pinned = true;
   floatText(t, label, 'sup');
   if (t.label) UI.updateLabel(t.label, t);
@@ -1154,6 +1165,7 @@ function pin(t, label = '受阻') {
 
 function suppress(t, label = '壓制') {
   if (!t.alive || t.suppressed) return;
+  if (t.unflinching) { floatText(t, '不為所動', 'miss'); return; }
   t.suppressed = true;
   t.pinned = false;
   Rec.suppressed(t);
@@ -1553,6 +1565,7 @@ async function fire() {
     UI.log(`${u.name} 雙槍齊射！`, 'dim');
     hit = (await shoot(u, second)) || hit;
   }
+  lockAfterAttack(u, t.unit);
   S.busy = false;
   await resolvePlayerAction(hit, u);
 }
@@ -1780,12 +1793,22 @@ async function melee(u, t) {
   await tween(0.12, k => u.mesh.position.lerpVectors(p1, p0, k));
   if (!t.alerted) alertEnemies([t], 'melee'); // 只驚動被打的那個：近戰不發出槍聲
   UI.log(`${u.name} 近戰 → ${t.name}：直接受傷 ${RULES.MELEE_WOUNDS} 次`, 'good');
-  if (!t.shield) t.stress = RULES.SUP_AT; // 近戰不經過三階
+  if (!t.shield && !t.unflinching) t.stress = RULES.SUP_AT; // 近戰不經過三階
   await strike(t, RULES.MELEE_WOUNDS, u);
   const m = lv(u, 'magic');
   if (t.alive && m >= 1) {
     await knockback(t, Math.sign(t.x - u.x), Math.sign(t.z - u.z), m >= 2 ? 2 : 1, { collide: m >= 2, splash: m >= 3 });
   }
+  lockAfterAttack(u, t);
+}
+
+// 人偶：直接攻擊它（不含波及）卻沒打倒，攻擊者這次主動權不能再行動。沒打中也算
+function lockAfterAttack(u, t) {
+  if (!t.lockOnHit || !t.alive || !u.alive || u.team !== 'player') return;
+  u.locked = true;
+  floatText(u, '被纏住了', 'sup');
+  UI.log(`${u.name} 沒能打倒${t.name}，被它纏住：這次主動權不能再行動`, 'warn');
+  if (u.label) UI.updateLabel(u.label, u);
 }
 
 // 擊退：一格一格推，撞到牆或單位就停
@@ -2078,18 +2101,19 @@ function evalTile(e, pos, ps) {
   for (const p of ps) {
     nearest = Math.min(nearest, dist(pos, p));
     if (hasLOS(S.map, pos, p)) {
-      const def = shotOdds(S.map, p, p, pos, { weapon: weapon(p) }); // 玩家打這格的命中率
+      const def = shotOdds(S.map, p, p, pos, { weapon: weapon(p), dieBonus: e.bigTarget || 0 }); // 玩家打這格的命中率
       s -= def.hit * 0.35;
+      if (e.range && dist(pos, p) > e.range + 0.5) continue; // 射程外
       const o = shotOdds(S.map, e, pos, p, { weapon: e.gun, suppressed: !!p.suppressed, hardy: !!p.hardy, raised: !!p.raised });
       if (o.hit > bestHit) bestHit = o.hit;
       if (o.cover === 0) flank = true;
     } else s += 6;
   }
   s += bestHit * 0.5 + (flank ? 15 : 0);
-  if (e.kind === 'zealot') s -= nearest * 4;            // 狂徒：越近越好
+  if (e.kind === 'zealot' || e.kind === 'doll') s -= nearest * 4; // 狂徒、人偶：越近越好
   else if (e.kind === 'sniper') { if (nearest < 5) s -= (5 - nearest) * 6; }
   else if (nearest > 8) s -= (nearest - 8) * 5;
-  if (nearest < 2 && e.kind !== 'zealot') s -= 10;
+  if (nearest < 2 && e.kind !== 'zealot' && e.kind !== 'doll') s -= 10;
   return s;
 }
 

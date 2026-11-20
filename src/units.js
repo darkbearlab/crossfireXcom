@@ -69,6 +69,10 @@ export function makeUnitMesh(team, kind, color, gun = 'ar', scale = 1, opt = {})
       }
       if (kind === 'officer') add(new THREE.BoxGeometry(0.36, 0.06, 0.4), glow, 0, 1.31, 0.04); // 帽簷
       if (kind === 'zealot') add(new THREE.BoxGeometry(0.46, 0.08, 0.3), glow, 0, 0.92, 0);     // 頭巾/布條
+      if (kind === 'doll') { // 背上的發條
+        add(new THREE.CylinderGeometry(0.03, 0.03, 0.22, 8), glow, 0, 0.85, -0.24).rotation.x = Math.PI / 2;
+        add(new THREE.BoxGeometry(0.36, 0.1, 0.04), glow, 0, 0.85, -0.36);
+      }
     }
   }
   if (opt.boss) { // 魔女帽
