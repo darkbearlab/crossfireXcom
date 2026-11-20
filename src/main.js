@@ -11,7 +11,7 @@
 // - 魔法少女：四人輪替、每張地圖出 2 人；每人一個被動、一個魔法（每圖一次），兩條成長樹。
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { T, RULES, THEMES, ENEMY_TYPES, WEAPONS } from './config.js';
+import { ITEMS, T, RULES, THEMES, ENEMY_TYPES, WEAPONS } from './config.js';
 import { generateMap, ri, GameMap } from './map.js';
 import { hasLOS, quietLOS, coverSides, coverAt, shotOdds, key, dist, clearMove, lineCells, vaultTargets, ORTH } from './grid.js';
 import { makeUnitMesh, makeScarecrowMesh, makeCrowMesh, addHalo, heartShape } from './units.js';
@@ -430,6 +430,17 @@ function outfit(d, gs) {
 
 function makeGirlUnit(gs) {
   const d = GIRL[gs.id];
+  const u = baseGirlUnit(gs, d);
+  // 道具與裝備（每人 3 格）：裝備直接生效，消耗品放進 u.items
+  const slots = gs.slots || [];
+  if (slots.includes('vest')) { u.maxHp += RULES.HEART_HP; u.hp += RULES.HEART_HP; }
+  if (slots.includes('mag')) { const p = u.weapons[0]; p.mag += 2; p.ammo = p.mag; if (isFinite(p.reserve)) p.reserve += 4; }
+  if (slots.includes('scope')) for (const w of u.weapons) w.dieMod = (w.dieMod || 0) + 5;
+  u.items = slots.filter(k => ITEMS[k] && ITEMS[k].kind === 'use');
+  u.gear = slots.filter(k => ITEMS[k] && ITEMS[k].kind === 'gear');
+  return u;
+}
+function baseGirlUnit(gs, d) {
   return {
     girl: d.id, name: d.name, title: d.title, color: d.color, hair: d.hair, team: 'player', kind: 'girl',
     maxHp: d.maxHp, hp: gs.hp, gunLv: gs.gun, magicLv: gs.magic, stress: 0, pinned: false,
@@ -525,28 +536,38 @@ function startMission() {
   clearUnits();
   S.ice = [];
   S.buffs = Camp.activeBuffs(op);
-  S.quietSight = S.buffs.includes('eye') ? 7 : RULES.QUIET_SIGHT;
+  S.quietSight = (S.buffs.includes('eye') ? 7 : RULES.QUIET_SIGHT) + 2 * Camp.mod('sight'); // 反制「千里眼」
+  S.actBonus = 5 * Camp.mod('drill'); // 反制「操練」
   const opKey = op.kind + ':' + op.name;
   let gen;
-  if (op.kind === 'boss' && C.mode === 'story') Camp.markBoss(op.member); // 記下頭目的出場順序
-  if (C.retry && !op.detour && C.retryGen && C.retryOp === opKey) gen = unpackGen(C.retryGen);
+  const story = C.mode === 'story';
+  if (op.kind === 'boss' && story) Camp.markBoss(op.member); // 記下頭目的出場順序
+  const retryGen = story ? (op.retry && C.lostGen) : (C.retry && C.retryOp === opKey && C.retryGen);
+  if (retryGen) gen = unpackGen(retryGen);
   else {
     const extra = [];
     let type;
     if (op.kind === 'boss') { type = 'hunt'; extra.push([FAMILY_BY_ID[op.member].boss, 'gunman']); }
-    else if (op.kind === 'finale') { type = 'hunt'; extra.push(['b_mother', 'brute']); }
-    else if (op.kind === 'manor') {
+    else if (op.kind === 'finale') {
+      type = 'hunt';
+      extra.push(['b_mother', 'brute']);
+      // 沒在據點解決掉的成員，和教母一起在莊園等著
+      if (story) for (const m of C.members.filter(x => x.alive)) extra.push([FAMILY_BY_ID[m.id].boss]);
+    } else if (op.kind === 'manor') {
       const alive = C.members.filter(m => m.alive);
       if (alive.length && Math.random() < 0.5) extra.push([FAMILY_BY_ID[alive[ri(0, alive.length - 1)].id].boss]);
+    } else if (op.kind === 'facility' && story && op.member && Math.random() < Camp.appearChance(op.member)) {
+      extra.push([FAMILY_BY_ID[op.member].boss]); // 成員親自現身（天選者）
     }
-    gen = generateMap(Camp.level(op), { type, extra, bonus: 2 * S.buffs.filter(b => b === 'book').length });
+    gen = generateMap(Camp.level(op), { type, extra, bonus: 2 * S.buffs.filter(b => b === 'book').length + Camp.mod('extra') });
     gen.curse = S.buffs.includes('sis') ? pickCurse(gen) : [];
     gen.theme = THEMES[ri(0, THEMES.length - 1)];
-    gen.conds = op.kind === 'facility' ? facilityConds(gen, Camp.level(op)) : [];
-    if (!op.detour) { // 替代作戰不覆蓋原本要重打的那張圖
-      C.retryGen = packGen(gen); // 輸了要重打同一張：存進存檔，重新載入也不會換圖
-      C.retryOp = opKey;
-    }
+    gen.conds = ['facility', 'stop', 'growth'].includes(op.kind) ? facilityConds(gen, Camp.level(op)) : [];
+    // 反制「重裝化」：每層把 1 名槍手換成重裝兵；「封鎖補給」：補給箱減半
+    for (let i = 0; i < Camp.mod('armor'); i++) { const g = gen.enemies.find(p => p.type === 'gunman'); if (g) g.type = 'brute'; }
+    if (Camp.mod('supply')) gen.crates = gen.crates.filter((_, i) => i % 2 === 0);
+    C.retryGen = packGen(gen); // 輸了要重打同一張：存進存檔，重新載入也不會換圖
+    C.retryOp = opKey;
     Camp.save();
   }
   S.map = gen.map;
@@ -572,8 +593,9 @@ function startMission() {
     const mid = memberOf(p.type);
     if (mid && C.mode === 'story' && !C.members.find(m => m.id === mid).alive) continue;
     const e = spawnEnemy(p.type, p.x, p.z, p.zone);
-    if (e.boss && S.mission.type === 'hunt' && !S.mission.boss) { S.mission.boss = e; S.mission.bossName = e.name; }
+    if (e.boss && S.mission.type === 'hunt' && (!S.mission.boss || (op.kind === 'finale' && e.kind === 'b_mother'))) { S.mission.boss = e; S.mission.bossName = e.name; }
   }
+  S.appeared = [];
   for (const e of enemies()) if (e.boss) tuneBoss(e, op);
 
   const p0 = gen.playerSpawns[0];
@@ -591,7 +613,8 @@ function startMission() {
   if (S.buffs.length) UI.log('家族加持：' + [...new Set(S.buffs)].map(b => FAMILY_BY_ID[b].buff).join('、'), 'warn');
   if (S.waves) UI.log(`增援會分 ${S.waves} 波抵達`, 'warn');
   for (const c of S.conds) UI.log('設施條件：' + COND_TEXT[c](), 'warn');
-  if (enemies().some(e => e.member) && S.mission.type !== 'hunt') UI.log('有家族成員在場！打倒她可以拔掉加持', 'warn');
+  for (const e of enemies()) if (e.appearance) { UI.log(`${e.name} 親自現身了！打掉她這段生命就能把她擊退（不擊退也能完成任務）`, 'warn'); UI.banner(`${e.name} 現身！`, 'enemy'); }
+  if (enemies().some(e => e.member && !e.appearance) && S.mission.type !== 'hunt') UI.log('有家族成員在場！打倒她可以拔掉加持', 'warn');
   S.initNo = 0;
   S.deployZone = gen.deployZone;
   S.side = 'deploy';
@@ -654,14 +677,15 @@ function endMission(win, why) {
   const hp = {};
   for (const u of girls) hp[u.girl] = u.alive ? Math.max(1, Math.min(u.hp, GIRL[u.girl].maxHp)) : 0;
   const killed = S.units.filter(u => u.member && !u.alive && !u.fled).map(u => u.member);
-  const detour = !!(Camp.C.op && Camp.C.op.detour);
+  const detour = false;
+  const repelled = S.units.filter(u => u.repelled).map(u => u.member);
   const notes = Camp.finish({ win, deployed: girls.map(u => u.girl), hp, downed: girls.filter(u => !u.alive).map(u => u.girl), killed,
-    bossPhase: S.mission.boss ? S.mission.boss.phase : 0 });
+    repelled, appeared: S.appeared || [], bossPhase: S.mission.boss ? S.mission.boss.phase : 0 });
   const rows = girls.map(u => {
     const now = Camp.girlState(u.girl).hp;
     return `<li>${u.name}：${u.alive ? `HP ${hp[u.girl]}${now !== hp[u.girl] ? ` → ${now}` : ''}/${GIRL[u.girl].maxHp}` : '倒下後送'}</li>`;
   }).join('');
-  const body = (win ? `<p>${why}。主動權共 ${S.initNo} 次（易手 ${S.initNo - 1} 次）。</p>` : `<p>${why || '上場的兩人都倒下了'}。${detour ? '替代作戰沒有成功，原本的作戰還等著重打。' : '這張地圖要重打。'}</p>`) +
+  const body = (win ? `<p>${why}。主動權共 ${S.initNo} 次（易手 ${S.initNo - 1} 次）。</p>` : `<p>${why || '上場的兩人都倒下了'}。${Camp.C.mode === 'story' ? '這場留在作戰清單上，可以重打，也可以先做別的事。' : '這張地圖要重打。'}</p>`) +
     `<ul>${rows}</ul>` + (notes.length ? `<ul class="notes">${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '') +
     (win ? '<p style="opacity:.6">彈藥會在下張地圖補滿。</p>' : '') +
     '<p class="rec-btns"><button class="rec-dl">匯出這場紀錄</button> <button class="rec-cp">複製</button></p>';
@@ -1013,7 +1037,9 @@ async function shoot(s, t, { reaction = false, forceMiss = false, triple = false
     await wait(0.03);
   }
 
-  const eff = hit && t.armor ? Math.max(0, rolled - t.armor) : rolled; // 扣掉裝甲後真正生效的命中
+  const ap = !reaction && s.apNext && t.armor; // 穿甲彈：這一槍無視裝甲
+  if (!reaction && s.apNext) { s.apNext = false; if (ap) UI.log(`${s.name} 的穿甲彈無視了裝甲`, 'good'); }
+  const eff = hit && t.armor && !ap ? Math.max(0, rolled - t.armor) : rolled; // 扣掉裝甲後真正生效的命中
   Rec.shot(s.team, reaction, forceMiss ? 0 : (triple ? Math.round((1 - Math.pow(1 - odds.die / 100, n)) * 100) : odds.hit), eff > 0);
   const tag = `${s.name}${reaction ? '（反應）' : triple ? '（三管齊發）' : ''} → ${t.name}（${forceMiss ? '必定落空' : `${n} 骰×${odds.die}%`}）`;
   if (hit) {
@@ -1196,6 +1222,21 @@ function reinforceSpots(b, ps, floor, rule) {
 // ---------- 頭目的強度與射擊上限（依出場順序） ----------
 // 第一個出場的頭目 -1 骰、突破時增援少 1 人；第 3、4 個 +1 骰。射擊上限見 RULES.BOSS_SHOTS
 function tuneBoss(e, op) {
+  const C = Camp.C;
+  const m = C.mode === 'story' && e.member ? C.members.find(x => x.id === e.member) : null;
+  const boost = m ? m.boost || 0 : 0; // 反制「成員強化」
+  if (boost) { e.gun.dice += boost; e.dice = e.gun.dice; }
+  if (e.member && op.kind === 'facility') {
+    // 現身戰：只有 1 段生命，打掉就撤退（擊退）
+    e.appearance = true;
+    e.maxHp = 2;
+    e.hp = 2;
+    e.cuts = null;
+    e.shotCap = 2;
+    S.appeared.push(e.member);
+    return;
+  }
+  if (e.member && op.kind === 'finale') { e.shotCap = 3; return; } // 莊園裡的成員
   if (e.kind === 'b_mother') {
     e.shotCap = 3;
     const C = Camp.C;
@@ -1206,7 +1247,12 @@ function tuneBoss(e, op) {
     }
     return;
   }
-  const idx = Camp.C.mode === 'story' && e.member ? Camp.bossIndex(e.member) : 1;
+  const idx = C.mode === 'story' && e.member ? Camp.bossIndex(e.member) : 1;
+  if (op.kind === 'boss' && C.bossKeep === e.member && e.cuts) { // 據點重打：保留已打破的第 1 段
+    e.phase = 2;
+    e.hp = e.cuts[0];
+    UI.log(`${e.name} 的第 1 段上次已經打破了，這次從第 2 段開始`, 'good');
+  }
   if (idx === 0) {
     e.gun.dice = Math.max(1, e.gun.dice - 1);
     e.dice = e.gun.dice;
@@ -1239,6 +1285,7 @@ function facilityConds(gen, level) {
   if (gen.mission.type === 'sabotage') pool.push('plant');
   const out = [];
   const n = level >= 9 ? 2 : 1;
+  if (Camp.mod('doll') && pool.includes('special')) out.push(pool.splice(pool.indexOf('special'), 1)[0]);
   while (out.length < n && pool.length) out.push(pool.splice(ri(0, pool.length - 1), 1)[0]);
   if (out.includes('special') && !gen.enemies.some(p => p.type === 'doll' || p.type === 'scarecrow')) {
     const cand = gen.enemies.filter(p => p.type === 'gunman' || p.type === 'zealot');
@@ -1306,6 +1353,7 @@ function actChance(e) {
   if (enemies().some(o => o !== e && o.officer && dist(o, e) <= 3)) c += RULES.ACT_OFFICER;
   if (e.suppressed) c -= RULES.ACT_SUPPRESSED;
   if (S.initDeaths) c -= RULES.ACT_DEATHS;
+  c += S.actBonus || 0;
   if (e.hp < e.maxHp / 2) c -= RULES.ACT_HURT;
   return Math.max(5, Math.min(95, c));
 }
@@ -1357,6 +1405,19 @@ function setSuppressedPose(u, on) {
 }
 
 async function die(u) {
+  if (u.appearance) { // 現身的成員：撤退（擊退 1 次），不算打倒
+    u.alive = false;
+    u.fled = true;
+    u.repelled = true;
+    if (u.label) { u.label.remove(); u.label = null; }
+    floatText(u, '撤退！', 'crit');
+    UI.banner(`${u.name} 被擊退了！`, 'player');
+    UI.log(`${u.name} 撤退了（擊退 1 次）`, 'good');
+    await tween(0.4, k => { u.mesh.position.y = k * 2; u.mesh.traverse(o => { if (o.material) { o.material.transparent = true; o.material.opacity = 1 - k; } }); });
+    u.mesh.visible = false;
+    refresh();
+    return;
+  }
   if (u.summon) { // 烏鴉被打散
     const o = u.owner;
     removeFlock(u);
@@ -1698,7 +1759,7 @@ function enterTargetMode(pref) {
   const ts = visibleTargets(u);
   if (!ts.length) { UI.toast('沒有視線內的目標'); return; }
   S.mode = 'target';
-  S.targets = ts;
+  S.targets = ts.map(t => ({ ...t, armor: u.apNext ? 0 : (t.unit.armor || 0) })); // 裝了穿甲彈就不算裝甲
   S.targetIdx = Math.max(0, ts.findIndex(t => t.unit === pref));
   S.moves = null;
   drawRange();
@@ -1741,7 +1802,7 @@ async function fire() {
   const u = S.selected;
   const triple = S.triple && canTriple(u);
   // 扣掉裝甲後不可能有效的射擊：擋下來，免得白白交出主動權
-  if (t.unit.armor && UI.effHit(t.odds, t.unit.armor, triple ? t.odds.dice * 2 : t.odds.dice) === 0) {
+  if (t.armor && UI.effHit(t.odds, t.armor, triple ? t.odds.dice * 2 : t.odds.dice) === 0) {
     cancelTarget();
     const why = `${t.unit.name} 有裝甲：${triple ? t.odds.dice * 2 : t.odds.dice} 骰就算全中也會被擋光，這槍不可能有效（沒有開槍）`;
     UI.toast(why, 2600);
@@ -1764,8 +1825,53 @@ async function fire() {
   await resolvePlayerAction(hit, u);
 }
 
+// 戰鬥中使用消耗品。回傳說明文字（不能用時）或 null
+const flashTargets = u => enemies().filter(e => e.mesh.visible && dist(u, e) <= 6.5 && hasLOS(S.map, u, e));
+async function useItem(u, item, target = null) {
+  if (!canAct(u)) return '現在不能行動';
+  if (!(u.items || []).includes(item)) return `${u.name} 沒有帶${ITEMS[item] ? ITEMS[item].name : item}`;
+  if (item === 'medkit') {
+    if (u.hp >= u.maxHp) return `${u.name} 沒有受傷`;
+    u.hp = Math.min(u.maxHp, u.hp + RULES.HEART_HP);
+    floatText(u, '+1 心', 'ow');
+    UI.log(`${u.name} 用了醫療包，回 1 顆心`, 'good');
+  } else if (item === 'apround') {
+    if (u.apNext) return '穿甲彈已經裝好了';
+    u.apNext = true;
+    floatText(u, '穿甲彈', 'ow');
+    UI.log(`${u.name} 裝填穿甲彈：下一次主動射擊無視裝甲`, 'good');
+  } else if (item === 'flash') {
+    const ts = flashTargets(u);
+    const t = target && ts.includes(target) ? target : null;
+    if (!t) return ts.length ? '要指定 6 格內看得到的敵人' : '6 格內沒有看得到的敵人';
+    S.busy = true;
+    floatText(t, '閃光！', 'crit');
+    const hit = [t, ...enemies().filter(e => e !== t && dist(e, t) < 1.5)];
+    for (const e of hit) suppress(e, '閃光！');
+    UI.log(`${u.name} 丟出閃光彈：${hit.map(e => e.name).join('、')} 進入壓制`, 'good');
+    makeNoise(u, t);
+    S.busy = false;
+  } else return '不能用';
+  u.items.splice(u.items.indexOf(item), 1);
+  Camp.consume(u.girl, item);
+  Rec.tag('道具：' + ITEMS[item].name);
+  refresh();
+  await resolvePlayerAction(true, u);
+  return null;
+}
+
 const actions = {
   shoot() { if (S.mode === 'target') fire(); else enterTargetMode(); },
+  // 道具按鈕：列出選取角色的消耗品
+  items() {
+    const u = S.selected;
+    if (!canAct(u) || !(u.items || []).length) { UI.toast(u && u.items && !u.items.length ? '沒有帶可用的道具' : '現在不能用道具'); return; }
+    UI.showItemMenu(u.items.map((k, i) => ({
+      label: ITEMS[k].name, desc: ITEMS[k].desc, key: k + i,
+      sub: k === 'flash' ? flashTargets(u).map(e => ({ label: `丟向 ${e.name}`, go: () => useItem(u, k, e).then(m => m && UI.toast(m)) })) : null,
+      go: k === 'flash' ? null : () => useItem(u, k).then(m => m && UI.toast(m)),
+    })));
+  },
   async rally() {
     const u = S.selected;
     if (!canAct(u) || !(u.suppressed || u.pinned)) return;
@@ -2790,6 +2896,7 @@ addEventListener('keydown', e => {
   if (k === 'x') actions.swap();
   if (k === 'f') actions.plant();
   if (k === 'g') actions.magic();
+  if (k === 't') actions.items();
   if (e.key === 'Enter' || e.key === ' ') {
     e.preventDefault();
     if (S.side === 'deploy') startBattle();
@@ -2890,9 +2997,10 @@ function boot() {
 boot();
 requestAnimationFrame(frame);
 window.__game = { S, actions, camera, THREE, scene, zoneMesh, Camp, // 除錯用
+  useItem,
   dbg: { pickTile, strike, melee, dash, giveInitiative, actChance, spawnEnemy, segFloor, playerMove, moveOptions, quietSees, enemies, players, weapon, step: updateTweens, magicOptions, execMagic, pushInfo, execPush,
     startMission, enterHQ, transform, spawnWave, bossPhase, performMove, die, aiChoose, lockAfterAttack, enemyInitiative } };
 // 純文字介面（給代理測試用）：window.TXT
 TextUI.init({ S, actions, Camp, key, coverSides, players, enemies, weapon, visibleTargets, moveOptions, playerMove, selectUnit,
   enterTargetMode, cancelTarget, fire, magicOptions, execMagic, magicInfo, canAct, startBattle, deployTo, actChance,
-  planReactions, pathCells, moveRisk, reloadInfo, canTriple, canPlant, newGame, newEndless, continueGame, setInstant: on => { instant = on; } });
+  planReactions, pathCells, moveRisk, reloadInfo, canTriple, canPlant, newGame, newEndless, continueGame, useItem, flashTargets, enterHQ, setInstant: on => { instant = on; } });

@@ -46,6 +46,12 @@ export const RULES = {
   BOSS_SHOTS: [2, 2, 3, 3], // 頭目每個敵方主動權最多主動開幾槍（依出場順序）；瑪格麗特 3，第 3 段 4
   BOSS_SAME_TARGET: 2,    // 同一名少女一次敵方主動權內最多被頭目打幾槍
   FAC_TIMER: [4, 3],      // 設施條件「增援計時」：每幾個敵方主動權補 2 人（難度 9 起用第二個）
+  // 戰役 v2
+  CARDS: 3,               // 家族同時準備幾張反制（其中 1 張公開）
+  CARD_TURNS: [4, 6],     // 反制的倒數（回合）
+  REPELS: 2,              // 擊退成員幾次，解鎖她的據點
+  APPEAR: [0.25, 0.1, 0.75], // 成員在自己設施現身的機率：基本、每回合沒現身 +、上限
+  MANOR_AT: 3,            // 打倒幾名成員後退守莊園
   MELEE_WOUNDS: 1,        // 朱音近戰：必中，不經過三階直接受傷這麼多次並壓制（無視裝甲）
   ICE_HP: 3,              // 冰塊被打幾下會碎
   ICE_RANGE: 5,           // 冰塊放置距離
@@ -153,6 +159,30 @@ export const ENEMY_TYPES = {
   b_mother:  { name: '瑪格麗特', maxHp: 9, dice: 3, dieMod: 5, color: 0x1e1428, boss: true, impulse: 'shoot', keepFiring: true,
                reinforce: { kinds: ['mg', 'gunman'], where: 'guard' },
                desc: '教母：反應射擊打空不停火。突破階段時，機槍手和槍手守到她身邊。打倒她就結束了' },
+};
+
+// ---------- 戰役 v2：道具與裝備（每人 3 格） ----------
+// use：消耗品，戰鬥中用掉就沒了；gear：裝備，一直帶著
+export const ITEMS = {
+  medkit: { name: '醫療包', kind: 'use', desc: '行動：回 1 顆心（不交主動權）' },
+  apround: { name: '穿甲彈', kind: 'use', desc: '裝填後，下一次主動射擊無視裝甲（不交主動權）' },
+  flash: { name: '閃光彈', kind: 'use', desc: '丟向 6 格內看得到的敵人：她和周圍 1 格的敵人進入壓制（會發出聲響）' },
+  vest: { name: '防彈背心', kind: 'gear', desc: '上場時多 1 顆心（只在這場內）' },
+  mag: { name: '擴充彈匣', kind: 'gear', desc: '主武器彈匣 +2、備彈 +4' },
+  scope: { name: '瞄準鏡', kind: 'gear', desc: '所有武器每顆骰 +5%' },
+};
+export const SLOTS = 3;
+
+// ---------- 戰役 v2：家族的反制（像黑地事件）。生效一張，家族威脅 +1 ----------
+export const COUNTERS = {
+  sight: { name: '千里眼', desc: '未警戒敵人的視野 +2' },
+  extra: { name: '擴編', desc: '每張地圖敵人 +1' },
+  armor: { name: '重裝化', desc: '每張地圖有 1 名槍手換成重裝兵' },
+  doll: { name: '魔女的玩偶', desc: '設施圖必定有人偶或稻草人' },
+  supply: { name: '封鎖補給', desc: '地圖上的補給箱減半' },
+  drill: { name: '操練', desc: '敵人的啟動率 +5%' },
+  production: { name: '補給線', desc: '莊園增援產能 +1' },
+  member: { name: '成員強化', desc: '一名成員（生效時決定）之後現身與據點戰 +1 骰' },
 };
 
 // 難度 → 一般敵人數量：難度 1 = 4 人，之後大約每升 2 級多 1 人，最多 10 人

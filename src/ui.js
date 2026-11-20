@@ -11,6 +11,7 @@ export function init(handlers) {
   $('btn-rally').onclick = () => H.rally();
   $('btn-plant').onclick = () => H.plant();
   $('btn-magic').onclick = () => H.magic();
+  $('btn-item').onclick = () => H.items();
   $('btn-end').onclick = () => H.pass();
   $('btn-start').onclick = () => H.start();
   $('cam-l').onclick = () => H.rotL();
@@ -60,7 +61,7 @@ export function updateHUD(S) {
   t.className = S.side === 'deploy' ? 'player' : S.side;
   const deploying = S.side === 'deploy';
   $('btn-start').hidden = !deploying;
-  for (const id of ['btn-shoot', 'btn-reload', 'btn-swap', 'btn-magic', 'btn-end']) $(id).hidden = deploying;
+  for (const id of ['btn-shoot', 'btn-reload', 'btn-swap', 'btn-magic', 'btn-item', 'btn-end']) $(id).hidden = deploying;
   const seen = S.units.filter(u => u.team === 'enemy' && u.alive && u.mesh.visible).length;
   // 還沒全殲時提示「還有敵人的氣息」（不說在哪、有幾個）
   const hidden = S.side !== 'deploy' && S.units.some(u => u.team === 'enemy' && u.alive && !u.mesh.visible);
@@ -126,7 +127,7 @@ export function showTargeting(list, idx, triple = null) {
   el.hidden = false;
   el.innerHTML = `<div class="tp-title">選擇目標 <small>Tab 切換 · 點擊敵人也可</small></div>` +
     list.map((t, i) => {
-      const a = t.unit.armor || 0, n = triple ? t.odds.dice * 2 : t.odds.dice, eff = effHit(t.odds, a, n);
+      const a = t.armor ?? (t.unit.armor || 0), n = triple ? t.odds.dice * 2 : t.odds.dice, eff = effHit(t.odds, a, n);
       const arm = a ? `<br><small class="${eff ? 'warn' : 'bad'}">裝甲 ${a}：要中 ${a + 1} 顆才有效${eff ? '' : '，這槍不可能有效'}（至少中一顆 ${effHit(t.odds, 0, n)}%）</small>` : '';
       return `
       <div class="tgt ${i === idx ? 'on' : ''}" data-i="${i}">
@@ -144,6 +145,23 @@ export function showTargeting(list, idx, triple = null) {
 }
 
 export function hideTargeting() { $('target-panel').hidden = true; }
+
+// 道具選單：list = [{ label, desc, go, sub:[{label, go}] }]（用目標面板的位置顯示）
+export function showItemMenu(list) {
+  const el = $('target-panel');
+  el.hidden = false;
+  el.innerHTML = `<div class="tp-title">使用道具</div>` + list.map((it, i) => `
+    <div class="tgt" data-i="${i}"><div><b>${it.label}</b></div><small>${it.desc}</small>
+      ${it.sub ? (it.sub.length ? it.sub.map((s, j) => `<button class="it-sub" data-i="${i}" data-j="${j}">${s.label}</button>`).join(' ') : '<br><small class="bad">6 格內沒有看得到的敵人</small>') : ''}</div>`).join('') +
+    `<div class="tp-btns"><button id="tp-cancel">取消 (Esc)</button></div>`;
+  el.querySelectorAll('.tgt').forEach(d => d.onclick = ev => {
+    if (ev.target.classList.contains('it-sub')) return;
+    const it = list[+d.dataset.i];
+    if (it.go) { el.hidden = true; it.go(); }
+  });
+  el.querySelectorAll('.it-sub').forEach(b => b.onclick = () => { el.hidden = true; list[+b.dataset.i].sub[+b.dataset.j].go(); });
+  $('tp-cancel').onclick = () => { el.hidden = true; };
+}
 
 // 扣掉裝甲後「真正有效」的機率：n 顆骰至少中 armor+1 顆
 export function effHit(o, armor = 0, n = o.dice) {

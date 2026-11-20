@@ -1,7 +1,7 @@
 // 標題畫面與作戰室（任務之間：選作戰、點成長樹、選出擊的兩人）。
 import * as Camp from './campaign.js';
 import { GIRLS, TREES, FAMILY, FAMILY_BY_ID, STORY } from './girls.js';
-import { WEAPONS, RULES } from './config.js';
+import { WEAPONS, RULES, ITEMS, SLOTS, COUNTERS } from './config.js';
 
 const $ = id => document.getElementById(id);
 const hex = c => '#' + c.toString(16).padStart(6, '0');
@@ -52,20 +52,30 @@ export function showHQ(onGo, notes = []) {
 }
 
 function opDesc(op) {
-  if (op.kind === 'facility') return op.member ? `${FAMILY_BY_ID[op.member].title}・${FAMILY_BY_ID[op.member].name} 的設施` : '隨機設施';
-  if (op.kind === 'boss') return `打倒她，拔掉「${FAMILY_BY_ID[op.member].buff}」`;
+  const story = Camp.C.mode === 'story';
+  if (op.kind === 'facility') return story ? '家族的設施（不知道是誰的；她可能親自現身）。打贏得到情報：翻開一張蓋著的反制' : (op.member ? `${FAMILY_BY_ID[op.member].title}・${FAMILY_BY_ID[op.member].name} 的設施` : '隨機設施');
+  if (op.kind === 'boss') return `她的據點：三段生命的頭目戰。打倒她，拔掉「${FAMILY_BY_ID[op.member].buff}」`;
   if (op.kind === 'manor') return '削弱增援產能；也許會有成員在場';
-  return `增援 ${Camp.C.production} 波。打倒教母就結束`;
+  if (op.kind === 'stop') return `打贏就取消這張反制：${COUNTERS[op.card].desc}`;
+  if (op.kind === 'growth') return `打贏拿到：${op.reward.map(k => ITEMS[k].name).join('、')}`;
+  if (op.kind === 'rest') return '不出擊。全員回 1 顆心、後送倒數 -1；可出擊的人不足 2 名時最快回來的人提前歸隊。家族的反制照樣推進';
+  const left = story ? Camp.C.members.filter(m => m.alive).map(m => FAMILY_BY_ID[m.id].name) : [];
+  return `增援 ${Camp.C.production} 波。打倒教母就結束${left.length ? `（${left.join('、')} 也在莊園）` : ''}`;
 }
 
 function opBuffs(op) {
+  if (op.kind === 'rest') return '';
+  if (op.kind === 'facility' && Camp.C.mode === 'story') return '加持：不明（看是誰的設施）';
   const bs = [...new Set(Camp.activeBuffs(op))];
   return bs.length ? '加持：' + bs.map(b => `${FAMILY_BY_ID[b].buff}（${FAMILY_BY_ID[b].desc}）`).join('、') : '沒有家族加持';
 }
 
 function opStory(op) {
   if (!op) return '';
-  if (op.kind === 'facility') return STORY.facility(op.name);
+  if (op.kind === 'rest') return '先喘口氣。家族不會等妳們的。';
+  if (op.kind === 'stop') return '情報指出家族正在準備反制。趕在它生效之前破壞掉。';
+  if (op.kind === 'growth') return '有一批物資沒人看守……大概吧。';
+  if (op.kind === 'facility') return Camp.C.mode === 'story' ? `目標：${op.name}。家族的某個成員在這裡做生意。` : STORY.facility(op.name);
   if (op.kind === 'boss') return FAMILY_BY_ID[op.member].line;
   if (op.kind === 'manor') return STORY.manorRaid;
   return STORY.finale;
@@ -81,10 +91,15 @@ function render() {
   if (C.mode === 'story') {
     fam = FAMILY.map(d => {
       const m = C.members.find(x => x.id === d.id);
-      const left = m.alive && C.phase === 'facilities' ? (m.facilities > 0 ? ` · 設施 ${m.facilities}` : C.done < RULES.FIRST_BOSS_AT ? ` · 還沉得住氣（完成 ${RULES.FIRST_BOSS_AT} 場後現身）` : ' · 現身') : '';
+      const left = m.alive && C.phase === 'field' ? (m.repels >= RULES.REPELS ? ' · 找到據點了' : ` · 擊退 ${m.repels}/${RULES.REPELS}`) + (m.boost ? ` · 強化 +${m.boost} 骰` : '') : '';
       return `<div class="fam ${m.alive ? '' : 'down'}"><b>${d.title}・${d.name}</b>${left}<br><small>${d.buff}：${d.desc}</small></div>`;
     }).join('');
-    if (C.phase === 'facilities') fam += `<div class="fam note"><small>莊園之前，每個成員的加持只在她自己的設施生效；退守莊園後，所有仍存活成員的加持一起生效。</small></div>`;
+    if (C.phase === 'field') fam += `<div class="fam note"><small>成員會在自己的設施偶爾現身，擊退 ${RULES.REPELS} 次就找到她的據點。打倒 ${RULES.MANOR_AT} 名成員後家族退守莊園，剩下的成員會和教母一起出現。</small></div>`;
+    const cards = C.cards.map(c => c.revealed
+      ? `<div class="fam card"><b>${COUNTERS[c.id].name}</b> · ${c.left} 回合後生效<br><small>${COUNTERS[c.id].desc}</small></div>`
+      : `<div class="fam card hidden"><b>？？？</b> · ${c.left} 回合後生效<br><small>蓋著的反制。打贏設施作戰可以翻開</small></div>`).join('');
+    const done = Object.entries(C.mods || {}).filter(([, n]) => n > 0).map(([k, n]) => `${COUNTERS[k].name}${n > 1 ? '×' + n : ''}`).join('、');
+    fam = `<div class="fam threat"><b>家族威脅 ${C.threat}</b><br><small>每生效一張反制 +1，難度跟著上升${done ? `。已生效：${done}` : ''}</small></div>` + cards + fam;
     if (C.phase === 'manor') fam += `<div class="fam prod"><b>莊園增援產能 ${C.production}</b><br><small>決戰時的增援波數</small></div>`;
   } else {
     const counts = {};
@@ -95,15 +110,16 @@ function render() {
   }
 
   const head = C.mode === 'story'
-    ? `作戰室 · 已完成 ${C.done} 個任務${C.phase === 'manor' ? ' · 莊園階段' : ''}`
+    ? `作戰室 · 第 ${C.turn + 1} 回合${C.phase === 'manor' ? ' · 莊園階段' : ''}`
     : `無盡模式 · 已完成 ${C.done} 張地圖`;
 
   const opsHtml = C.phase === 'done' ? '' : ops.map((o, i) => `
     <button class="op ${i === st.op ? 'on' : ''} ${o.kind}" data-o="${i}">
-      <b>${o.detour ? '整備：' : C.retry && i === 0 ? '重打：' : ''}${o.name}</b>${o.detour ? '<small>替代作戰：不推高難度、不推進「坐不住」，獎章照發</small>' : ''}<small>${opDesc(o)} · 難度 ${Camp.level(o)}（敵人 ${Camp.enemyEstimate(o)}${o.kind === 'manor' ? '，可能有成員在場' : o.kind === 'finale' ? `，增援 ${C.production} 波×3` : ''}）</small>
+      <b>${o.retry || (C.retry && C.mode !== 'story') ? '重打：' : ''}${o.name}</b><small>${opDesc(o)}${o.kind === 'rest' ? '' : ` · 難度 ${Camp.level(o)}（敵人 ${Camp.enemyEstimate(o)}${o.kind === 'manor' ? '，可能有成員在場' : o.kind === 'finale' ? `，增援 ${C.production} 波×3` : ''}）`}</small>
       <small class="opbuff">${opBuffs(o)}</small>
     </button>`).join('');
 
+  const stashList = Object.entries(C.stash || {}).filter(([, n]) => n > 0);
   const girls = GIRLS.map(d => {
     const g = Camp.girlState(d.id);
     const dep = C.deploy.includes(d.id);
@@ -123,7 +139,7 @@ function render() {
     }
     const weap = d.weapons.map(w => WEAPONS[w].name).join(' ＋ ');
     const status = g.evac > 0
-      ? `<span class="evac-tag">後送中：再 ${g.evac} 個任務</span>`
+      ? `<span class="evac-tag">後送中：再 ${g.evac} 個回合</span>`
       : `<button class="dep ${dep ? 'on' : ''}" data-g="${d.id}">${dep ? '出擊 ✓' : '待命'}</button>`;
     return `<div class="gcard ${dep ? 'on' : ''} ${g.evac > 0 ? 'evac' : ''}">
       <div class="gh"><i class="dot" style="background:${hex(d.hair)}"></i><b>${d.name}</b><span class="t">${d.title}</span>
@@ -132,24 +148,29 @@ function render() {
       <div class="gw dim">被動：${d.passive}<br>魔法：${d.active}</div>
       ${trees}${det}
       <div class="gf"><span class="medal">獎章 ${g.medals}</span>${status}</div>
+      <div class="gf slots">道具 ${(g.slots || []).length}/${SLOTS}：${(g.slots || []).map(k => `<button class="unequip" data-g="${d.id}" data-k="${k}" title="${ITEMS[k].desc}（點一下放回倉庫）">${ITEMS[k].name} ✕</button>`).join(' ') || '<span class="dim">沒帶</span>'}
+        ${(g.slots || []).length < SLOTS && stashList.length ? `<select class="equip" data-g="${d.id}"><option value="">＋ 帶上…</option>${stashList.map(([k, n]) => `<option value="${k}">${ITEMS[k].name}（${n}）</option>`).join('')}</select>` : ''}</div>
       ${Camp.maxed(g) && g.medals >= 1 ? `<div class="gf spend">成長樹已滿：${g.evac > 0 ? `<button class="spend" data-g="${d.id}" data-w="evac">1 枚：後送少 1 場</button>` : g.hp < d.maxHp ? `<button class="spend" data-g="${d.id}" data-w="heal">1 枚：回 1 顆心</button>` : '<span class="dim">獎章留著，受傷或後送時可以用</span>'}</div>` : ''}
     </div>`;
   }).join('');
 
   const avail = C.girls.filter(g => g.evac === 0).length;
   const need = Math.min(2, avail);
-  const ready = C.phase !== 'done' && C.deploy.length === need && op;
+  const isRest = op && op.kind === 'rest';
+  const ready = C.phase !== 'done' && op && (isRest || (C.deploy.length === need && need > 0));
+  const stashHtml = stashList.length ? stashList.map(([k, n]) => `<span title="${ITEMS[k].desc}">${ITEMS[k].name}×${n}</span>`).join('、') : '<span class="dim">空的</span>';
   const notes = [...st.notes, ...st.recalled.map(id => `${GIRLS.find(g => g.id === id).name} 提前歸隊（至少 2/3 血）`)];
 
   const o = open(`
     <h1>${head}</h1>
     ${notes.length ? `<ul class="notes">${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : ''}
     ${C.phase === 'done' ? `<div class="story">${STORY.victory}</div><button id="hq-title">回到標題</button>` : ''}
-    <div class="sec">家族的加持</div><div class="fams">${fam}</div>
+    <div class="sec">${C.mode === 'story' ? '家族與反制' : '家族的加持'}</div><div class="fams">${fam}</div>
     ${opsHtml ? `<div class="sec">選擇作戰</div><div class="ops">${opsHtml}</div><div class="story small">${opStory(op)}</div>` : ''}
     <div class="sec">魔法少女（選 ${need} 人出擊；點數字看成長樹）</div>
+    <div class="stash"><b>倉庫</b>：${stashHtml}<br><small class="dim">每人帶 ${SLOTS} 個道具或裝備。${Object.entries(ITEMS).map(([, it]) => `${it.name}：${it.desc}`).join('；')}</small></div>
     <div class="girls">${girls}</div>
-    ${C.phase !== 'done' ? `<button id="hq-go" ${ready ? '' : 'disabled'}>出擊 ▶</button>` : ''}
+    ${C.phase !== 'done' ? `<button id="hq-go" ${ready ? '' : 'disabled'}>${isRest ? '休整（不出擊）▶' : '出擊 ▶'}</button>` : ''}
     <p class="rec-btns dim">戰鬥統計（平衡用）：<button class="rec-all">匯出全部</button> <button class="rec-allcp">複製全部</button></p>
   `, 'hq');
 
@@ -161,6 +182,8 @@ function render() {
   });
   o.querySelectorAll('.learn').forEach(b => b.onclick = () => { Camp.learn(b.dataset.g, b.dataset.t); render(); });
   o.querySelectorAll('.spend').forEach(b => b.onclick = () => { Camp.spend(b.dataset.g, b.dataset.w); render(); });
+  o.querySelectorAll('.unequip').forEach(b => b.onclick = () => { Camp.unequip(b.dataset.g, b.dataset.k); render(); });
+  o.querySelectorAll('.equip').forEach(s => s.onchange = () => { if (s.value) Camp.equip(s.dataset.g, s.value); render(); });
   o.querySelectorAll('.dep').forEach(b => b.onclick = () => {
     const id = b.dataset.g;
     if (C.deploy.includes(id)) C.deploy = C.deploy.filter(x => x !== id);
@@ -170,6 +193,7 @@ function render() {
   const go = o.querySelector('#hq-go');
   if (go) go.onclick = () => {
     if (!ready) return;
+    if (isRest) { st.notes = Camp.restTurn(); st.op = 0; render(); return; }
     C.op = op;
     Camp.save();
     o.hidden = true;

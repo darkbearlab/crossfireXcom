@@ -6,8 +6,8 @@
 // 網址加上 ?text 會在畫面右側顯示文字面板（含指令輸入框）。
 // 第一次呼叫 TXT.do（或網址有 ?text）就開啟「快速模式」：動畫瞬間完成，不受畫面是否顯示影響。
 // 一般玩家沒用到 TXT 時，動畫照常。
-import { RULES, T, WEAPONS } from './config.js';
-import { GIRL, TREES } from './girls.js';
+import { ITEMS, COUNTERS, SLOTS, RULES, T, WEAPONS } from './config.js';
+import { GIRL, TREES, FAMILY_BY_ID } from './girls.js';
 import * as UI from './ui.js';
 import * as Rec from './stats.js';
 
@@ -34,6 +34,8 @@ const HELP = `指令（座標是 x z；角色用代號 A 朱音 / H 光 / Y 雪�
   squad A H           選出擊的兩人
   learn A gun|magic   用獎章學下一格成長樹（第 5 格要 2 枚）
   spend A heal|evac   成長樹點滿後：1 枚獎章回 1 顆心／後送少 1 場
+  equip A 道具 | unequip A 道具   帶上／放回倉庫（每人 3 格；medkit apround flash vest mag scope）
+  use [A] 道具 [N]    戰鬥中用消耗品：medkit 回 1 心、apround 下一槍無視裝甲、flash 丟向敵人 N（不交主動權）
   go                  出擊
   deploy A x z        部署階段：把角色擺到 (x,z)
   start               部署完成，開始行動
@@ -119,7 +121,7 @@ function girlLine(S, u) {
   return `${gKey(u)} ${u.name} (${u.x},${u.z})  心 ${hearts}/${maxH}（${u.hp}/${u.maxHp}）${u.lineUsed ? ' 心線：已用或沒有' : ` 心線：掉到 ${u.lineHp / u.heartHp} 心時`}  累積 ${pips(u)} ${status(u)}` +
     `\n    ${w.name} ${w.ammo}/${w.mag}${isFinite(w.reserve) ? ` 備 ${w.reserve}` : ''}${ri && ri.gives ? '（換彈會交出主動權）' : ''}` +
     (u.weapons.length > 1 ? `（另一把：${u.weapons[1 - u.wi].name} ${u.weapons[1 - u.wi].ammo}/${u.weapons[1 - u.wi].mag}）` : '') +
-    (mi ? `  魔法：${mi.label}${mi.usable ? '' : '（' + (mi.why || '不可用') + '）'}` : '') + (flags.length ? '  ' + flags.join('、') : '');
+    (mi ? `  魔法：${mi.label}${mi.usable ? '' : '（' + (mi.why || '不可用') + '）'}` : '') + ((u.items || []).length || (u.gear || []).length ? `  道具：${[...(u.items || []), ...(u.gear || []).map(k => k + '(裝備)')].join(',')}${u.apNext ? '（穿甲彈已裝填）' : ''}` : '') + (flags.length ? '  ' + flags.join('、') : '');
 }
 
 function enemyLine(S, e, all) {
@@ -142,8 +144,8 @@ function targetsText(S, u) {
   if (u.firedOut) return '  （這次主動權不能再開槍）';
   return ts.map(t => {
     const o = t.odds;
-    const ef = t.unit.armor ? UI.effHit(o, t.unit.armor) : 0;
-    const armor = t.unit.armor ? `，裝甲 ${t.unit.armor}：實際生效 ${ef}%${ef ? '' : '（不可能有效，開不了）'}` : '';
+    const arm = u.apNext ? 0 : (t.unit.armor || 0); const ef = arm ? UI.effHit(o, arm) : 0;
+    const armor = arm ? `，裝甲 ${arm}：實際生效 ${ef}%${ef ? '' : '（不可能有效，開不了）'}` : '';
     const lock = t.unit.lockOnHit ? '，⛓沒打倒的話這次主動權不能再行動' : '';
     return `  ${eKey(S, t.unit)} ${t.unit.name}：${o.dice} 骰 × ${o.die}% → 至少中一顆 ${o.hit}%，平均中 ${(o.dice * o.die / 100).toFixed(1)}${armor}${lock}` +
       `  ${UI.coverName(o)}  距離 ${o.dist.toFixed(1)}${o.sweet ? ' 甜蜜距離' : ''}`;
@@ -242,9 +244,14 @@ async function run(line) {
       case 'ok': if (!clickBtn(b => ['s-ok', 'ov-btn'].includes(b.id))) return '畫面上沒有主要按鈕'; break;
       case 'hq': {
         const ops = G.Camp.ops(), C = G.Camp.C;
-        return (document.querySelector('#overlay #s-ok') ? '（畫面上還有劇情，先 ok 才會回到作戰室）\n' : '') + '作戰：\n' + ops.map((o, i) => `  ${i + 1}. ${o.detour ? '整備（替代作戰）：' : C.retry && i === 0 ? '重打：' : ''}${o.name}（${o.kind}）難度 ${G.Camp.level(o)} 敵人約 ${G.Camp.enemyEstimate(o)}`).join('\n') +
+        const story = C.mode === 'story';
+        const fam = story ? `第 ${C.turn + 1} 回合　家族威脅 ${C.threat}（每生效一張反制 +1，難度 +2）${C.phase === 'manor' ? '　莊園階段' : ''}\n反制：\n` +
+          C.cards.map(c => c.revealed ? `  ${COUNTERS[c.id].name}（${c.left} 回合後生效）：${COUNTERS[c.id].desc}` : `  ？？？（${c.left} 回合後生效；打贏設施可翻開）`).join('\n') +
+          `\n成員：` + C.members.map(m => `${FAMILY_BY_ID[m.id].name}${m.alive ? `（擊退 ${m.repels}/2${m.boost ? `，強化 +${m.boost}` : ''}）` : '（已打倒）'}`).join('、') +
+          `\n倉庫：` + (Object.entries(C.stash || {}).filter(([, n]) => n > 0).map(([k, n]) => `${k}=${ITEMS[k].name}×${n}`).join('、') || '空的') + '\n' : '';
+        return (document.querySelector('#overlay #s-ok') ? '（畫面上還有劇情，先 ok 才會回到作戰室）\n' : '') + fam + '作戰：\n' + ops.map((o, i) => `  ${i + 1}. ${o.retry ? '重打：' : ''}${o.name}（${o.kind}）${o.kind === 'rest' ? '不出擊，選了直接 go' : `難度 ${G.Camp.level(o)} 敵人約 ${G.Camp.enemyEstimate(o)}`}`).join('\n') +
           '\n少女：\n' + C.girls.map(g => `  ${GIRL_KEY[g.id]} ${GIRL[g.id].name} 生命 ${g.hp}/${GIRL[g.id].maxHp} 槍法 ${g.gun} 魔法 ${g.magic} 獎章 ${g.medals}` +
-            `${g.evac ? ` 後送中（還要 ${g.evac} 場；可出擊的人不到 2 個時會提前歸隊，至少 2/3 血）` : ''}${(C.deploy || []).includes(g.id) ? (g.evac ? ' ✓出擊（但後送中，不能出擊）' : ' ✓出擊') : ''}`).join('\n');
+            ` 道具[${(g.slots || []).join(',')}]${g.evac ? ` 後送中（還要 ${g.evac} 回合；休整時可出擊的人不到 2 個會提前歸隊，至少 2/3 血）` : ''}${(C.deploy || []).includes(g.id) ? (g.evac ? ' ✓出擊（但後送中，不能出擊）' : ' ✓出擊') : ''}`).join('\n');
       }
       case 'op': if (!clickBtn(b => b.dataset.o === String(+args[0] - 1))) return '沒有這個作戰（先 hq）'; return run('hq');
       case 'squad': {
@@ -271,6 +278,20 @@ async function run(line) {
         const id = Object.keys(GIRL_KEY).find(k => GIRL_KEY[k] === (args[0] || '').toUpperCase());
         if (!id || !G.Camp.spend(id, args[1])) return '用不了：要兩條成長樹都點滿、有 1 枚獎章；heal＝回 1 顆心（沒後送、沒滿血），evac＝後送少 1 場';
         return run('hq');
+      }
+      case 'equip': case 'unequip': { // equip A medkit
+        const id = Object.keys(GIRL_KEY).find(k => GIRL_KEY[k] === (args[0] || '').toUpperCase());
+        if (!id || !ITEMS[args[1]]) return `用法：${cmd} A 道具代號（${Object.keys(ITEMS).join('/')}）`;
+        if (!(cmd === 'equip' ? G.Camp.equip(id, args[1]) : G.Camp.unequip(id, args[1]))) return cmd === 'equip' ? `帶不了：倉庫沒有，或 ${SLOTS} 格滿了` : '她沒有帶這個';
+        G.enterHQ();
+        return run('hq');
+      }
+      case 'use': { // use A medkit | use A flash N
+        const u = girlArg(); const e = needAct(u); if (e) return e;
+        const t = args[1] ? findEnemy(S, args[1]) : null;
+        const msg = await G.useItem(u, args[0], t);
+        if (msg) return msg;
+        break;
       }
       case 'go': if (!clickBtn(b => b.id === 'hq-go' && !b.disabled)) return '還不能出擊（選作戰與兩名少女）'; break;
       case 'deploy': {

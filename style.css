@@ -258,3 +258,11 @@ html, body, button, #hud, #hud * { touch-action: manipulation; }
 #txt-panel pre { flex: 1; margin: 0; padding: 8px; overflow: auto; font: 12px/1.35 Consolas, "Noto Sans Mono CJK TC", monospace; white-space: pre; color: #d8e2ec; }
 #txt-panel form { display: flex; border-top: 1px solid #2c3a48; }
 #txt-panel input { flex: 1; font: 14px Consolas, monospace; padding: 8px; background: #0b1016; color: #fff; border: 0; }
+/* 戰役 v2：家族威脅、反制、倉庫與道具欄 */
+.hq .fam.threat { border-color: #a04040; background: #2a1414; }
+.hq .fam.card { border-color: #b07030; background: #2a1c10; }
+.hq .fam.card.hidden { border-style: dashed; opacity: .8; }
+.hq .stash { margin: 4px 0 8px; font-size: 13px; line-height: 1.6; }
+.hq .gf.slots { flex-wrap: wrap; gap: 4px; font-size: 12px; }
+.hq .gf.slots button, .hq .gf.slots select { font-size: 12px; padding: 2px 6px; }
+#target-panel .it-sub { margin: 4px 4px 0 0; }
