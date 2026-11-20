@@ -32,7 +32,7 @@
       <button id="btn-reload"><kbd>R</kbd>換彈</button>
       <button id="btn-swap"><kbd>X</kbd><span id="swap-label">換槍</span></button>
       <button id="btn-magic" class="magic"><kbd>G</kbd><span id="magic-label">魔法</span></button>
-      <button id="btn-rally" hidden><kbd>2</kbd>解除壓制</button>
+      <button id="btn-rally" hidden><kbd>2</kbd>起身</button>
       <button id="btn-plant" class="plant" hidden><kbd>F</kbd>安裝炸藥</button>
       <button id="btn-end" class="end"><kbd>⌫</kbd>放棄<span class="wide-only">主動權</span></button>
       <button id="btn-start" class="start" hidden><kbd>Enter</kbd>部署完成，開始行動</button>
@@ -51,24 +51,25 @@
         <div class="only-mouse"><b>左鍵拖曳 / WASD</b> 平移　<b>右鍵拖曳</b> 旋轉　<b>滾輪</b> 縮放</div>
         <div class="only-mouse"><b>Q / E</b> 旋轉 45°</div>
         <div class="only-mouse"><b>Tab</b> 切換士兵 / 目標</div>
-        <div class="only-mouse"><b>1</b> 射擊　<b>R</b> 換彈　<b>X</b> 換槍　<b>G</b> 魔法　<b>2</b> 解除壓制　<b>F</b> 安裝炸藥</div>
+        <div class="only-mouse"><b>1</b> 射擊　<b>R</b> 換彈　<b>X</b> 換槍　<b>G</b> 魔法　<b>2</b> 起身　<b>F</b> 安裝炸藥</div>
         <div class="only-mouse"><b>Enter</b> 開火　<b>Esc</b> 取消　<b>Backspace</b> 放棄主動權</div>
         <hr>
         <div>沒有回合：行動直到<b>失敗</b>才交出主動權</div>
-        <div>失敗＝射擊沒命中、移動中被反應射擊命中</div>
+        <div>失敗＝射擊一顆都沒中、移動中被反應射擊命中</div>
         <div><span style="color:#3fa9ff">藍格</span>：直線移動（任意角度、不限距離）</div>
         <div><span style="color:#c07bff">紫格</span>：翻越半掩體（獨立的一次移動）</div>
         <div><span style="color:#ff5a4a">紅圈</span>：敵人會在那裡開反應槍</div>
         <div>反應槍打空的單位，這次主動權內不能再開槍 ✕</div>
-        <div>被命中＝壓制 ▼：開槍 -20、縮起來（掩體 +1 級）、不能移動、不能反應射擊</div>
-        <div>盾牌：<span style="color:#4fc3ff">藍=全掩體 -50，受傷 -1</span>　<span style="color:#ffc44f">黃=半掩體 -30</span>（掩體最高到全掩體）</div>
-        <div><b>愛心</b>：魔法少女的生命一顆心 3 點，每次受傷最多扣掉一顆心。<span style="color:#ffd34f">黃線＝心線</span>：第一次掉到一半愛心時咬牙起身，主動權回到我方（每人每圖一次）</div>
-        <div><b>頭目</b>：血條分 3 段，一擊最多打掉一段；突破一段時她起身、叫來 2 名護衛，主動權交給敵方</div>
+        <div><b>骰子</b>：一次射擊擲好幾顆骰，每顆各自判定。每顆命中率看目標掩體：暴露 50%、<span style="color:#ffc44f">黃=半掩體 33%</span>、<span style="color:#4fc3ff">藍=全掩體 17%</span>（掩體最高到全掩體）。甜蜜距離 +1 骰，反應射擊、被壓制時開槍 -1 骰</div>
+        <div><b>三階</b>：每中一顆累積一下（● ●）。第 1 下<b>受阻 ▽</b>：不能移動；第 2 下<b>壓制 ▼</b>：開槍 -1 骰、縮起來（掩體 +1 級）、不能移動、不能反應射擊；之後每中一顆就受傷。<b>起身</b>只解除狀態，累積不會清掉</div>
+        <div><b>生命</b>：一般敵人 1 傷、精銳 2 傷；裝甲每次攻擊少算 1 下</div>
+        <div><b>愛心</b>：魔法少女受傷一次扣一顆心，一次攻擊最多扣一顆。<span style="color:#ffd34f">黃線＝心線</span>：第一次掉到一半愛心時咬牙起身、累積歸零，主動權回到我方（每人每圖一次）</div>
+        <div><b>頭目</b>：生命分 3 段（每段 2 傷），一擊最多打掉一段；突破一段時她起身、叫來 2 名護衛，主動權交給敵方</div>
         <div><b>敵人品質</b>：新兵 45%、老手 60%、精銳 70%、軍官 80%。每次主動行動前骰啟動，失敗＝猶豫，主動權交回我方（軍官在旁 +10，被壓制 -15，隊友剛倒下 -10，重傷 -10）。交出主動權時，還沒行動的敵人結算衝動（衝動不檢定）</div>
-        <div><b>暴露行動</b>：解除壓制、主武器換彈、換回主武器時，看得到妳的敵人可以開一次反應射擊（拔副武器、快速換彈不算）</div>
-        <div><b>甜蜜距離</b>：每把槍有最順手的距離，在範圍內命中提高（手槍、霰彈很近；步槍、機槍中距離；狙擊很遠）</div>
+        <div><b>暴露行動</b>：起身、主武器換彈、換回主武器時，看得到妳的敵人可以開一次反應射擊（拔副武器、快速換彈不算）</div>
+        <div><b>甜蜜距離</b>：每把槍有最順手的距離，在範圍內多擲骰（手槍、霰彈很近；步槍、機槍中距離；狙擊很遠）</div>
         <div><b>破防</b>（成長樹）：打被壓制的敵人時，不算壓制給的那 1 級掩體</div>
-        <div>從沒有掩體的方向射擊 = 側翼，暴擊 +40</div>
+        <div>從沒有掩體的方向射擊 = 側翼：每顆骰 50%，手槍、霰彈再 +1 骰</div>
         <hr>
         <div><b>潛入</b>：敵人一開始未察覺 <b class="calm">?</b></div>
         <div>未察覺的敵人只看 5 格、只看自己的<span style="color:#ffcc33">黃色責任區</span>，看不穿半掩體，看不穿也看不進隱蔽區（草叢等）</div>

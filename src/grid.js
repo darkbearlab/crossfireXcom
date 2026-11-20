@@ -133,7 +133,9 @@ export function quietLOS(map, a, b, sight = RULES.QUIET_SIGHT) {
 // aimBonus：射手的條件加成；raised：目標站在冰塊上（至少半掩體）
 // 掩體等級（無 / 半 / 全，最高全）：hardy＝目標個子小，常態 +1 級（小桃）；suppressed＝目標被壓制縮起來，+1 級；
 // breach＝射手會破防，不算壓制給的那 1 級
-export function shotOdds(map, s, sPos, tPos, { reaction = false, suppressed = false, breach = false, weapon = null, aimBonus = 0, raised = false, hardy = false } = {}) {
+// 骰子制命中：回傳骰數、每顆骰命中率、至少中一顆的機率（hit）與平均命中數（exp）
+// dieBonus：每顆骰的命中修正（%）；diceBonus：額外骰數（技能、條件）
+export function shotOdds(map, s, sPos, tPos, { reaction = false, suppressed = false, breach = false, weapon = null, dieBonus = 0, diceBonus = 0, raised = false, hardy = false } = {}) {
   const w = weapon || {};
   let raw = coverAt(map, tPos, sPos);
   if (raised) raw = Math.max(raw, 1);
@@ -143,18 +145,21 @@ export function shotOdds(map, s, sPos, tPos, { reaction = false, suppressed = fa
   const small = hardy && base + (duck ? 1 : 0) < 2;
   const cover = Math.min(2, base + (duck ? 1 : 0) + (small ? 1 : 0));
   const d = dist(sPos, tPos);
-  let hit = s.aim + (w.aim || 0) + aimBonus - RULES.COVER_DEF[cover];
   const [sweetLo, sweetHi] = w.sweet || RULES.SWEET;
   const sweet = Math.round(d) >= sweetLo && Math.round(d) <= sweetHi;
+  let dice = (w.dice || 1) + diceBonus;
+  if (sweet) dice += w.sweetDice ?? RULES.SWEET_DICE;
+  if (cover === 0) dice += w.exposedDice || 0; // 突擊武器打沒掩體的目標
+  if (d <= RULES.CLOSE_RANGE) dice += w.closeDice || 0; // 朱音槍法 3
+  if (reaction && !w.noReactPenalty) dice -= RULES.REACTION_DICE;
+  if (s.suppressed) dice -= RULES.SUPPRESS_DICE;
+  dice = Math.max(1, dice);
+  let die = RULES.DIE_HIT[cover] + (s.dieMod || 0) + (w.dieMod || 0) + dieBonus;
   const farRange = w.farRange ?? RULES.FAR_RANGE;
   const farPenalty = w.farPenalty ?? RULES.FAR_PENALTY;
-  if (sweet) hit += w.sweetBonus ?? RULES.SWEET_BONUS;
-  if (cover === 0) hit += w.exposedBonus || 0; // 突擊武器打沒掩體的目標
-  else if (d > farRange) hit -= Math.round((d - farRange) * farPenalty);
-  if (reaction && !w.noReactPenalty) hit -= RULES.REACTION_PENALTY;
-  if (s.suppressed) hit -= RULES.SUPPRESS_AIM;
-  hit = clamp(Math.round(hit), 0, 100);
-  const crit = clamp(s.crit + (w.crit || 0) + (d <= RULES.CLOSE_RANGE ? (w.closeCrit || 0) : 0) + (cover === 0 ? RULES.FLANK_CRIT : 0), 0, 100);
-  return { hit, crit, cover, ignored, sweet, duck, small, broke: suppressed && breach && base < 2,
+  if (cover > 0 && d > farRange) die -= Math.round((d - farRange) * farPenalty);
+  die = clamp(Math.round(die), RULES.DIE_MIN, RULES.DIE_MAX);
+  const hit = Math.round((1 - Math.pow(1 - die / 100, dice)) * 100);
+  return { hit, dice, die, exp: dice * die / 100, cover, ignored, sweet, duck, small, broke: suppressed && breach && base < 2,
     flanked: cover === 0 && !ignored && coverSides(map, tPos).length > 0, dist: d };
 }

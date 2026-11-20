@@ -32,7 +32,7 @@ export function init(handlers) {
 export function coverName(o) {
   const why = [o.duck && '壓制 +1', o.small && '小個子 +1', o.broke && '破防'].filter(Boolean);
   const tail = why.length ? `（${why.join('、')}）` : '';
-  if (o.cover === 2) return '全掩體' + tail + ' 傷害 -1';
+  if (o.cover === 2) return '全掩體' + tail;
   if (o.cover === 1) return '半掩體' + tail;
   if (o.ignored) return '無視半掩體' + tail;
   return (o.flanked ? '側翼！' : '暴露') + tail;
@@ -71,6 +71,7 @@ export function updateHUD(S) {
     card.className = 'card' + (u === S.selected ? ' sel' : '') + (u.alive ? '' : ' dead');
     const st = [];
     if (u.alive && u.suppressed) st.push('<span class="sup">壓制中</span>');
+    else if (u.alive && u.pinned) st.push('<span class="sup">受阻</span>');
     if (u.alive && u.firedOut) st.push('<span class="dim">不能再開槍</span>');
     if (u.alive && u.transformed) st.push('<span class="mg">變身中</span>');
     if (u.alive && u.raised) st.push('<span class="ice">冰上</span>');
@@ -81,7 +82,7 @@ export function updateHUD(S) {
       <div class="hrow">${heartsHtml(u)}<span>${Math.max(0, u.hp)}/${u.maxHp}${u.lineUsed ? '' : ' · 心線未用'}</span></div>
       <div class="wl">${weaponLine(u)}</div>
       <div class="meta">${st.join('') || '<span class="dim">待命</span>'}</div>
-      <div class="stats">命中 ${u.aim} · 暴擊 ${u.crit}</div>`;
+      <div class="stats">累積命中 ${stressPips(u)}</div>`;
     if (u.alive) card.onclick = () => H.select(u);
     sq.appendChild(card);
   }
@@ -105,8 +106,9 @@ export function updateHUD(S) {
   $('btn-swap').classList.toggle('gives', !!(sw && !sw.sidearm));
   $('swap-label').textContent = sw ? `換${sw.short}` : '換槍';
 
-  $('btn-rally').hidden = deploying || !(sel && sel.alive && sel.suppressed);
-  $('btn-rally').disabled = !can || !sel.suppressed;
+  const down = sel && sel.alive && (sel.suppressed || sel.pinned);
+  $('btn-rally').hidden = deploying || !down;
+  $('btn-rally').disabled = !can || !down;
   $('btn-plant').hidden = deploying || !(can && H.canPlant(sel));
   $('btn-end').disabled = S.side !== 'player' || S.busy || S.gameOver;
 
@@ -120,11 +122,11 @@ export function showTargeting(list, idx, triple = null) {
   el.innerHTML = `<div class="tp-title">選擇目標 <small>Tab 切換 · 點擊敵人也可</small></div>` +
     list.map((t, i) => `
       <div class="tgt ${i === idx ? 'on' : ''}" data-i="${i}">
-        <div><b>${t.unit.name}</b> <small>HP ${t.unit.hp}/${t.unit.maxHp}${t.unit.alerted ? '' : ' · 未察覺'}</small></div>
+        <div><b>${t.unit.name}</b> <small>生命 ${t.unit.hp}/${t.unit.maxHp} · 累積 ${stressPips(t.unit)}${t.unit.alerted ? '' : ' · 未察覺'}</small></div>
         <div class="hit">${t.odds.hit}%</div>
-        <small>暴擊 ${t.odds.crit}% · ${coverName(t.odds)} · 距離 ${t.odds.dist.toFixed(1)}${t.odds.sweet ? ' · 甜蜜距離' : ''}</small>
+        <small>${diceLine(t.odds, triple)} · ${coverName(t.odds)} · 距離 ${t.odds.dist.toFixed(1)}${t.odds.sweet ? ' · 甜蜜距離' : ''}</small>
       </div>`).join('') +
-    (triple === null ? '' : `<button id="tp-triple" class="${triple ? 'on' : ''}">三管齊發：${triple ? '開' : '關'}（耗 3 發、傷害相加）</button>`) +
+    (triple === null ? '' : `<button id="tp-triple" class="${triple ? 'on' : ''}">三管齊發：${triple ? '開' : '關'}（耗 3 發、骰數加倍）</button>`) +
     `<div class="tp-btns"><button id="tp-fire">開火 (Enter)</button><button id="tp-cancel">取消 (Esc)</button></div>`;
   el.querySelectorAll('.tgt').forEach(d => d.onclick = () => H.pickTarget(+d.dataset.i));
   $('tp-fire').onclick = () => H.fire();
@@ -133,6 +135,18 @@ export function showTargeting(list, idx, triple = null) {
 }
 
 export function hideTargeting() { $('target-panel').hidden = true; }
+
+// 累積命中：● 已累積 ○ 未累積（滿了之後每下受傷）
+export function stressPips(u) {
+  const n = Math.min(2, u.stress || 0);
+  return '●'.repeat(n) + '○'.repeat(2 - n);
+}
+
+function diceLine(o, triple) {
+  const n = triple ? o.dice * 2 : o.dice;
+  const p = triple ? Math.round((1 - Math.pow(1 - o.die / 100, n)) * 100) : o.hit;
+  return `${n} 骰 × 每顆 ${o.die}%${triple ? `（至少中一顆 ${p}%）` : ''} · 平均中 ${(n * o.die / 100).toFixed(1)}`;
+}
 
 // 魔法少女的愛心：每顆 heartHp 點，部分扣血的心只填一部分；黃線＝心線（還沒用掉時）
 export function heartsHtml(u) {
@@ -157,7 +171,8 @@ export function makeLabel(u) {
 export function updateLabel(d, u) {
   const icons = (u.team === 'enemy' && !u.alerted ? '<b class="calm">?</b> ' : '') +
     (u.execBuff && !u.spareUsed && !u.firedOut ? '<b class="execi" title="不留活口">⚔</b> ' : '') +
-    (u.suppressed ? '<b class="supi">▼</b> ' : '') + (u.firedOut ? '<b class="outi">✕</b> ' : '');
+    (u.suppressed ? '<b class="supi">▼</b> ' : u.pinned ? '<b class="supi">▽</b> ' : '') + (u.firedOut ? '<b class="outi">✕</b> ' : '') +
+    (u.stress ? `<b class="stri">${'•'.repeat(Math.min(2, u.stress))}</b> ` : '');
   const bar = u.heartHp ? heartsHtml(u)
     : `<div class="pips">${Array.from({ length: u.maxHp }, (_, i) => `<i class="${i < u.hp ? 'on' : ''}${u.cuts && u.cuts.includes(i) ? ' cut' : ''}"></i>`).join('')}</div>`;
   const html = `<div class="ln">${icons}${u.name}</div>` + bar;
@@ -190,7 +205,11 @@ export function toast(text, ms = 1600) {
   toastTimer = setTimeout(() => t.classList.remove('show'), ms);
 }
 
+const logListeners = [];
+export function addLogListener(fn) { logListeners.push(fn); }
+
 export function log(text, cls = '') {
+  for (const fn of logListeners) fn(text, cls);
   const l = $('log');
   const d = document.createElement('div');
   d.className = cls;

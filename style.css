@@ -248,3 +248,13 @@ html, body, button, #hud, #hud * { touch-action: manipulation; }
 /* 戰鬥紀錄匯出 */
 .rec-btns { margin: 6px 0; font-size: 12px; }
 .rec-btns button { padding: 6px 10px; margin: 2px 2px; font-size: 12px; background: #161c24; border: 1px solid #3a4652; border-radius: 4px; }
+
+/* 三階的累積命中 */
+.ulabel .stri { color: #ffb36b; letter-spacing: -1px; }
+
+/* 純文字介面面板（網址加 ?text） */
+#txt-panel { position: fixed; right: 0; top: 0; bottom: 0; width: min(560px, 100vw); z-index: 50; display: flex; flex-direction: column;
+  background: #05080cf0; border-left: 1px solid #2c3a48; }
+#txt-panel pre { flex: 1; margin: 0; padding: 8px; overflow: auto; font: 12px/1.35 Consolas, "Noto Sans Mono CJK TC", monospace; white-space: pre; color: #d8e2ec; }
+#txt-panel form { display: flex; border-top: 1px solid #2c3a48; }
+#txt-panel input { flex: 1; font: 14px Consolas, monospace; padding: 8px; background: #0b1016; color: #fff; border: 0; }

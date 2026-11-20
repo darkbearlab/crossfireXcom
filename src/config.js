@@ -6,18 +6,22 @@ export const RULES = {
   SIGHT: 10,              // 警戒中的視野距離（格）。我方永遠算警戒中
   QUIET_SIGHT: 5,         // 未警戒敵人的視野距離；且看不穿半掩體、看不穿也看不進隱蔽區、只看自己的責任區
   NOISE: 6,               // 開槍會驚動射手與目標周圍這麼多格內的敵人
-  COVER_DEF: [0, 30, 50], // 無 / 半掩體 / 全掩體 的防禦值
-  FULL_COVER_DR: 1,       // 全掩體後面的人每次受傷 -1（最低 1）
-  CLOSE_RANGE: 3,         // 朱音「近距離暴擊」的範圍
+  // 骰子制：一次攻擊擲好幾顆骰，每顆各自判定命中。
+  // 每顆的命中率看目標的最終掩體：暴露 / 半掩體 / 全掩體
+  DIE_HIT: [50, 33, 17],
+  CLOSE_RANGE: 3,         // 朱音槍法 3「近距離 +1 骰」的範圍
   SWEET: [1, 3],          // 沒有指定甜蜜距離的武器（敵人）用這個
-  SWEET_BONUS: 10,
-  FAR_RANGE: 8,           // 超過此距離每格扣命中
+  SWEET_DICE: 1,          // 甜蜜距離內 +幾顆骰（武器可另外指定 sweetDice）
+  FAR_RANGE: 8,           // 超過此距離，每顆骰每格扣命中
   FAR_PENALTY: 3,
-  REACTION_PENALTY: 10,   // 反應射擊命中懲罰
-  REACTION_MIN: 20,       // 命中率低於此值不會自動反應射擊（避免白白浪費）
-  SUPPRESS_AIM: 20,       // 被壓制者開槍命中 -
-  FLANK_CRIT: 40,         // 側翼/暴露時暴擊加成
-  CRIT_MULT: 1.5,
+  REACTION_DICE: 1,       // 反應射擊少幾顆骰
+  REACTION_MIN: 20,       // 至少中一顆的機率低於此值不會自動反應射擊（避免白白浪費）
+  SUPPRESS_DICE: 1,       // 被壓制者開槍少幾顆骰
+  DIE_MIN: 5, DIE_MAX: 90,
+  // 三階：命中會累積。第 1 下受阻（不能移動），第 2 下壓制，之後每下受傷。
+  // 起身只解除狀態，累積的命中不會清掉。
+  // 少女受傷一次扣一顆心，而且一次攻擊最多扣一顆；敵人生命以「傷」計（一般 1、精銳 2）。
+  PIN_AT: 1, SUP_AT: 2,
   MEDKIT_HEAL: 3,         // 醫療包回復（一顆心）
   HEART_HP: 3,            // 一顆心 = 3 點生命。每次受傷最多扣掉目前這顆心（溢出的傷害作廢）
   AIRDROP_RANGE: 8,       // 空投距離；落點還要在隊友看得見的格子
@@ -30,15 +34,15 @@ export const RULES = {
   // 任務之間：彈藥補滿；生命只有沒上場的人每張地圖回 BENCH_HEAL
   BENCH_HEAL: 3,
   EVAC_MISSIONS: 2,       // 倒下後送，要再完成幾個任務才回歸
-  MELEE_DMG: 2,           // 朱音近戰傷害（必中）
+  MELEE_HITS: 2,          // 朱音近戰：必中 2 下（照三階推進）
   ICE_HP: 3,              // 冰塊被打幾下會碎
   ICE_RANGE: 5,           // 冰塊放置距離
   CURSE_TILES: 6,         // 詛咒地 buff 的詛咒格數量
   WAVE_SIZE: 3,           // 決戰每波增援人數
 
   // 敵人 AI
-  AI_SHOOT: 60,           // 命中率 ≥ 此值就開槍
-  AI_GAMBLE: 40,          // 沒有好位置可移動時，命中率 ≥ 此值仍會開槍
+  AI_SHOOT: 60,           // 至少中一顆的機率 ≥ 此值就開槍
+  AI_GAMBLE: 40,          // 沒有好位置可移動時，機率 ≥ 此值仍會開槍
   AI_RISK: 45,            // 移動路線被打中機率的權重
   AI_MOVE_GAIN: 8,        // 新位置要比現在好多少才移動
   AI_MAX_ACTIONS: 14,     // 一次主動權最多行動次數（防無限迴圈）
@@ -60,59 +64,61 @@ export const THEMES = [
 ];
 
 // 玩家武器：有彈匣與備彈（戰役資源）。
-// sweet：甜蜜距離 [近, 遠]（格，四捨五入），sweetBonus：在甜蜜距離內的命中加成。
-// exposedBonus：目標沒有掩體（暴露/被側翼）時的命中加成。
-// 手槍與霰彈槍是突擊武器：甜蜜距離很近、加成很大，打沒掩體的目標也特別準。
+// dice：基本骰數；sweet：甜蜜距離 [近, 遠]（格，四捨五入），sweetDice：在甜蜜距離內 +幾顆骰；
+// exposedDice：目標沒有掩體（暴露/被側翼）時 +幾顆骰；dieMod：每顆骰的命中修正（%）。
+// 手槍與霰彈槍是突擊武器：甜蜜距離很近、加的骰多，打沒掩體的目標也多一顆。
 // 換主武器、主武器換彈 → 做完交出主動權；換手槍、手槍換彈很快 → 不交出主動權。
 export const WEAPONS = {
-  ar:     { name: '突擊步槍', short: '步槍', aim: 8,  crit: 10, dmg: [4, 6], mag: 6,  reserve: 24, canReact: true,
-            sweet: [4, 7], sweetBonus: 10, note: '甜蜜距離 4–7 格 +10' },
-  sg:     { name: '霰彈槍',   short: '霰彈', aim: 4,  crit: 20, dmg: [5, 8], mag: 4,  reserve: 16, canReact: true,
-            sweet: [1, 2], sweetBonus: 35, exposedBonus: 20, farRange: 5, farPenalty: 8, note: '甜蜜距離 1–2 格 +35、打沒掩體的目標 +20，5 格外每格 -8' },
-  sn:     { name: '狙擊步槍', short: '狙擊', aim: 15, crit: 25, dmg: [5, 7], mag: 3,  reserve: 12, canReact: false,
-            ignoreHalf: true, sweet: [9, 99], sweetBonus: 15, farRange: 99, note: '甜蜜距離 9 格以上 +15；主動射擊無視半掩體；不能反應射擊' },
-  lmg:    { name: '輕機槍',   short: '機槍', aim: 0,  crit: 5,  dmg: [3, 5], mag: 10, reserve: 30, canReact: true,
-            keepFiring: true, sweet: [5, 8], sweetBonus: 10, note: '甜蜜距離 5–8 格 +10；反應射擊打空也不會停火' },
-  pistol: { name: '手槍',     short: '手槍', aim: -5, crit: 5,  dmg: [2, 3], mag: 8,  canReact: false, sidearm: true,
-            sweet: [1, 3], sweetBonus: 25, exposedBonus: 15, note: '無限備彈；不能反應射擊；甜蜜距離 1–3 格 +25、打沒掩體的目標 +15' },
-  duals:  { name: '雙自動手槍', short: '雙槍', aim: 2, crit: 10, dmg: [3, 4], mag: 10, reserve: 30, canReact: true,
-            sweet: [1, 3], sweetBonus: 30, exposedBonus: 20, fastReload: true, note: '換彈不交出主動權；甜蜜距離 1–3 格 +30、打沒掩體的目標 +20' },
-  hmg:    { name: '重機槍',   short: '重機槍', aim: 4, crit: 5, dmg: [4, 6], mag: 8, reserve: 24, canReact: true,
-            sweet: [5, 8], sweetBonus: 10, pin: true, note: '甜蜜距離 5–8 格 +10；主動射擊沒命中也會壓制目標' },
-  tri:    { name: '三管霰彈槍', short: '霰彈', aim: 4, crit: 20, dmg: [5, 8], mag: 3, reserve: 12, canReact: true,
-            sweet: [1, 2], sweetBonus: 35, exposedBonus: 20, farRange: 5, farPenalty: 8, recoil: true, note: '中折式三管；開槍後自己被擊退 1 格；甜蜜距離 1–2 格 +35、打沒掩體的目標 +20' },
-  magnum: { name: '麥格農左輪', short: '左輪', aim: 0, crit: 15, dmg: [4, 5], mag: 6, canReact: false, sidearm: true,
-            sweet: [1, 3], sweetBonus: 25, exposedBonus: 15, note: '無限備彈；甜蜜距離 1–3 格 +25、打沒掩體的目標 +15' },
+  ar:     { name: '突擊步槍', short: '步槍', dice: 3, mag: 6,  reserve: 24, canReact: true,
+            sweet: [4, 7], sweetDice: 1, note: '3 骰；甜蜜距離 4–7 格 +1 骰' },
+  sg:     { name: '霰彈槍',   short: '霰彈', dice: 2, mag: 4,  reserve: 16, canReact: true,
+            sweet: [1, 2], sweetDice: 2, exposedDice: 1, farRange: 5, farPenalty: 8, note: '2 骰；甜蜜距離 1–2 格 +2 骰、打沒掩體的目標 +1 骰，5 格外每格 -8%' },
+  sn:     { name: '狙擊步槍', short: '狙擊', dice: 2, dieMod: 15, mag: 3,  reserve: 12, canReact: false,
+            ignoreHalf: true, sweet: [9, 99], sweetDice: 1, farRange: 99, note: '2 骰、每骰 +15%；甜蜜距離 9 格以上 +1 骰；主動射擊無視半掩體；不能反應射擊' },
+  lmg:    { name: '輕機槍',   short: '機槍', dice: 3, mag: 10, reserve: 30, canReact: true,
+            keepFiring: true, sweet: [5, 8], sweetDice: 1, note: '3 骰；甜蜜距離 5–8 格 +1 骰；反應射擊打空也不會停火' },
+  pistol: { name: '手槍',     short: '手槍', dice: 2, mag: 8,  canReact: false, sidearm: true,
+            sweet: [1, 3], sweetDice: 1, exposedDice: 1, note: '2 骰；無限備彈；不能反應射擊；甜蜜距離 1–3 格 +1 骰、打沒掩體的目標 +1 骰' },
+  duals:  { name: '雙自動手槍', short: '雙槍', dice: 3, mag: 10, reserve: 30, canReact: true,
+            sweet: [1, 3], sweetDice: 1, exposedDice: 1, fastReload: true, note: '3 骰；換彈不交出主動權；甜蜜距離 1–3 格 +1 骰、打沒掩體的目標 +1 骰' },
+  hmg:    { name: '重機槍',   short: '重機槍', dice: 3, mag: 8, reserve: 24, canReact: true,
+            sweet: [5, 8], sweetDice: 1, pin: true, note: '3 骰；甜蜜距離 5–8 格 +1 骰；主動射擊沒命中也會壓制目標' },
+  tri:    { name: '三管霰彈槍', short: '霰彈', dice: 2, mag: 3, reserve: 12, canReact: true,
+            sweet: [1, 2], sweetDice: 2, exposedDice: 1, farRange: 5, farPenalty: 8, recoil: true, note: '中折式三管；2 骰；開槍後自己被擊退 1 格；甜蜜距離 1–2 格 +2 骰、打沒掩體的目標 +1 骰' },
+  magnum: { name: '麥格農左輪', short: '左輪', dice: 2, dieMod: 5, mag: 6, canReact: false, sidearm: true,
+            sweet: [1, 3], sweetDice: 1, exposedDice: 1, note: '2 骰、每骰 +5%；無限備彈；甜蜜距離 1–3 格 +1 骰、打沒掩體的目標 +1 骰' },
 };
 
 // 敵人：普通武器不追蹤彈藥。impulse = 衝動：主動權易手時，這輪沒行動過的單位會強制做的事。
-// act / q = 啟動值與品質（新兵 45、老手 60、精銳 70、軍官 80）。頭目不檢定，改成血條分 3 段。
+// act / q = 啟動值與品質（新兵 45、老手 60、精銳 70、軍官 80）。頭目不檢定，改成生命分 3 段。
+// maxHp 以「傷」計（一般 1、精銳 2）；dice = 骰數（甜蜜距離 1–3 格再 +1），dieMod = 每顆骰的命中修正（%）。
+// armor：每次攻擊少算 1 下命中。
 export const ENEMY_TYPES = {
-  gunman:    { name: '槍手',   act: 60, q: '老手', maxHp: 4, aim: 58, crit: 5,  dmg: [2, 4], color: 0xc0453a, impulse: 'shoot',
+  gunman:    { name: '槍手',   act: 60, q: '老手', maxHp: 1, dice: 2, color: 0xc0453a, impulse: 'shoot',
                desc: '衝動：對最近的可見目標開槍' },
-  zealot:    { name: '狂徒',   act: 60, q: '老手', maxHp: 4, aim: 50, crit: 10, dmg: [2, 4], color: 0xd8752a, impulse: 'charge',
+  zealot:    { name: '狂徒',   act: 60, q: '老手', maxHp: 1, dice: 2, dieMod: -5, color: 0xd8752a, impulse: 'charge',
                desc: '衝動：朝最近的我方衝 3 格' },
-  conscript: { name: '徵召兵', act: 45, q: '新兵', maxHp: 3, aim: 48, crit: 0,  dmg: [1, 3], color: 0x8a7a5a, impulse: 'flee', scale: 0.9,
+  conscript: { name: '徵召兵', act: 45, q: '新兵', maxHp: 1, dice: 1, color: 0x8a7a5a, impulse: 'flee', scale: 0.9,
                desc: '衝動：軍官不在時往地圖邊緣逃，逃出即消失' },
-  officer:   { name: '軍官',   act: 80, q: '軍官', maxHp: 6, aim: 64, crit: 5,  dmg: [2, 4], color: 0xd0b040, officer: true,
+  officer:   { name: '軍官',   act: 80, q: '軍官', maxHp: 2, dice: 2, dieMod: 5, color: 0xd0b040, officer: true,
                desc: '活著時徵召兵不會逃' },
-  sniper:    { name: '狙擊手', act: 70, q: '精銳', maxHp: 3, aim: 68, crit: 20, dmg: [3, 5], color: 0x5a6a8a, canReact: false, ignoreHalf: true,
+  sniper:    { name: '狙擊手', act: 70, q: '精銳', maxHp: 1, dice: 2, dieMod: 10, color: 0x5a6a8a, canReact: false, ignoreHalf: true,
                desc: '主動射擊無視半掩體；不會反應射擊' },
-  mg:        { name: '機槍手', act: 70, q: '精銳', maxHp: 6, aim: 52, crit: 0,  dmg: [2, 4], color: 0x7a3434, keepFiring: true, cumbersome: true,
-               desc: '笨重：每次主動權只行動一次；反應射擊打空不會停火' },
-  brute:     { name: '重裝兵', act: 70, q: '精銳', maxHp: 7, aim: 55, crit: 5,  dmg: [3, 5], color: 0x8e2f6e, armor: 1, scale: 1.2,
-               desc: '裝甲 1：每次受傷 -1' },
-  // 家族成員（boss）
-  b_eye:     { name: '薇歐拉', maxHp: 10, aim: 70, crit: 15, dmg: [3, 5], color: 0x5b3f8f, boss: true, impulse: 'shoot', ignoreHalf: true,
+  mg:        { name: '機槍手', act: 70, q: '精銳', maxHp: 2, dice: 3, dieMod: -5, color: 0x7a3434, keepFiring: true, cumbersome: true,
+               desc: '3 骰。笨重：每次主動權只行動一次；反應射擊打空不會停火' },
+  brute:     { name: '重裝兵', act: 70, q: '精銳', maxHp: 2, dice: 2, color: 0x8e2f6e, armor: 1, scale: 1.2,
+               desc: '裝甲：每次攻擊少算 1 下命中' },
+  // 家族成員（boss）：生命分 3 段，每段 2 傷
+  b_eye:     { name: '薇歐拉', maxHp: 6, dice: 3, dieMod: 10, color: 0x5b3f8f, boss: true, impulse: 'shoot', ignoreHalf: true,
                desc: '眼線：主動射擊無視半掩體。打倒她「千里眼」就失效' },
-  b_exec:    { name: '蕾貝卡', maxHp: 12, aim: 64, crit: 10, dmg: [3, 5], color: 0x3b2a4a, boss: true, impulse: 'charge', armor: 1, keepFiring: true,
-               desc: '執行人：裝甲 1，反應射擊打空不停火。打倒她「不留活口」就失效' },
-  b_book:    { name: '莫妮卡', maxHp: 10, aim: 62, crit: 5, dmg: [3, 4], color: 0x2f4a3a, boss: true, impulse: 'shoot',
+  b_exec:    { name: '蕾貝卡', maxHp: 6, dice: 3, color: 0x3b2a4a, boss: true, impulse: 'charge', armor: 1, keepFiring: true,
+               desc: '執行人：裝甲，反應射擊打空不停火。打倒她「不留活口」就失效' },
+  b_book:    { name: '莫妮卡', maxHp: 6, dice: 3, color: 0x2f4a3a, boss: true, impulse: 'shoot',
                desc: '帳房。打倒她「人手充足」就失效' },
-  b_sis:     { name: '莉莉絲', maxHp: 10, aim: 62, crit: 10, dmg: [3, 4], color: 0x7a2a6a, boss: true, impulse: 'curse',
+  b_sis:     { name: '莉莉絲', maxHp: 6, dice: 3, color: 0x7a2a6a, boss: true, impulse: 'curse',
                desc: '魔女姊姊。衝動：把詛咒下在最近的我方腳下。打倒她「詛咒地」就失效' },
-  b_mother:  { name: '瑪格麗特', maxHp: 16, aim: 68, crit: 10, dmg: [3, 5], color: 0x1e1428, boss: true, impulse: 'shoot', armor: 1, keepFiring: true,
-               desc: '教母：裝甲 1，反應射擊打空不停火。打倒她就結束了' },
+  b_mother:  { name: '瑪格麗特', maxHp: 9, dice: 3, dieMod: 5, color: 0x1e1428, boss: true, impulse: 'shoot', armor: 1, keepFiring: true,
+               desc: '教母：裝甲，反應射擊打空不停火。打倒她就結束了' },
 };
 
 // 難度 → 一般敵人數量：難度 1 = 4 人，之後大約每升 2 級多 1 人，最多 10 人
