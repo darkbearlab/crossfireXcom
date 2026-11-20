@@ -468,6 +468,21 @@ function spawnEnemy(type, x, z, zone, alerted = false) {
   return u;
 }
 
+// 地圖存進存檔用：typed array 轉成一般陣列、主題存索引
+function packGen(g) {
+  const { map, theme, ...rest } = g;
+  return JSON.parse(JSON.stringify({ ...rest, theme: THEMES.indexOf(theme),
+    map: { w: map.w, h: map.h, tiles: Array.from(map.tiles), conceal: Array.from(map.conceal), zone: Array.from(map.zone) } }));
+}
+function unpackGen(p) {
+  const m = new GameMap(p.map.w, p.map.h);
+  m.tiles.set(p.map.tiles);
+  m.conceal.set(p.map.conceal);
+  m.zone.set(p.map.zone);
+  const g = JSON.parse(JSON.stringify(p));
+  return { ...g, map: m, theme: THEMES[p.theme] || THEMES[0], curse: g.curse || [] };
+}
+
 function cloneGen(g) {
   const m = new GameMap(g.map.w, g.map.h);
   m.tiles.set(g.map.tiles);
@@ -513,7 +528,7 @@ function startMission() {
   S.quietSight = S.buffs.includes('eye') ? 7 : RULES.QUIET_SIGHT;
   const opKey = op.kind + ':' + op.name;
   let gen;
-  if (C.retry && S.genCopy && S.genOp === opKey) gen = cloneGen(S.genCopy);
+  if (C.retry && C.retryGen && C.retryOp === opKey) gen = unpackGen(C.retryGen);
   else {
     const extra = [];
     let type;
@@ -526,8 +541,9 @@ function startMission() {
     gen = generateMap(Camp.level(op), { type, extra, bonus: 2 * S.buffs.filter(b => b === 'book').length });
     gen.curse = S.buffs.includes('sis') ? pickCurse(gen) : [];
     gen.theme = THEMES[ri(0, THEMES.length - 1)];
-    S.genCopy = cloneGen(gen);
-    S.genOp = opKey;
+    C.retryGen = packGen(gen); // 輸了要重打同一張：存進存檔，重新載入也不會換圖
+    C.retryOp = opKey;
+    Camp.save();
   }
   S.map = gen.map;
   S.mission = gen.mission;
@@ -980,14 +996,15 @@ async function shoot(s, t, { reaction = false, forceMiss = false, triple = false
   Rec.shot(s.team, reaction, forceMiss ? 0 : (triple ? Math.round((1 - Math.pow(1 - odds.die / 100, n)) * 100) : odds.hit), eff > 0);
   const tag = `${s.name}${reaction ? '（反應）' : triple ? '（三管齊發）' : ''} → ${t.name}（${forceMiss ? '必定落空' : `${n} 骰×${odds.die}%`}）`;
   if (hit) {
-    UI.log(`${tag} 中 ${rolled}${eff < rolled ? (eff ? `（裝甲擋掉 ${rolled - eff}）` : '（全被裝甲擋掉，沒有效果）') : ''}`, s.team === 'player' ? 'good' : 'bad');
+    UI.log(`${tag} 中 ${rolled}${eff < rolled ? (eff ? `（裝甲擋掉 ${rolled - eff}）` : '（全被裝甲擋掉，沒有效果）') : ''}`,
+      eff ? (s.team === 'player' ? 'good' : 'bad') : (s.team === 'player' ? 'warn' : 'dim'));
     if (!eff) floatText(t, '裝甲', 'miss');
     await strike(t, eff, s);
   } else {
     floatText(t, '未命中', 'miss');
     UI.log(`${tag} 未命中`, 'dim');
   }
-  if (!reaction && s.team === 'player' && w.pin) pinFire(s, t);
+  if (!reaction && s.team === 'player' && w.pin && !t.shield) pinFire(s, t); // 頭目剛重新部署：不跟著壓制
   chipIce(s, t);
   makeNoise(s, t);
   await wait(0.35);
@@ -1380,7 +1397,7 @@ function updateHover() {
   const pi = ice && (!ice.rider || ice.rider.team === 'player') && canMove(u) ? pushInfo(u, ice) : null;
   if (pi) { pushHover(u, pi); return; }
   if (occ && occ.team === 'enemy' && occ.mesh.visible) {
-    const info = `<div class="desc">${occ.alerted ? '警戒中' : '未察覺：只看黃色責任區'}${occ.raised ? '・在冰塊上（不能移動）' : ''}${occ.desc ? '<br>' + occ.desc : ''}<br>${occ.dice} 骰${occ.dieMod ? `（每骰 ${occ.dieMod > 0 ? '+' : ''}${occ.dieMod}%）` : ''} · 累積命中 ${occ.stress}/${RULES.SUP_AT}${occ.act ? `<br>品質：${occ.q}（啟動 ${actChance(occ)}%）` : occ.cuts ? `<br>頭目：不做啟動檢定；生命分 3 段，第 ${occ.phase} 段` : ''}${occ.execBuff ? `<br><span class="warn">不留活口：這次主動權第一次反應打空不停火${occ.spareUsed ? '（已用掉）' : ''}</span>` : ''}</div>`;
+    const info = `<div class="desc">${occ.alerted ? '警戒中' : '未察覺：只看黃色責任區'}${occ.raised ? '・在冰塊上（不能移動）' : ''}${occ.desc ? '<br>' + occ.desc : ''}<br>${occ.noGun ? '不開槍' : `${occ.dice} 骰${occ.dieMod ? `（每骰 ${occ.dieMod > 0 ? '+' : ''}${occ.dieMod}%）` : ''}`} · 累積命中 ${occ.stress}/${RULES.SUP_AT}${occ.act ? `<br>品質：${occ.q}（啟動 ${actChance(occ)}%）` : occ.cuts ? `<br>頭目：不做啟動檢定；生命分 3 段，第 ${occ.phase} 段` : ''}${occ.execBuff ? `<br><span class="warn">不留活口：這次主動權第一次反應打空不停火${occ.spareUsed ? '（已用掉）' : ''}</span>` : ''}</div>`;
     if (!canAct(u)) showTip(`<b>${occ.name}</b>${info}`);
     else if (u.firedOut) showTip(`<b>${occ.name}</b><br><small>此單位這次主動權不能再開槍</small>${info}`);
     else if (weapon(u).ammo <= 0) showTip(`<b>${occ.name}</b><br><small>彈匣空了</small>${info}`);
@@ -1570,7 +1587,10 @@ async function fire() {
   const triple = S.triple && canTriple(u);
   // 扣掉裝甲後不可能有效的射擊：擋下來，免得白白交出主動權
   if (t.unit.armor && UI.effHit(t.odds, t.unit.armor, triple ? t.odds.dice * 2 : t.odds.dice) === 0) {
-    UI.toast(`${t.unit.name} 有裝甲：${triple ? t.odds.dice * 2 : t.odds.dice} 骰就算全中也會被擋光，這槍不可能有效`, 2600);
+    cancelTarget();
+    const why = `${t.unit.name} 有裝甲：${triple ? t.odds.dice * 2 : t.odds.dice} 骰就算全中也會被擋光，這槍不可能有效（沒有開槍）`;
+    UI.toast(why, 2600);
+    UI.log(why, 'warn');
     return;
   }
   S.mode = 'move';
@@ -2382,6 +2402,7 @@ async function impulses(acted, passed = false) {
       const opts = [...moveOptions(e).values()].filter(m => !m.vault && dist(e, m) <= 3);
       if (!opts.length) continue;
       const best = opts.reduce((a, b) => edgeDist(b) < edgeDist(a) ? b : a);
+      if (edgeDist(best) >= edgeDist(e)) continue; // 被困住了：沒有更靠近邊緣的路，不硬寫逃跑
       impulseNote(e, '逃跑');
       const ok = await performMove(e, best);
       if (ok && e.alive && edgeDist(e) === 0) flee(e);

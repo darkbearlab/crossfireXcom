@@ -54,7 +54,7 @@ const gKey = u => GIRL_KEY[u.girl] || '?';
 // 敵人編號（e.tag）在生成時就固定，戰鬥紀錄裡的名字也帶著它（例如「槍手3」）
 const eKey = (S, e) => e.tag || '?';
 const pips = u => '●'.repeat(Math.min(2, u.stress || 0)) + '○'.repeat(2 - Math.min(2, u.stress || 0));
-const status = u => u.suppressed ? ((u.stress || 0) < 2 ? '壓制（被重機槍強制）' : '壓制') : u.pinned ? '受阻' : '正常';
+const status = u => u.suppressed ? '壓制' : u.pinned ? '受阻' : '正常';
 
 function findGirl(S, k) {
   if (!k) return S.selected && S.selected.team === 'player' ? S.selected : null;
@@ -123,10 +123,10 @@ function girlLine(S, u) {
 
 function enemyLine(S, e, all) {
   const seen = e.mesh.visible;
-  if (!e.alive) return `${eKey(S, e)} ${e.name}：${e.fled ? '逃走' : '倒下'}`;
+  if (!e.alive) return e.summon ? null : `${eKey(S, e)} ${e.name}：${e.fled ? '逃走' : '倒下'}`; // 烏鴉離場不算倒下
   if (!seen && !all) return null;
   return `${eKey(S, e)} ${e.name} (${e.x},${e.z})  生命 ${e.hp}/${e.maxHp}  累積 ${pips(e)} ${status(e)}  ${e.alerted ? '警戒' : '未察覺'}` +
-    `  ${e.dice} 骰${e.dieMod ? `(${e.dieMod > 0 ? '+' : ''}${e.dieMod}%)` : ''}` +
+    (e.noGun ? '  不開槍' : `  ${e.dice} 骰${e.dieMod ? `(${e.dieMod > 0 ? '+' : ''}${e.dieMod}%)` : ''}`) +
     (e.act ? `  啟動 ${G.actChance(e)}%` : e.boss ? `  頭目第 ${e.phase} 段` : '') +
     (e.impulse ? `  衝動:${e.impulse}` : '') + (e.firedOut ? '  ✕不能再開槍' : '') +
     (e.kind === 'doll' ? `  不會受阻/壓制、每中一顆受 1 傷、移動 ${e.moveRange} 射程 ${e.range}、不反應射擊；攻擊它沒打倒的人這次主動權不能再行動` : '') +

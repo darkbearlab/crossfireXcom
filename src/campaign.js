@@ -137,6 +137,7 @@ export function finish(r) {
   }
   if (!r.win) {
     C.retry = true;
+    rest(r, notes, false); // 輸了也算過了一場：沒上場的人照樣休息、後送倒數，不會卡在同一張圖
     save();
     return notes;
   }
@@ -145,10 +146,17 @@ export function finish(r) {
   C.done++;
   for (const g of C.girls) g.medals++;
   notes.push('每個人都拿到 1 枚獎章');
+  rest(r, notes, true);
+  return afterWin(notes);
+}
+
+// 一場任務過去後的休養。win：上場沒倒下的人整頓回一顆心（只有打贏才有）
+function rest(r, notes, win) {
+  const nm = id => GIRL[id].name;
   for (const g of C.girls) {
     if (r.deployed.includes(g.id)) {
       // 上場且沒倒下：打贏後整頓，回一顆心
-      if (!r.downed.includes(g.id) && g.hp < GIRL[g.id].maxHp) {
+      if (win && !r.downed.includes(g.id) && g.hp < GIRL[g.id].maxHp) {
         g.hp = Math.min(GIRL[g.id].maxHp, g.hp + RULES.FIELD_HEAL);
         notes.push(`${nm(g.id)} 整頓 +1 心`);
       }
@@ -163,6 +171,9 @@ export function finish(r) {
       notes.push(`${nm(g.id)} 休息 +${RULES.BENCH_HEAL} HP`);
     }
   }
+}
+
+function afterWin(notes) {
 
   const op = C.op;
   if (C.mode === 'story') {
