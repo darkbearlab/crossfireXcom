@@ -18,6 +18,7 @@ import { makeUnitMesh, addHalo, heartShape } from './units.js';
 import * as UI from './ui.js';
 import * as Camp from './campaign.js';
 import * as HQ from './hq.js';
+import * as Rec from './stats.js';
 import { GIRL, FAMILY, FAMILY_BY_ID, STORY } from './girls.js';
 
 // ================= 場景 =================
@@ -544,6 +545,9 @@ function startMission() {
   focusOn(p0.x + 3, p0.z);
 
   UI.clearLog();
+  Rec.begin({ op: S.opName, map: S.theme.name, level: Camp.level(op),
+    girls: players().map(u => u.name).join('、'),
+    enemies: Object.entries(enemies().reduce((a, e) => (a[e.name] = (a[e.name] || 0) + 1, a), {})).map(([n, c]) => `${n}×${c}`).join('、') });
   UI.log(`── ${S.opName}：${S.theme.name}（敵人 ${enemies().length}）──`, 'sys');
   UI.log(UI.missionText(S.mission) + (S.mission.type === 'sabotage' ? '，再撤回左側' : ''), 'sys');
   if (S.buffs.length) UI.log('家族加持：' + [...new Set(S.buffs)].map(b => FAMILY_BY_ID[b].buff).join('、'), 'warn');
@@ -605,6 +609,7 @@ function checkEnd() {
 }
 
 function endMission(win, why) {
+  Rec.end(win ? `勝利（${why}）` : '失敗');
   const girls = S.units.filter(u => u.girl);
   const hp = {};
   for (const u of girls) hp[u.girl] = u.alive ? Math.max(1, Math.min(u.hp, GIRL[u.girl].maxHp)) : 0;
@@ -613,7 +618,8 @@ function endMission(win, why) {
   const rows = girls.map(u => `<li>${u.name}：${u.alive ? `HP ${hp[u.girl]}/${GIRL[u.girl].maxHp}` : '倒下後送'}</li>`).join('');
   const body = (win ? `<p>${why}，主動權交換了 ${S.initNo - 1} 次。</p>` : '<p>上場的兩人都倒下了。這張地圖要重打。</p>') +
     `<ul>${rows}</ul>` + (notes.length ? `<ul class="notes">${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '') +
-    (win ? '<p style="opacity:.6">彈藥會在下張地圖補滿。</p>' : '');
+    (win ? '<p style="opacity:.6">彈藥會在下張地圖補滿。</p>' : '') +
+    '<p class="rec-btns"><button class="rec-dl">匯出這場紀錄</button> <button class="rec-cp">複製</button></p>';
   UI.showOverlay(win ? '任務完成' : '任務失敗', body, '回到作戰室 ▶', () => {
     const C = Camp.C;
     if (C.mode === 'story' && C.phase === 'manor' && !C.seenManor) {
@@ -633,6 +639,7 @@ async function giveInitiative(side) {
   S.initDeaths = 0;     // 這次主動權內倒下的敵人數（啟動檢定用）
   S.initNo++;
   S.side = side;
+  Rec.initiative(side, S.initNo, players());
   S.mode = 'move';
   S.magicOpts = null;
   UI.hideTargeting();
@@ -665,6 +672,7 @@ async function resolvePlayerAction(ok, actor = null) {
   if (S.waves > 0 && !enemies().length && !S.gameOver) await spawnWave();
   if (checkEnd()) return;
   if (S.forceEnemy) {
+    Rec.playerAct(ok, '頭目階段');
     S.forceEnemy = false;
     S.grab = false;
     UI.log('頭目突破了階段，主動權交給敵方', 'warn');
@@ -672,10 +680,12 @@ async function resolvePlayerAction(ok, actor = null) {
     giveInitiative('enemy');
     return;
   }
+  let saved = '';
   if (!ok && S.grab) {
     S.grab = false;
     UI.log('心線：這次行動不算失敗，主動權留在我方', 'good');
     ok = true;
+    saved = '心線';
   }
   S.grab = false;
   if (!ok && actor && actor.alive && actor.ability === 'transform' && !actor.transformed) {
@@ -683,7 +693,9 @@ async function resolvePlayerAction(ok, actor = null) {
     await transform(actor, false);
     S.busy = false;
     ok = true;
+    saved = '變身';
   }
+  Rec.playerAct(ok, saved);
   if (!ok) {
     UI.log('行動失敗，交出主動權', 'warn');
     await wait(0.5);
@@ -927,6 +939,7 @@ async function shoot(s, t, { reaction = false, forceMiss = false, triple = false
     await wait(0.03);
   }
 
+  Rec.shot(s.team, reaction, forceMiss ? 0 : odds.hit, hit);
   const tag = `${s.name}${reaction ? '（反應）' : triple ? '（三管齊發）' : ''} → ${t.name}（${forceMiss ? '必定落空' : odds.hit + '%'}）`;
   if (hit) {
     let dmg = ri(w.dmg[0], w.dmg[1]);
@@ -963,6 +976,7 @@ async function damage(t, dmg, crit, src = null) {
   let cut = 0;
   if (floor > 0 && t.hp - dmg < floor) { cut = dmg - (t.hp - floor); dmg = t.hp - floor; }
   t.hp -= dmg;
+  Rec.damage(t, dmg, cut);
   floatText(t, (crit ? '暴擊 ' : '') + '-' + dmg, crit ? 'crit' : 'dmg');
   if (cut) UI.log(`${t.name} 的${t.heartHp ? '愛心' : '階段護盾'}擋下了 ${cut} 點`, 'dim');
   const mats = t.mesh.userData.mats;
@@ -990,6 +1004,7 @@ const standUp = u => {
 
 // 心線：第一次掉到一半愛心 → 咬牙起身，主動權回到我方
 async function heartLine(u) {
+  Rec.count('heartLines');
   u.lineUsed = true;
   S.grab = true;
   standUp(u);
@@ -1054,6 +1069,7 @@ function pinFire(s, t) {
 function suppress(t, label = '壓制') {
   if (!t.alive || t.suppressed) return;
   t.suppressed = true;
+  Rec.suppressed(t);
   floatText(t, label, 'sup');
   setSuppressedPose(t, true);
   if (t.label) UI.updateLabel(t.label, t);
@@ -1072,6 +1088,7 @@ async function die(u) {
   u.suppressed = false;
   if (u.label) { u.label.remove(); u.label = null; }
   if (u.iceRef) { const ice = u.iceRef; ice.rider = null; u.iceRef = null; u.raised = false; u.frozen = false; S.map.set(ice.x, ice.z, T.FULL); }
+  Rec.count(u.team === 'player' ? 'downed' : 'kills');
   if (u.team === 'player') { u.downed = true; UI.log(`${u.name} 倒下了，緊急後送`, 'bad'); }
   else { UI.log(`${u.name} 倒下了`, 'good'); S.initDeaths = (S.initDeaths || 0) + 1; }
   if (u.boss) UI.banner(`${u.name} 被打倒了！`, 'player');
@@ -1309,6 +1326,7 @@ function pushHover(u, pi) {
 }
 
 async function playerMove(u, mv) {
+  Rec.tag(mv.vault ? '翻越' : '移動');
   S.busy = true;
   clearOverlays();
   const ok = await performMove(u, mv);
@@ -1356,6 +1374,7 @@ function confirmGive(kind, text) {
 }
 
 async function endWithHandover(msg) {
+  Rec.playerAct(true);
   S.grab = false;
   S.forceEnemy = false;
   refresh();
@@ -1433,6 +1452,7 @@ async function fire() {
   tgtRing.visible = false;
   S.busy = true;
   const second = secondTarget(u, t.unit);
+  Rec.tag(triple ? '三管齊發' : '射擊');
   let hit = await shoot(u, t.unit, { triple });
   if (second && second.alive && u.alive && weapon(u).ammo > 0) {
     UI.log(`${u.name} 雙槍齊射！`, 'dim');
@@ -1451,6 +1471,8 @@ const actions = {
     rally(u);
     const hit = await exposeReact(u); // 抬頭的瞬間會被盯上
     S.busy = false;
+    Rec.rally('player', !hit);
+    Rec.tag('起身');
     await resolvePlayerAction(!hit, u);
   },
   async reload() {
@@ -1464,6 +1486,7 @@ const actions = {
     w.ammo += n;
     w.reserve -= n;
     floatText(u, '換彈', 'ow');
+    Rec.tag(info.gives ? '換彈（交出）' : '換彈');
     if (!info.gives) { UI.log(`${u.name} ${w.name}換彈（不交出主動權）`, 'dim'); await resolvePlayerAction(true); return; }
     S.busy = true;
     await exposeReact(u);
@@ -1480,6 +1503,7 @@ const actions = {
     const gives = !nw.sidearm;
     if (gives && !confirmGive('swap', `換回${nw.name}`)) return;
     u.wi = to;
+    Rec.tag(gives ? '換主武器（交出）' : '拔副武器');
     swapGunMesh(u);
     floatText(u, `換${nw.short}`, 'ow');
     if (!gives) { UI.log(`${u.name} 拔出${nw.name}`, 'dim'); await resolvePlayerAction(true); return; }
@@ -1493,6 +1517,7 @@ const actions = {
     const u = S.selected;
     if (!canPlant(u)) return;
     S.mission.objective.planted = true;
+    Rec.tag('炸藥');
     floatText(u, '炸藥安裝完成', 'ow');
     UI.log(`${u.name} 在終端安裝了炸藥，撤回左側！`, 'good');
     UI.banner('炸藥已安裝', 'player');
@@ -1510,6 +1535,8 @@ const actions = {
     if (S.mode === 'target') cancelTarget();
     if (S.mode === 'magic') exitMagic();
     UI.log('我方放棄主動權', 'dim');
+    Rec.tag('放棄');
+    Rec.playerAct(true);
     giveInitiative('enemy');
   },
   select(u) { if ((S.side === 'player' || S.side === 'deploy') && !S.busy) { S.magicOpts = null; selectUnit(u); } },
@@ -1585,6 +1612,7 @@ async function useMagic() {
   if (!info) return;
   if (!info.usable) { UI.toast(info.why); return; }
   if (u.ability === 'transform') {
+    Rec.tag('魔法：變身');
     S.busy = true;
     await transform(u, true);
     S.busy = false;
@@ -1616,6 +1644,7 @@ async function execMagic(u, opt) {
   S.busy = true;
   clearOverlays();
   u.uses--;
+  Rec.tag('魔法：' + ({ dash: '突進', ice: '冰牆', airdrop: '空投' }[opt.kind] || opt.kind));
   let ok = true;
   if (opt.kind === 'dash') ok = await dash(u, opt);
   else if (opt.kind === 'ice') { placeIce(opt.x, opt.z, opt.rider, u); await wait(0.4); }
@@ -1800,6 +1829,7 @@ function pushInfo(u, ice) {
 }
 
 async function execPush(u, info) {
+  Rec.tag('推冰牆');
   S.busy = true;
   clearOverlays();
   const { ice, cells } = info;
@@ -2003,6 +2033,7 @@ async function enemyInitiative() {
       // 猶豫的單位沒有行動，下面照樣結算它的衝動
       if (act.e.mesh.visible) { focusUnit(act.e); floatText(act.e, '猶豫…', 'miss'); }
       UI.log(`${act.e.name} 猶豫了（啟動 ${chance}%），主動權交回我方`, 'good');
+      Rec.count('hesitate');
       await wait(0.5);
       failed = true;
       break;
@@ -2013,6 +2044,7 @@ async function enemyInitiative() {
       rally(act.e);
       await wait(0.3);
       ok = !(await exposeReact(act.e));
+      Rec.rally('enemy', ok);
     } else if (act.type === 'shoot') {
       focusOn((act.e.x + act.t.x) / 2, (act.e.z + act.t.z) / 2);
       await wait(0.35);
@@ -2022,6 +2054,7 @@ async function enemyInitiative() {
       if (act.e.mesh.visible) { focusUnit(act.e); await wait(0.3); }
       ok = await performMove(act.e, act.dest);
     }
+    Rec.enemyAct({ rally: '起身', shoot: '射擊' }[act.type] || '移動', ok);
     refresh();
     if (checkEnd()) return true;
     if (S.grab) { S.grab = false; UI.banner('心線：敵方主動權被打斷', 'player'); return true; }
@@ -2079,6 +2112,7 @@ async function impulses(acted) {
 }
 
 function impulseNote(e, what) {
+  Rec.count('impulses');
   if (e.mesh.visible) floatText(e, `衝動：${what}`, 'ow');
   UI.log(`${e.name}（衝動）${what}`, 'dim');
 }
@@ -2094,6 +2128,7 @@ async function patrol(e) {
 function flee(e) {
   e.alive = false;
   e.fled = true;
+  Rec.count('fled');
   e.mesh.visible = false;
   if (e.label) { e.label.remove(); e.label = null; }
   UI.log(`${e.name} 逃離了戰場`, 'good');

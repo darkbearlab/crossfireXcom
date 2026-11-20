@@ -1,4 +1,5 @@
 // HUD / DOM 介面。
+import * as Rec from './stats.js';
 const $ = id => document.getElementById(id);
 let H = {};
 
@@ -15,6 +16,17 @@ export function init(handlers) {
   $('cam-l').onclick = () => H.rotL();
   $('cam-r').onclick = () => H.rotR();
   $('help-toggle').onclick = () => $('help').classList.toggle('open');
+  // 戰鬥紀錄匯出：說明面板、任務結束畫面、作戰室都有按鈕（用事件委派，畫面重畫也有效）
+  document.addEventListener('click', async ev => {
+    const b = ev.target.closest('.rec-dl, .rec-cp, .rec-all, .rec-allcp');
+    if (!b) return;
+    if (b.classList.contains('rec-dl')) Rec.exportCurrent();
+    else if (b.classList.contains('rec-all')) Rec.exportAll();
+    else {
+      const ok = await Rec.copy(b.classList.contains('rec-cp') ? Rec.currentText() : Rec.allText());
+      toast(ok ? '已複製到剪貼簿' : '複製失敗，請改用匯出');
+    }
+  });
 }
 
 export function coverName(o) {
@@ -183,6 +195,7 @@ export function log(text, cls = '') {
   const d = document.createElement('div');
   d.className = cls;
   d.textContent = text;
+  Rec.log(text, cls);
   l.prepend(d);
   while (l.children.length > 8) l.lastChild.remove();
 }

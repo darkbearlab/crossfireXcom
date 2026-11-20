@@ -244,3 +244,7 @@ html, body, button, #hud, #hud * { touch-action: manipulation; }
 .hrow span { font-size: 11px; opacity: .8; }
 .ulabel .pips i.cut { margin-left: 4px; }
 .hq .gh .hp { color: #ff7a9c; }
+
+/* 戰鬥紀錄匯出 */
+.rec-btns { margin: 6px 0; font-size: 12px; }
+.rec-btns button { padding: 6px 10px; margin: 2px 2px; font-size: 12px; background: #161c24; border: 1px solid #3a4652; border-radius: 4px; }

@@ -148,6 +148,7 @@ function render() {
     <div class="sec">魔法少女（選 ${need} 人出擊；點數字看成長樹）</div>
     <div class="girls">${girls}</div>
     ${C.phase !== 'done' ? `<button id="hq-go" ${ready ? '' : 'disabled'}>出擊 ▶</button>` : ''}
+    <p class="rec-btns dim">戰鬥統計（平衡用）：<button class="rec-all">匯出全部</button> <button class="rec-allcp">複製全部</button></p>
   `, 'hq');
 
   o.querySelectorAll('.op').forEach(b => b.onclick = () => { st.op = +b.dataset.o; render(); });
