@@ -75,6 +75,7 @@ export function updateHUD(S) {
     if (u.alive && u.suppressed) st.push('<span class="sup">壓制中</span>');
     else if (u.alive && u.pinned) st.push('<span class="sup">受阻</span>');
     if (u.alive && u.locked) st.push('<span class="sup">被人偶纏住：這次主動權不能再行動</span>');
+    if (u.alive && u.crowLocked) st.push('<span class="sup">被烏鴉纏住：隊友朝她開槍打掉烏鴉，或打中稻草人</span>');
     if (u.alive && u.firedOut) st.push('<span class="dim">不能再開槍</span>');
     if (u.alive && u.transformed) st.push('<span class="mg">變身中</span>');
     if (u.alive && u.raised) st.push('<span class="ice">冰上</span>');
@@ -128,7 +129,7 @@ export function showTargeting(list, idx, triple = null) {
       const arm = a ? `<br><small class="${eff ? 'warn' : 'bad'}">裝甲 ${a}：要中 ${a + 1} 顆才有效${eff ? '' : '，這槍不可能有效'}（至少中一顆 ${effHit(t.odds, 0, n)}%）</small>` : '';
       return `
       <div class="tgt ${i === idx ? 'on' : ''}" data-i="${i}">
-        <div><b>${t.unit.name}</b> <small>生命 ${t.unit.hp}/${t.unit.maxHp} · ${t.unit.unflinching ? '不會受阻／壓制，每中一顆受 1 傷' : '累積 ' + stressPips(t.unit)}${t.unit.alerted ? '' : ' · 未察覺'}</small></div>
+        <div><b>${t.unit.name}</b> <small>生命 ${t.unit.hp}/${t.unit.maxHp} · ${t.unit.flying ? (t.unit.attached ? `纏在${t.unit.attached.name}身上，每中一顆打掉一隻（不會傷到她）` : '在空中（沒有掩體），每中一顆打掉一隻') : t.unit.kind === 'scarecrow' ? `打中一顆，烏鴉就傳送回它身上${t.unit.flock ? '（現在有烏鴉在外面）' : ''}` : t.unit.unflinching ? '不會受阻／壓制，每中一顆受 1 傷' : '累積 ' + stressPips(t.unit)}${t.unit.alerted ? '' : ' · 未察覺'}</small></div>
         <div class="hit">${a ? eff : t.odds.hit}%</div>
         <small>${diceLine(t.odds, triple)} · ${coverName(t.odds)} · 距離 ${t.odds.dist.toFixed(1)}${t.odds.sweet ? ' · 甜蜜距離' : ''}</small>${arm}${t.unit.lockOnHit ? `<br><small class="warn">⛓ 沒打倒的話，這次主動權她不能再行動（主動攻擊人偶每顆骰 +${t.unit.bigTarget}%）</small>` : ''}
       </div>`;
@@ -190,7 +191,8 @@ export function makeLabel(u) {
 export function updateLabel(d, u) {
   const icons = (u.team === 'enemy' && !u.alerted ? '<b class="calm">?</b> ' : '') +
     (u.execBuff && !u.spareUsed && !u.firedOut ? '<b class="execi" title="不留活口">⚔</b> ' : '') +
-    (u.suppressed ? '<b class="supi">▼</b> ' : u.pinned ? '<b class="supi">▽</b> ' : '') + (u.firedOut ? '<b class="outi">✕</b> ' : '') + (u.locked ? '<b class="outi" title="被人偶纏住">⛓</b> ' : '') +
+    (u.suppressed ? '<b class="supi">▼</b> ' : u.pinned ? '<b class="supi">▽</b> ' : '') + (u.firedOut ? '<b class="outi">✕</b> ' : '') + (u.locked ? '<b class="outi" title="被人偶纏住">⛓</b> ' : '') + (u.crowLocked ? '<b class="outi" title="被烏鴉纏住">🐦</b> ' : '') +
+    (u.kind === 'scarecrow' ? `<b class="stri" title="身上的烏鴉">🐦${u.crows}/${u.crowMax}${u.flock ? ' 飛出中' : u.crows < u.crowMax ? ` 恢復${u.regen}/4` : ''}</b> ` : '') +
     (u.stress ? `<b class="stri">${'•'.repeat(Math.min(2, u.stress))}</b> ` : '');
   const bar = u.heartHp ? heartsHtml(u)
     : `<div class="pips">${Array.from({ length: u.maxHp }, (_, i) => `<i class="${i < u.hp ? 'on' : ''}${u.cuts && u.cuts.includes(i) ? ' cut' : ''}"></i>`).join('')}</div>`;

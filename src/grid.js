@@ -135,9 +135,9 @@ export function quietLOS(map, a, b, sight = RULES.QUIET_SIGHT) {
 // breach＝射手會破防，不算壓制給的那 1 級
 // 骰子制命中：回傳骰數、每顆骰命中率、至少中一顆的機率（hit）與平均命中數（exp）
 // dieBonus：每顆骰的命中修正（%）；diceBonus：額外骰數（技能、條件）
-export function shotOdds(map, s, sPos, tPos, { reaction = false, suppressed = false, breach = false, weapon = null, dieBonus = 0, diceBonus = 0, raised = false, hardy = false } = {}) {
+export function shotOdds(map, s, sPos, tPos, { reaction = false, suppressed = false, breach = false, weapon = null, dieBonus = 0, diceBonus = 0, raised = false, hardy = false, air = false } = {}) {
   const w = weapon || {};
-  let raw = coverAt(map, tPos, sPos);
+  let raw = air ? 0 : coverAt(map, tPos, sPos); // air：空中的目標（烏鴉）沒有掩體
   if (raised) raw = Math.max(raw, 1);
   const ignored = !!w.ignoreHalf && !reaction && raw === 1;
   const base = ignored ? 0 : raw;
@@ -161,5 +161,5 @@ export function shotOdds(map, s, sPos, tPos, { reaction = false, suppressed = fa
   die = clamp(Math.round(die), RULES.DIE_MIN, RULES.DIE_MAX);
   const hit = Math.round((1 - Math.pow(1 - die / 100, dice)) * 100);
   return { hit, dice, die, exp: dice * die / 100, cover, ignored, sweet, duck, small, broke: suppressed && breach && base < 2,
-    flanked: cover === 0 && !ignored && coverSides(map, tPos).length > 0, dist: d };
+    flanked: cover === 0 && !ignored && !air && coverSides(map, tPos).length > 0, dist: d };
 }

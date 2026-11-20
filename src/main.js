@@ -14,7 +14,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { T, RULES, THEMES, ENEMY_TYPES, WEAPONS } from './config.js';
 import { generateMap, ri, GameMap } from './map.js';
 import { hasLOS, quietLOS, coverSides, coverAt, shotOdds, key, dist, clearMove, lineCells, vaultTargets, ORTH } from './grid.js';
-import { makeUnitMesh, addHalo, heartShape } from './units.js';
+import { makeUnitMesh, makeScarecrowMesh, makeCrowMesh, addHalo, heartShape } from './units.js';
 import * as UI from './ui.js';
 import * as Camp from './campaign.js';
 import * as HQ from './hq.js';
@@ -136,9 +136,9 @@ const S = {
 
 const players = () => S.units.filter(u => u.team === 'player' && u.alive);
 const enemies = () => S.units.filter(u => u.team === 'enemy' && u.alive);
-const unitAt = (x, z) => S.units.find(u => u.alive && u.x === x && u.z === z);
-const occupied = (x, z, except) => S.units.some(u => u.alive && u !== except && u.x === x && u.z === z);
-const canAct = u => !!u && u.alive && u.team === 'player' && !u.locked && S.side === 'player' && !S.busy && !S.gameOver && S.mode === 'move';
+const unitAt = (x, z) => S.units.find(u => u.alive && !u.flying && u.x === x && u.z === z); // 飛行的烏鴉不佔格
+const occupied = (x, z, except) => S.units.some(u => u.alive && !u.flying && u !== except && u.x === x && u.z === z);
+const canAct = u => !!u && u.alive && u.team === 'player' && !u.locked && !u.crowLocked && S.side === 'player' && !S.busy && !S.gameOver && S.mode === 'move';
 const canMove = u => canAct(u) && !u.suppressed && !u.pinned;
 const refresh = () => UI.updateHUD(S);
 const weapon = u => u.team === 'player' ? u.weapons[u.wi] : u.gun;
@@ -154,7 +154,7 @@ function diceBonus(s) {
 // 破防：打被壓制的敵人時，不算壓制給的那 1 級掩體
 const breach = s => s.team === 'player' && lv(s, 'gun') >= ({ akane: 2, hikari: 3, momo: 3 }[s.girl] || 99);
 const oddsVs = (s, t, opts = {}) => shotOdds(S.map, s, s, t, {
-  suppressed: !!t.suppressed, breach: breach(s), weapon: weapon(s), diceBonus: diceBonus(s), dieBonus: opts.reaction ? 0 : (t.bigTarget || 0), raised: !!t.raised, hardy: !!t.hardy, ...opts });
+  suppressed: !!t.suppressed, breach: breach(s), weapon: weapon(s), diceBonus: diceBonus(s), dieBonus: opts.reaction ? 0 : (t.bigTarget || 0), air: !!t.flying, raised: !!t.raised, hardy: !!t.hardy, ...opts });
 const iceAt = (x, z) => S.ice.find(i => i.x === x && i.z === z);
 const isExit = p => S.mission && S.mission.exits.some(e => e.x === p.x && e.z === p.z);
 const adjObjective = u => {
@@ -373,6 +373,8 @@ function makeFull(th, x, z) {
 
 // ================= 單位 =================
 function meshFor(u) {
+  if (u.kind === 'scarecrow') return makeScarecrowMesh(u.color, u.scale || 1);
+  if (u.kind === 'crows') return makeCrowMesh(u.maxHp);
   const m = makeUnitMesh(u.team, u.kind, u.color, u.weapons ? u.weapons[u.wi].id : 'ar', u.scale || 1,
     { hair: u.hair, girl: u.girl, boss: !!u.boss, mother: u.kind === 'b_mother' });
   if (u.transformed) addHalo(m);
@@ -459,7 +461,9 @@ function spawnEnemy(type, x, z, zone, alerted = false) {
     // 頭目血條分 3 段（由高到低的分段點）
     cuts: tpl.boss ? [Math.round(tpl.maxHp * 2 / 3), Math.round(tpl.maxHp / 3)] : null, phase: 1,
     // 不留活口（執行人的加持）：每次主動權第一次反應射擊打空不停火
-    execBuff: S.buffs.includes('exec') && !tpl.keepFiring, spareUsed: false };
+    execBuff: S.buffs.includes('exec') && !tpl.keepFiring, spareUsed: false,
+    // 稻草人：身上的烏鴉數、恢復進度、放出去的烏鴉群
+    crows: type === 'scarecrow' ? RULES.CROW_MAX : 0, crowMax: RULES.CROW_MAX, regen: 0, flock: null };
   spawnUnit(u);
   return u;
 }
@@ -597,15 +601,16 @@ function deployTo(u, t) {
 function checkEnd() {
   if (S.gameOver) return true;
   const ps = players();
-  if (!ps.length) {
+  if (!ps.length || ps.every(p => p.crowLocked)) {
+    if (ps.length) UI.log('最後一個人也被烏鴉纏住了，沒有人能救她', 'bad');
     S.gameOver = true;
     clearOverlays();
-    setTimeout(() => endMission(false), 900);
+    setTimeout(() => endMission(false, ps.length ? '最後一個人被烏鴉纏住了，沒有人能救她' : ''), 900);
     return true;
   }
   const hunt = S.mission.type === 'hunt';
   const bossDown = hunt && S.mission.boss && !S.mission.boss.alive;
-  const cleared = !enemies().length && !S.waves;
+  const cleared = !enemies().some(e => !e.summon) && !S.waves;
   const objDone = S.mission.type !== 'sabotage' || S.mission.objective.planted;
   const out = !hunt && objDone && ps.every(isExit);
   if (cleared || bossDown || out) {
@@ -630,7 +635,7 @@ function endMission(win, why) {
     const now = Camp.girlState(u.girl).hp;
     return `<li>${u.name}：${u.alive ? `HP ${hp[u.girl]}${now !== hp[u.girl] ? ` → ${now}` : ''}/${GIRL[u.girl].maxHp}` : '倒下後送'}</li>`;
   }).join('');
-  const body = (win ? `<p>${why}。主動權共 ${S.initNo} 次（易手 ${S.initNo - 1} 次）。</p>` : '<p>上場的兩人都倒下了。這張地圖要重打。</p>') +
+  const body = (win ? `<p>${why}。主動權共 ${S.initNo} 次（易手 ${S.initNo - 1} 次）。</p>` : `<p>${why || '上場的兩人都倒下了'}。這張地圖要重打。</p>`) +
     `<ul>${rows}</ul>` + (notes.length ? `<ul class="notes">${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '') +
     (win ? '<p style="opacity:.6">彈藥會在下張地圖補滿。</p>' : '') +
     '<p class="rec-btns"><button class="rec-dl">匯出這場紀錄</button> <button class="rec-cp">複製</button></p>';
@@ -663,7 +668,8 @@ async function giveInitiative(side) {
     if (S.waves > 0 && enemies().length <= 4) { S.busy = true; await spawnWave(); }
     S.busy = false;
     UI.banner('我方取得主動權', 'player');
-    selectUnit(S.selected && S.selected.alive && S.selected.team === 'player' ? S.selected : players()[0]);
+    const free = players().filter(p => !p.crowLocked);
+    selectUnit(S.selected && free.includes(S.selected) ? S.selected : (free[0] || players()[0]));
     return;
   }
 
@@ -716,8 +722,9 @@ async function resolvePlayerAction(ok, actor = null) {
     giveInitiative('enemy');
     return;
   }
-  // 人偶：被纏住的少女這次主動權不能再行動；全員都被纏住就交出主動權（不算失敗）
-  const free = players().filter(p => !p.locked);
+  crowTick();
+  // 人偶／烏鴉：被纏住的少女不能行動；全員都被纏住就交出主動權（不算失敗）
+  const free = players().filter(p => !p.locked && !p.crowLocked);
   if (!free.length) {
     UI.log('大家都被人偶纏住了，主動權交給敵方', 'warn');
     await wait(0.5);
@@ -799,7 +806,7 @@ function drawZones() {
 function moveOptions(u) {
   const blocked = (x, z) => occupied(x, z, u);
   const out = new Map();
-  if (u.frozen) return out; // 被抬到冰塊上的敵人不能移動
+  if (u.frozen || u.immobile) return out; // 被抬到冰塊上的敵人、稻草人不能移動
   const far = p => u.moveRange && dist(u, p) > u.moveRange + 0.01; // 人偶：移動距離短
   for (let z = 0; z < S.map.h; z++) for (let x = 0; x < S.map.w; x++) {
     if (!far({ x, z }) && clearMove(S.map, u, { x, z }, blocked)) out.set(key(x, z), { x, z, vault: false });
@@ -819,7 +826,7 @@ function planReactions(mover, cells, knownOnly = false) {
   const out = [];
   for (const r of S.units) {
     // 被壓制中的單位抬不起頭，不能反應射擊
-    if (!r.alive || r.team === mover.team || r.firedOut || r.suppressed) continue;
+    if (!r.alive || r.team === mover.team || r.firedOut || r.suppressed || r.crowLocked) continue;
     if (r.team === 'enemy' && !r.alerted) continue;
     // 我方不會對還沒察覺的敵人自動開槍（會暴露位置）
     if (r.team === 'player' && mover.team === 'enemy' && !mover.alerted) continue;
@@ -1016,7 +1023,8 @@ async function strike(t, hits, src = null) {
     dmg = t.heartHp ? (t.hp - (Math.ceil(t.hp / unit) - 1) * unit) + (wounds - 1) * unit : wounds;
     if (floor > 0 && t.hp - dmg < floor) { cut = dmg - (t.hp - floor); dmg = t.hp - floor; }
     t.hp -= dmg;
-    floatText(t, t.heartHp ? `-${Math.ceil(dmg / unit)} 心` : `-${dmg} 傷`, 'dmg');
+    floatText(t, t.heartHp ? `-${Math.ceil(dmg / unit)} 心` : t.summon ? `-${dmg} 隻` : `-${dmg} 傷`, 'dmg');
+    if (t.summon) updateBirds(t);
     if (cut) UI.log(`${t.name} 的${t.heartHp ? '愛心' : '階段護盾'}擋下了 ${t.heartHp ? Math.round(cut / unit) + ' 顆心' : cut + ' 傷'}`, 'dim');
   }
   Rec.damage(t, dmg, cut);
@@ -1030,6 +1038,7 @@ async function strike(t, hits, src = null) {
     }
     return;
   }
+  if (t.kind === 'scarecrow' && t.flock) recallCrows(t);
   if (t.unflinching) { /* 不會受阻、不會被壓制 */ }
   else if (t.stress >= RULES.SUP_AT) suppress(t);
   else if (t.stress >= RULES.PIN_AT) pin(t);
@@ -1182,6 +1191,16 @@ function setSuppressedPose(u, on) {
 }
 
 async function die(u) {
+  if (u.summon) { // 烏鴉被打散
+    const o = u.owner;
+    removeFlock(u);
+    if (o) { o.crows = 0; o.regen = -1; if /* -1：打散烏鴉的那個行動不算恢復 */ (o.label) UI.updateLabel(o.label, o); }
+    UI.log(`${u.name} 全被打散了，${o ? o.name + '要慢慢恢復' : ''}`, 'good');
+    refresh();
+    return;
+  }
+  if (u.flock && u.flock.alive) { removeFlock(u.flock); UI.log('稻草人倒下，烏鴉一哄而散', 'good'); }
+  if (u.crowLocked) { const f = u.crowLocked, o = f.owner; if (o) o.crows = f.hp; removeFlock(f); }
   u.alive = false;
   u.hp = 0;
   u.suppressed = false;
@@ -1802,6 +1821,114 @@ async function melee(u, t) {
   lockAfterAttack(u, t);
 }
 
+// ================= 稻草人與烏鴉 =================
+// 烏鴉的目標：稻草人看得到、還沒被纏住的少女。變身中的光最顯眼，否則挑最近的
+function crowTarget(e) {
+  const ps = players().filter(p => !p.crowLocked && hasLOS(S.map, e, p));
+  if (!ps.length) return null;
+  return ps.find(p => p.transformed) || ps.reduce((a, b) => dist(e, b) < dist(e, a) ? b : a);
+}
+const canLaunch = e => e.kind === 'scarecrow' && e.alive && e.alerted && !e.flock && e.crows >= e.crowMax && !!crowTarget(e);
+
+function launchCrows(e) {
+  const t = crowTarget(e);
+  if (!t) return false;
+  const f = spawnEnemy('crows', e.x, e.z, e.zone, true);
+  f.owner = e;
+  f.target = t;
+  f.hp = e.crows;
+  e.flock = f;
+  e.crows = 0;
+  f.mesh.position.y = 0.7;
+  updateBirds(f);
+  floatText(e, '放出烏鴉', 'ow');
+  UI.log(`${e.name} 放出了烏鴉，飛向 ${t.name}（還沒纏上前可以在空中打掉）`, 'bad');
+  if (e.label) UI.updateLabel(e.label, e);
+  updateVisibility();
+  refresh();
+  return true;
+}
+
+// 烏鴉的衝動：往目標直線飛 CROW_SPEED 格（不管牆），再 1 格內就纏上
+async function flyCrows(f) {
+  let t = f.target;
+  if (!t || !t.alive || t.crowLocked) {
+    t = f.target = players().filter(p => !p.crowLocked).sort((a, b) => dist(f, a) - dist(f, b))[0];
+  }
+  if (!t) return;
+  impulseNote(f, `飛向 ${t.name}`);
+  const d = dist(f, t);
+  if (d <= RULES.CROW_SPEED + 1.01) { await moveFlock(f, t, 1.0); attachCrows(f, t); return; }
+  let dest = null;
+  for (let s = RULES.CROW_SPEED; s >= 1 && !dest; s -= 0.5) {
+    const x = Math.round(f.x + (t.x - f.x) * s / d), z = Math.round(f.z + (t.z - f.z) * s / d);
+    if (S.map.walkable(x, z)) dest = { x, z };
+  }
+  if (dest) await moveFlock(f, dest, 0.7);
+}
+
+async function moveFlock(f, p, y) {
+  const a = f.mesh.position.clone(), b = new THREE.Vector3(p.x, y, p.z);
+  f.mesh.rotation.y = Math.atan2(p.x - f.x, p.z - f.z);
+  await tween(0.45, k => { f.mesh.position.lerpVectors(a, b, k); f.mesh.position.y += Math.sin(k * Math.PI) * 0.4; });
+  f.x = p.x;
+  f.z = p.z;
+  updateVisibility();
+}
+
+function attachCrows(f, t) {
+  f.attached = t;
+  t.crowLocked = f;
+  f.x = t.x;
+  f.z = t.z;
+  f.mesh.position.set(t.x, 1.0, t.z);
+  floatText(t, '被烏鴉纏住！', 'dmg');
+  UI.log(`${t.name} 被烏鴉纏住了：不能行動、不能反應射擊。隊友朝她開槍打掉全部烏鴉，或打中稻草人，才能解除`, 'bad');
+  if (t.label) UI.updateLabel(t.label, t);
+  refresh();
+  checkEnd();
+}
+
+function updateBirds(f) {
+  (f.mesh.userData.birds || []).forEach((b, i) => (b.visible = i < f.hp));
+}
+
+// 烏鴉離場（被打散、傳送回去、稻草人倒下）：放開纏住的少女
+function removeFlock(f) {
+  f.alive = false;
+  if (f.label) { f.label.remove(); f.label = null; }
+  unitGroup.remove(f.mesh);
+  const t = f.attached;
+  if (t) { t.crowLocked = null; f.attached = null; if (t.label) UI.updateLabel(t.label, t); }
+  if (f.owner && f.owner.flock === f) f.owner.flock = null;
+}
+
+// 打中稻草人：烏鴉（剩幾隻就回幾隻）立刻傳送回它身上
+function recallCrows(e) {
+  const f = e.flock;
+  if (!f || !f.alive) return;
+  e.crows = f.hp;
+  const t = f.attached;
+  removeFlock(f);
+  floatText(e, '烏鴉飛回來了', 'ow');
+  UI.log(`${e.name} 被打中，${e.crows} 隻烏鴉傳送回它身上${t ? `，${t.name} 自由了` : ''}`, 'good');
+  if (e.label) UI.updateLabel(e.label, e);
+  refresh();
+}
+
+// 我方每成功行動一次：烏鴉不在外面的稻草人恢復進度 +1
+function crowTick() {
+  for (const e of enemies()) {
+    if (e.kind !== 'scarecrow' || e.flock || e.crows >= e.crowMax) continue;
+    if (++e.regen >= RULES.CROW_REGEN) {
+      e.regen = 0;
+      e.crows++;
+      UI.log(`${e.name} 身上回來了 1 隻烏鴉（${e.crows}/${e.crowMax}）`, 'dim');
+    }
+    if (e.label) UI.updateLabel(e.label, e);
+  }
+}
+
 // 人偶：直接攻擊它（不含波及）卻沒打倒，攻擊者這次主動權不能再行動。沒打中也算
 function lockAfterAttack(u, t) {
   if (!t.lockOnHit || !t.alive || !u.alive || u.team !== 'player') return;
@@ -1813,7 +1940,7 @@ function lockAfterAttack(u, t) {
 
 // 擊退：一格一格推，撞到牆或單位就停
 async function knockback(t, dx, dz, n, { collide = false, splash = false } = {}) {
-  if (t.raised || !(dx || dz)) return;
+  if (t.raised || t.immobile || !(dx || dz)) return;
   let moved = false;
   for (let i = 0; i < n && t.alive; i++) {
     const to = { x: t.x + dx, z: t.z + dz };
@@ -2118,14 +2245,16 @@ function evalTile(e, pos, ps) {
 }
 
 function aiChoose(moveCount, acted) {
-  const es = enemies().filter(e => e.alerted && !(e.cumbersome && acted.has(e)));
+  const es = enemies().filter(e => e.alerted && !e.summon && !(e.cumbersome && acted.has(e)));
   if (!es.length) return null;
   const sup = es.find(e => e.suppressed);
   if (sup) return { type: 'rally', e: sup };
+  const sc = es.find(e => canLaunch(e));
+  if (sc) return { type: 'launch', e: sc };
 
   let shot = null;
   for (const e of es) {
-    if (e.firedOut) continue;
+    if (e.firedOut || e.noGun) continue;
     const t = visibleTargets(e)[0];
     if (t && (!shot || t.odds.hit > shot.odds.hit)) shot = { e, t: t.unit, odds: t.odds };
   }
@@ -2180,12 +2309,15 @@ async function enemyInitiative() {
       focusOn((act.e.x + act.t.x) / 2, (act.e.z + act.t.z) / 2);
       await wait(0.35);
       ok = await shoot(act.e, act.t);
+    } else if (act.type === 'launch') {
+      if (act.e.mesh.visible) { focusUnit(act.e); await wait(0.3); }
+      ok = launchCrows(act.e);
     } else {
       moveCount.set(act.e, (moveCount.get(act.e) || 0) + 1);
       if (act.e.mesh.visible) { focusUnit(act.e); await wait(0.3); }
       ok = await performMove(act.e, act.dest);
     }
-    Rec.enemyAct({ rally: '起身', shoot: '射擊' }[act.type] || '移動', ok);
+    Rec.enemyAct({ rally: '起身', shoot: '射擊', launch: '放烏鴉' }[act.type] || '移動', ok);
     for (const e of enemies()) e.shield = false;
     refresh();
     if (checkEnd()) return true;
@@ -2234,6 +2366,13 @@ async function impulses(acted, passed = false) {
       drawCurse();
       suppress(p, '詛咒！');
       UI.log(`${p.name} 腳下被下了詛咒`, 'bad');
+    } else if (e.impulse === 'launch') {
+      if (!canLaunch(e)) continue;
+      impulseNote(e, '放出烏鴉');
+      launchCrows(e);
+    } else if (e.impulse === 'fly') {
+      if (e.attached) continue;
+      await flyCrows(e);
     } else if (passed && !e.impulse && !e.firedOut) {
       const t = visibleTargets(e).find(o => o.unit.team === 'player');
       if (!t || t.odds.hit < RULES.AI_GAMBLE) continue;

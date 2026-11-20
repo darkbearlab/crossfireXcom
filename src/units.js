@@ -104,6 +104,56 @@ export function makeUnitMesh(team, kind, color, gun = 'ar', scale = 1, opt = {})
   return g;
 }
 
+// 稻草人：木樁＋橫桿＋布袋頭＋草帽（不拿槍）
+export function makeScarecrowMesh(color, scale = 1) {
+  const g = new THREE.Group();
+  const straw = new THREE.MeshStandardMaterial({ color, roughness: 0.9 });
+  const wood = new THREE.MeshStandardMaterial({ color: 0x6b4a2a, roughness: 0.9 });
+  const cloth = new THREE.MeshStandardMaterial({ color: 0x5a4a6a, roughness: 0.85 });
+  const eye = new THREE.MeshStandardMaterial({ color: 0xffd34d, emissive: 0xffb000, emissiveIntensity: 1.6 });
+  const add = (geo, mat, x, y, z) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); m.castShadow = true; g.add(m); return m; };
+  add(new THREE.CylinderGeometry(0.05, 0.06, 1.3, 8), wood, 0, 0.65, 0);
+  add(new THREE.BoxGeometry(0.9, 0.07, 0.07), wood, 0, 0.95, 0);
+  add(new THREE.BoxGeometry(0.42, 0.45, 0.22), cloth, 0, 0.82, 0);
+  add(new THREE.BoxGeometry(0.16, 0.12, 0.16), straw, -0.45, 0.95, 0);
+  add(new THREE.BoxGeometry(0.16, 0.12, 0.16), straw, 0.45, 0.95, 0);
+  add(new THREE.SphereGeometry(0.17, 12, 10), straw, 0, 1.2, 0);
+  add(new THREE.BoxGeometry(0.05, 0.05, 0.03), eye, -0.06, 1.22, 0.16);
+  add(new THREE.BoxGeometry(0.05, 0.05, 0.03), eye, 0.06, 1.22, 0.16);
+  add(new THREE.CylinderGeometry(0.32, 0.32, 0.03, 16), straw, 0, 1.33, 0);
+  add(new THREE.ConeGeometry(0.16, 0.22, 12), straw, 0, 1.45, 0);
+  g.scale.setScalar(scale);
+  g.userData.baseScale = scale;
+  g.userData.mats = [straw, cloth];
+  g.userData.muzzle = new THREE.Vector3(0, 1, 0.2);
+  return g;
+}
+
+// 烏鴉群：幾隻黑色的小鳥，數量跟著剩下的烏鴉數（userData.birds）
+export function makeCrowMesh(n = 3) {
+  const g = new THREE.Group();
+  const black = new THREE.MeshStandardMaterial({ color: 0x15151c, roughness: 0.7 });
+  const beak = new THREE.MeshStandardMaterial({ color: 0xffb000, emissive: 0x804000, emissiveIntensity: 0.6 });
+  const birds = [];
+  for (let i = 0; i < n; i++) {
+    const b = new THREE.Group();
+    const a = i / n * Math.PI * 2;
+    b.position.set(Math.cos(a) * 0.28, 0.12 * i, Math.sin(a) * 0.28);
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.1, 0.2), black);
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.03, 0.12), black);
+    const bk = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.04, 0.07), beak);
+    wing.position.y = 0.03; bk.position.z = 0.13;
+    b.add(body, wing, bk);
+    g.add(b);
+    birds.push(b);
+  }
+  g.userData.birds = birds;
+  g.userData.mats = [black];
+  g.userData.baseScale = 1;
+  g.userData.muzzle = new THREE.Vector3(0, 0, 0);
+  return g;
+}
+
 // 光變身後的光環
 export function addHalo(mesh) {
   const m = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.025, 8, 24),

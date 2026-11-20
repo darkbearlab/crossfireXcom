@@ -40,6 +40,9 @@ export const RULES = {
   ICE_RANGE: 5,           // 冰塊放置距離
   CURSE_TILES: 6,         // 詛咒地 buff 的詛咒格數量
   WAVE_SIZE: 3,           // 決戰每波增援人數
+  CROW_MAX: 3,            // 稻草人的烏鴉數（全部恢復才會再放出）
+  CROW_SPEED: 3,          // 烏鴉每次衝動往前飛幾格（再 1 格內就纏上）
+  CROW_REGEN: 4,          // 我方每成功行動幾次，稻草人身上回來 1 隻烏鴉
 
   // 敵人 AI
   AI_SHOOT: 60,           // 至少中一顆的機率 ≥ 此值就開槍
@@ -114,6 +117,14 @@ export const ENEMY_TYPES = {
   doll:      { name: '人偶',   act: 70, q: '精銳', maxHp: 6, dice: 2, dieMod: 25, sweetDice: 0, color: 0xd8c8b8, scale: 1.25,
                canReact: false, cumbersome: true, unflinching: true, lockOnHit: true, moveRange: 3, range: 2, bigTarget: 15, impulse: 'charge',
                desc: '魔女的人偶：不會受阻、不會被壓制，每中一顆骰就受 1 傷（主動攻擊它每顆骰 +15%，反應射擊不加）。動作慢：移動 3 格、射程 2、每次主動權只行動一次、不反應射擊。<b>攻擊它卻沒打倒的少女，這次主動權不能再行動</b>' },
+  // 稻草人：不會動、不開槍。放出烏鴉去纏住一名少女（不能行動、不能反應射擊）。
+  // 解法：空中攔截烏鴉、隊友朝被纏住的人開槍打掉全部烏鴉（之後要慢慢恢復），或打中稻草人（烏鴉立刻傳送回去）
+  scarecrow: { name: '稻草人', act: 70, q: '精銳', maxHp: 4, dice: 1, color: 0xc8a860, scale: 1.1,
+               noGun: true, canReact: false, unflinching: true, immobile: true, bigTarget: 15, impulse: 'launch',
+               desc: '不會動、不開槍、不會受阻／壓制，每中一顆骰受 1 傷（主動攻擊它每顆骰 +15%）。烏鴉 3 隻都在身上時，會放出去纏住一名少女。<b>打中它至少一顆，烏鴉就傳送回它身上</b>' },
+  crows:     { name: '烏鴉', maxHp: 3, dice: 1, color: 0x1a1a22,
+               noGun: true, canReact: false, unflinching: true, immobile: true, flying: true, summon: true, impulse: 'fly',
+               desc: '衝動：往目標飛 3 格，碰到就纏住她。在空中沒有掩體，每中一顆打掉一隻；全部打掉後稻草人要慢慢恢復' },
   // 家族成員（boss）：生命分 3 段，每段 2 傷
   b_eye:     { name: '薇歐拉', maxHp: 6, dice: 3, dieMod: 10, color: 0x5b3f8f, boss: true, impulse: 'shoot', ignoreHalf: true,
                desc: '眼線：主動射擊無視半掩體。打倒她「千里眼」就失效' },
@@ -140,10 +151,11 @@ export function enemyGroups(level, bonus = 0) {
   if (level >= 4) pool.push('brute');
   if (level >= 8) pool.push('brute', 'brute'); // 後期小兵多穿裝甲
   if (level >= 5) pool.push('doll');
-  let dolls = 0; // 人偶每張地圖最多 1 個
+  if (level >= 6) pool.push('scarecrow');
+  let special = 0; // 人偶、稻草人：每張地圖合計最多 1 個
   const pick = () => {
     let k = pool[Math.floor(Math.random() * pool.length)];
-    if (k === 'doll') { if (dolls) k = 'gunman'; else dolls++; }
+    if (k === 'doll' || k === 'scarecrow') { if (special) k = 'gunman'; else special++; }
     return k;
   };
   while (n > 0) {
