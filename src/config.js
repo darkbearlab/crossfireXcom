@@ -31,10 +31,11 @@ export const RULES = {
   ACT_SUPPRESSED: 15,     // 被壓制 -
   ACT_DEATHS: 10,         // 這次主動權內有隊友倒下 -
   ACT_HURT: 10,           // 生命低於一半 -
-  // 任務之間：彈藥補滿；生命只有沒上場的人每張地圖回 BENCH_HEAL
+  // 任務之間：彈藥補滿；沒上場的人每張地圖回 BENCH_HEAL；上場且沒倒下的人打贏時回 FIELD_HEAL
   BENCH_HEAL: 3,
+  FIELD_HEAL: 3,
   EVAC_MISSIONS: 2,       // 倒下後送，要再完成幾個任務才回歸
-  MELEE_HITS: 2,          // 朱音近戰：必中 2 下（照三階推進）
+  MELEE_WOUNDS: 1,        // 朱音近戰：必中，不經過三階直接受傷這麼多次並壓制（無視裝甲）
   ICE_HP: 3,              // 冰塊被打幾下會碎
   ICE_RANGE: 5,           // 冰塊放置距離
   CURSE_TILES: 6,         // 詛咒地 buff 的詛咒格數量

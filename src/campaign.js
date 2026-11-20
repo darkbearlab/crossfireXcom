@@ -146,7 +146,14 @@ export function finish(r) {
   for (const g of C.girls) g.medals++;
   notes.push('每個人都拿到 1 枚獎章');
   for (const g of C.girls) {
-    if (r.deployed.includes(g.id)) continue;
+    if (r.deployed.includes(g.id)) {
+      // 上場且沒倒下：打贏後整頓，回一顆心
+      if (!r.downed.includes(g.id) && g.hp < GIRL[g.id].maxHp) {
+        g.hp = Math.min(GIRL[g.id].maxHp, g.hp + RULES.FIELD_HEAL);
+        notes.push(`${nm(g.id)} 整頓 +1 心`);
+      }
+      continue;
+    }
     if (g.evac > 0) {
       if (r.downed.includes(g.id)) continue;
       g.evac--;

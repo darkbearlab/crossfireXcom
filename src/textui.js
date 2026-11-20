@@ -7,7 +7,7 @@
 // 第一次呼叫 TXT.do（或網址有 ?text）就開啟「快速模式」：動畫瞬間完成，不受畫面是否顯示影響。
 // 一般玩家沒用到 TXT 時，動畫照常。
 import { RULES, T, WEAPONS } from './config.js';
-import { GIRL } from './girls.js';
+import { GIRL, TREES } from './girls.js';
 import * as UI from './ui.js';
 import * as Rec from './stats.js';
 
@@ -15,7 +15,6 @@ let G = null;           // main.js 提供的內部函式
 let fastSet = false;    // 快速模式是否已經設定過
 const logBuf = [];      // 所有戰鬥紀錄
 const GIRL_KEY = { akane: 'A', hikari: 'H', yukino: 'Y', momo: 'M' };
-const ENEMY_KEY = '123456789abcdefghijklmnopqrstuvwxyz';
 
 export function init(api) {
   G = api;
@@ -43,7 +42,8 @@ const HELP = `指令（座標是 x z；角色用代號 A 朱音 / H 光 / Y 雪�
   targets [A]         列出可以射擊的目標與機率
   shoot [A] N [triple] 射擊編號 N 的敵人（triple＝小桃三管齊發）
   rally [A]           起身（解除受阻／壓制）
-  reload [A] | swap [A] | plant [A] | pass
+  reload [A] [yes] | swap [A] [yes]   換彈／換槍；會交出主動權的要加 yes 確認
+  plant [A] | pass
   magic [A] [x z]     魔法：不給座標＝列出可用位置；光的變身不用座標
   log [n]             最近 n 行戰鬥紀錄
   stats               這場的統計
@@ -51,11 +51,8 @@ const HELP = `指令（座標是 x z；角色用代號 A 朱音 / H 光 / Y 雪�
 
 // ---------- 狀態 ----------
 const gKey = u => GIRL_KEY[u.girl] || '?';
-function enemyIndex(S) {
-  // 編號依生成順序固定，死掉的也保留位置，方便對照紀錄
-  return S.units.filter(u => u.team === 'enemy');
-}
-const eKey = (S, e) => ENEMY_KEY[enemyIndex(S).indexOf(e)] || '?';
+// 敵人編號（e.tag）在生成時就固定，戰鬥紀錄裡的名字也帶著它（例如「槍手3」）
+const eKey = (S, e) => e.tag || '?';
 const pips = u => '●'.repeat(Math.min(2, u.stress || 0)) + '○'.repeat(2 - Math.min(2, u.stress || 0));
 const status = u => u.suppressed ? '壓制' : u.pinned ? '受阻' : '正常';
 
@@ -65,8 +62,8 @@ function findGirl(S, k) {
   return S.units.find(u => u.team === 'player' && (gKey(u) === k || u.name === k)) || null;
 }
 function findEnemy(S, k) {
-  const i = ENEMY_KEY.indexOf(String(k).toLowerCase());
-  return i >= 0 ? enemyIndex(S)[i] || null : null;
+  k = String(k).toLowerCase();
+  return S.units.find(u => u.team === 'enemy' && String(u.tag).toLowerCase() === k) || null;
 }
 
 function mapText(S, all) {
@@ -106,7 +103,7 @@ function mapText(S, all) {
     lines.push(row);
   }
   lines.push('圖例：# 全掩體  + 半掩體  , 隱蔽區  . 空地  X 撤離點  O 終端  c 補給箱  I 冰塊  * 詛咒格' + (deploy ? '  _ 部署區' : '') +
-    '  A/H/Y/M 少女  1–9/a–z 敵人');
+    '  A/H/Y/M 少女  其他數字/小寫字母＝敵人編號（不用 c i l o x）');
   return lines.join('\n');
 }
 
@@ -117,8 +114,9 @@ function girlLine(S, u) {
   const mi = G.magicInfo(u);
   const flags = [u.firedOut && '這次主動權不能再開槍', u.transformed && '變身中', u.raised && '冰上', u.dodge && '閃避×' + u.dodge,
     S.selected === u && '◀ 選取中'].filter(Boolean);
-  return `${gKey(u)} ${u.name} (${u.x},${u.z})  心 ${hearts}/${maxH}（${u.hp}/${u.maxHp}）${u.lineUsed ? '' : ' 心線未用'}  累積 ${pips(u)} ${status(u)}` +
-    `\n    ${w.name} ${w.ammo}/${w.mag}${isFinite(w.reserve) ? ` 備 ${w.reserve}` : ''}` +
+  const ri = G.reloadInfo(u);
+  return `${gKey(u)} ${u.name} (${u.x},${u.z})  心 ${hearts}/${maxH}（${u.hp}/${u.maxHp}）${u.lineUsed ? ' 心線：已用或沒有' : ` 心線：掉到 ${u.lineHp / u.heartHp} 心時`}  累積 ${pips(u)} ${status(u)}` +
+    `\n    ${w.name} ${w.ammo}/${w.mag}${isFinite(w.reserve) ? ` 備 ${w.reserve}` : ''}${ri && ri.gives ? '（換彈會交出主動權）' : ''}` +
     (u.weapons.length > 1 ? `（另一把：${u.weapons[1 - u.wi].name} ${u.weapons[1 - u.wi].ammo}/${u.weapons[1 - u.wi].mag}）` : '') +
     (mi ? `  魔法：${mi.label}${mi.usable ? '' : '（' + (mi.why || '不可用') + '）'}` : '') + (flags.length ? '  ' + flags.join('、') : '');
 }
@@ -136,9 +134,12 @@ function enemyLine(S, e, all) {
 function targetsText(S, u) {
   const ts = G.visibleTargets(u).filter(t => t.unit.team === 'enemy');
   if (!ts.length) return '  （沒有視線內的目標）';
+  if (u.weapons[u.wi].ammo <= 0) return `  （彈匣空了：reload 換彈，或 swap 換槍；看得到 ${ts.map(t => eKey(S, t.unit)).join(' ')}）`;
+  if (u.firedOut) return '  （這次主動權不能再開槍）';
   return ts.map(t => {
     const o = t.odds;
-    return `  ${eKey(S, t.unit)} ${t.unit.name}：${o.dice} 骰 × ${o.die}% → 至少中一顆 ${o.hit}%，平均中 ${(o.dice * o.die / 100).toFixed(1)}` +
+    const armor = t.unit.armor ? `，裝甲 ${t.unit.armor}：實際生效 ${Math.round((1 - Math.pow(1 - o.die / 100, o.dice) - o.dice * (o.die / 100) * Math.pow(1 - o.die / 100, o.dice - 1)) * 100)}%` : '';
+    return `  ${eKey(S, t.unit)} ${t.unit.name}：${o.dice} 骰 × ${o.die}% → 至少中一顆 ${o.hit}%，平均中 ${(o.dice * o.die / 100).toFixed(1)}${armor}` +
       `  ${UI.coverName(o)}  距離 ${o.dist.toFixed(1)}${o.sweet ? ' 甜蜜距離' : ''}`;
   }).join('\n');
 }
@@ -178,11 +179,11 @@ function movesText(S, u, n = 30) {
   const list = [...G.moveOptions(u).values()].map(mv => {
     const plan = G.planReactions(u, G.pathCells(u, mv), true);
     const risk = Math.round(G.moveRisk(u, plan) * 100);
-    return { mv, risk, d: Math.hypot(mv.x - u.x, mv.z - u.z), cover: G.coverSides(S.map, mv).length };
+    return { mv, risk, d: Math.hypot(mv.x - u.x, mv.z - u.z), cover: G.coverSides(S.map, mv).length, unk: G.unknownThreat(G.pathCells(u, mv)) };
   });
   list.sort((a, b) => a.risk - b.risk || b.mv.x - a.mv.x);
-  return `${u.name} 可移動 ${list.length} 格（依風險排序，前 ${Math.min(n, list.length)} 個；風險＝路上被反應射擊打中的機率，只算看得到的敵人）\n` +
-    list.slice(0, n).map(o => `  (${o.mv.x},${o.mv.z}) 距離 ${o.d.toFixed(1)}${o.mv.vault ? ' 翻越' : ''} 掩體面 ${o.cover} 風險 ${o.risk}%`).join('\n');
+  return `${u.name} 可移動 ${list.length} 格（依風險排序，前 ${Math.min(n, list.length)} 個；風險＝路上被反應射擊打中的機率，只算看得到的敵人；⚠未偵察＝路線會被位置不明的敵人看到）\n` +
+    list.slice(0, n).map(o => `  (${o.mv.x},${o.mv.z}) 距離 ${o.d.toFixed(1)}${o.mv.vault ? ' 翻越' : ''} 掩體面 ${o.cover} 風險 ${o.risk}%${o.unk ? ' ⚠未偵察' : ''}`).join('\n');
 }
 
 // ---------- 指令 ----------
@@ -249,8 +250,9 @@ async function run(line) {
         if (!g) return '用法：learn A gun';
         clickBtn(b => b.classList.contains('node') && b.dataset.g === id && b.dataset.t === t && +b.dataset.i === g[t]);
         await sleep(20);
-        if (!clickBtn(b => b.classList.contains('learn'))) return '學不了（沒有獎章或已學滿）';
-        return run('hq');
+        const node = TREES[id][t][g[t]];
+        if (!clickBtn(b => b.classList.contains('learn'))) return '學不了：要在作戰室，而且有獎章、還沒學滿';
+        return `學會了 ${GIRL[id].name} ${t === 'gun' ? '槍法' : '魔法'} ${g[t]}：${node}\n` + await run('hq');
       }
       case 'go': if (!clickBtn(b => b.id === 'hq-go' && !b.disabled)) return '還不能出擊（選作戰與兩名少女）'; break;
       case 'deploy': {
@@ -284,6 +286,7 @@ async function run(line) {
         const i = S.targets.findIndex(o => o.unit === t);
         if (i < 0) { G.cancelTarget(); return `看不到 ${t.name}`; }
         S.targetIdx = i;
+        if (args[1] === 'triple' && !G.canTriple(u)) { G.cancelTarget(); return '不能三管齊發：要小桃槍法 5、拿三管霰彈槍、彈匣至少 3 發'; }
         S.triple = args[1] === 'triple';
         await G.fire();
         break;
@@ -291,7 +294,12 @@ async function run(line) {
       case 'rally': case 'reload': case 'swap': case 'plant': {
         const u = girlArg(); const e = needAct(u); if (e) return e;
         if (u !== S.selected) G.selectUnit(u);
-        if (cmd === 'reload' || cmd === 'swap') S.confirm = cmd; // 文字介面不用再按一次確認
+        if (cmd === 'reload' || cmd === 'swap') {
+          const ri = cmd === 'reload' ? G.reloadInfo(u) : null;
+          const gives = cmd === 'reload' ? !!(ri && ri.gives) : (u.weapons.length > 1 && !u.weapons[1 - u.wi].sidearm);
+          if (gives && args[0] !== 'yes') return `⚠ ${cmd === 'reload' ? '主武器換彈' : '換回主武器'}會交出主動權，看得到她的敵人也會開一次反應射擊。確定請用：${cmd} ${gKey(u)} yes`;
+          S.confirm = cmd; // 確認過了，不用再按第二次
+        }
         await G.actions[cmd]();
         break;
       }
