@@ -1227,15 +1227,15 @@ function countBossShot(e, t) {
   if (e.label) UI.updateLabel(e.label, e);
 }
 
-// ---------- 設施條件（難度 5 起 1 個、難度 9 起 2 個） ----------
+// ---------- 設施條件（難度 3 起 1 個、難度 9 起 2 個；人偶／稻草人要難度 5 起） ----------
 const COND_TEXT = {
   timer: () => `警報響起後，每 ${S.condTimer ? S.condTimer.every : 4} 個敵方主動權會有 2 名增援從撤離點那一側趕到`,
   plant: () => '裝好炸藥後，往撤離點的路上會立刻冒出 2 名增援，全圖進入警戒',
   special: () => '這裡有魔女的東西（人偶或稻草人）',
 };
 function facilityConds(gen, level) {
-  if (level < 5) return [];
-  const pool = ['timer', 'special'];
+  if (level < 3) return []; // 難度 1、2 是教學
+  const pool = level >= 5 ? ['timer', 'special'] : ['timer'];
   if (gen.mission.type === 'sabotage') pool.push('plant');
   const out = [];
   const n = level >= 9 ? 2 : 1;
