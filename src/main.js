@@ -884,6 +884,9 @@ async function reactAt(u, plan, i) {
     const hit = await shoot(s, u, { reaction: true, forceMiss });
     if (forceMiss) { floatText(u, '閃過！', 'ow'); UI.log(`${u.name} 閃過了子彈！`, 'good'); }
     if (hit) {
+      // 打中也算用掉這次反應：光變身、心線把主動權保住時，同一名敵人不能再反應
+      s.firedOut = true;
+      if (s.label) UI.updateLabel(s.label, s);
       if (!(u.unflinching && u.alive)) return true;
       continue; // 不會受阻、不會被壓制：打中也攔不住，繼續走
     }
@@ -1603,7 +1606,8 @@ const canTriple = u => !!u && u.girl === 'momo' && lv(u, 'gun') >= 5 && weapon(u
 
 // 朱音雙槍齊射的第二個目標
 function secondTarget(u, prim) {
-  if (u.girl === 'akane' && lv(u, 'gun') >= 5) return visibleTargets(u).map(o => o.unit).find(e => e !== prim) || null;
+  // 不自動挑人偶：打人偶要自己決定（會被纏住），補射不能拿來繞過這條規則
+  if (u.girl === 'akane' && lv(u, 'gun') >= 5) return visibleTargets(u).map(o => o.unit).find(e => e !== prim && !e.lockOnHit) || null;
   return null;
 }
 
@@ -1846,7 +1850,8 @@ async function dash(u, opt) {
   landed(u);
   if (!ok) return false;
   const adj = enemies().filter(e => dist(e, u) < 1.5).sort((a, b) => a.hp - b.hp);
-  if (adj.length) await melee(u, adj[0]);
+  const pick = opt.target && adj.includes(opt.target) ? opt.target : adj[0]; // 指定了近戰目標就打她，否則打血最少的
+  if (pick) await melee(u, pick);
   else { u.uses++; Rec.tag('魔法：突進（退回）'); UI.log(`${u.name} 的突進沒碰到敵人（被發現停下），次數退回`, 'warn'); }
   return true;
 }
@@ -2298,16 +2303,16 @@ function evalTile(e, pos, ps) {
   for (const p of ps) {
     nearest = Math.min(nearest, dist(pos, p));
     if (hasLOS(S.map, pos, p)) {
-      const def = shotOdds(S.map, p, p, pos, { weapon: weapon(p), dieBonus: e.bigTarget || 0 }); // 玩家打這格的命中率
-      s -= def.hit * 0.35;
+      // 玩家打這格的命中率。人偶不怕被打（不會受阻、壓制），不在乎站不站在射界裡，免得在原地來回晃
+      if (!e.unflinching) s -= shotOdds(S.map, p, p, pos, { weapon: weapon(p), dieBonus: e.bigTarget || 0 }).hit * 0.35;
       if (e.range && dist(pos, p) > e.range + 0.5) continue; // 射程外
       const o = shotOdds(S.map, e, pos, p, { weapon: e.gun, suppressed: !!p.suppressed, hardy: !!p.hardy, raised: !!p.raised });
       if (o.hit > bestHit) bestHit = o.hit;
       if (o.cover === 0) flank = true;
-    } else s += 6;
+    } else if (!e.unflinching) s += 6;
   }
   s += bestHit * 0.5 + (flank ? 15 : 0);
-  if (e.boss && !bestHit) s -= 40; // 頭目：躲著不動不是她的作風，沒有射擊角度就去找
+  if (e.boss && !bestHit) s -= 40 + nearest * 3; // 頭目：躲著不動不是她的作風，沒有射擊角度就往少女靠近去找
   if (e.kind === 'zealot' || e.kind === 'doll') s -= nearest * 4; // 狂徒、人偶：越近越好
   else if (e.kind === 'sniper') { if (nearest < 5) s -= (5 - nearest) * 6; }
   else if (nearest > 8) s -= (nearest - 8) * 5;
@@ -2320,13 +2325,13 @@ function aiChoose(moveCount, acted) {
   if (!es.length) return null;
   // 頭目先行動：敵方主動權一開始由她出手（她不用檢定），不會被手下的「亂了陣腳」吃掉
   const boss = es.find(e => e.boss && !acted.has(e));
-  if (boss) { const c = aiChooseFor([boss], moveCount); if (c) return c; }
+  // 她沒有好的射擊或移動時，只要有一步能改善位置（找角度、靠近）就走，不把回合讓給手下發呆
+  if (boss) { const c = aiChooseFor([boss], moveCount, 0); if (c) return c; }
   return aiChooseFor(es, moveCount);
 }
 
-function aiChooseFor(es, moveCount) {
-  const sup = es.find(e => e.suppressed);
-  if (sup) return { type: 'rally', e: sup };
+// minGain：移動至少要改善多少才走
+function aiChooseFor(es, moveCount, minGain = RULES.AI_MOVE_GAIN) {
   const sc = es.find(e => canLaunch(e));
   if (sc) return { type: 'launch', e: sc };
 
@@ -2341,7 +2346,7 @@ function aiChooseFor(es, moveCount) {
   const ps = players();
   let move = null;
   for (const e of es) {
-    if (e.pinned || (moveCount.get(e) || 0) >= 2) continue;
+    if (e.pinned || e.suppressed || (moveCount.get(e) || 0) >= 2) continue;
     const cur = evalTile(e, e, ps);
     for (const mv of moveOptions(e).values()) {
       if (dist(e, mv) > 9) continue;
@@ -2350,7 +2355,10 @@ function aiChooseFor(es, moveCount) {
       if (!move || gain > move.gain) move = { type: 'move', e, dest: mv, gain };
     }
   }
-  if (move && move.gain > RULES.AI_MOVE_GAIN) return move;
+  if (move && move.gain > minGain) return move;
+  // 被壓制的先起身——但放在好的射擊和移動之後：不然留一隻被壓制的雜兵，它每次先啟動、亂了陣腳，整個敵方主動權就被它拖掉
+  const sup = es.find(e => e.suppressed);
+  if (sup) return { type: 'rally', e: sup };
   if (shot && shot.odds.hit >= RULES.AI_GAMBLE) return { type: 'shoot', ...shot };
   // 受阻的敵人沒有好槍可開：起身，下次才能移動
   const pinned = es.find(e => e.pinned && (moveCount.get(e) || 0) < 2);

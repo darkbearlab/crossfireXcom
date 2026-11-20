@@ -44,7 +44,7 @@ const HELP = `指令（座標是 x z；角色用代號 A 朱音 / H 光 / Y 雪�
   rally [A]           起身（解除受阻／壓制）
   reload [A] [yes] | swap [A] [yes]   換彈／換槍；會交出主動權的要加 yes 確認
   plant [A] | pass
-  magic [A] [x z]     魔法：不給座標＝列出可用位置；光的變身不用座標
+  magic [A] [x z] [N] 魔法：不給座標＝列出可用位置；光的變身不用座標；突進可用 N 指定近戰目標
   log [n]             最近 n 行戰鬥紀錄
   stats               這場的統計
   fast on|off         快速模式（動畫瞬間完成；預設開）`;
@@ -243,7 +243,7 @@ async function run(line) {
         const ops = G.Camp.ops(), C = G.Camp.C;
         return (document.querySelector('#overlay #s-ok') ? '（畫面上還有劇情，先 ok 才會回到作戰室）\n' : '') + '作戰：\n' + ops.map((o, i) => `  ${i + 1}. ${o.name}（${o.kind}）難度 ${G.Camp.level(o)} 敵人約 ${G.Camp.enemyEstimate(o)}`).join('\n') +
           '\n少女：\n' + C.girls.map(g => `  ${GIRL_KEY[g.id]} ${GIRL[g.id].name} 生命 ${g.hp}/${GIRL[g.id].maxHp} 槍法 ${g.gun} 魔法 ${g.magic} 獎章 ${g.medals}` +
-            `${g.evac ? ` 後送中（${g.evac}）` : ''}${(C.deploy || []).includes(g.id) ? ' ✓出擊' : ''}`).join('\n');
+            `${g.evac ? ` 後送中（還要 ${g.evac} 場；可出擊的人不到 2 個時會半血提前歸隊）` : ''}${(C.deploy || []).includes(g.id) ? (g.evac ? ' ✓出擊（但後送中，不能出擊）' : ' ✓出擊') : ''}`).join('\n');
       }
       case 'op': if (!clickBtn(b => b.dataset.o === String(+args[0] - 1))) return '沒有這個作戰（先 hq）'; return run('hq');
       case 'squad': {
@@ -276,8 +276,8 @@ async function run(line) {
       }
       case 'start': if (S.side !== 'deploy') return '不在部署階段'; G.startBattle(); break;
       case 'sel': { const u = findGirl(S, args[0]); if (!u || !u.alive) return '沒有這名少女'; G.selectUnit(u); return girlLine(S, u); }
-      case 'moves': { const u = girlArg(); return movesText(S, u, +args[0] || 30); }
-      case 'targets': { const u = girlArg(); return u ? targetsText(S, u) : '先選角色'; }
+      case 'moves': { if (S.gameOver) return '任務已經結束'; const u = girlArg(); return movesText(S, u, +args[0] || 30); }
+      case 'targets': { if (S.gameOver) return '任務已經結束'; const u = girlArg(); return u ? targetsText(S, u) : '先選角色'; }
       case 'move': {
         const u = girlArg(); const e = needAct(u); if (e) return e;
         if (u !== S.selected) G.selectUnit(u);
@@ -340,6 +340,11 @@ async function run(line) {
         }
         const opt = opts.get(G.key(+args[0], +args[1]));
         if (!opt) return '那裡不能用魔法（不帶座標可列出可用位置）';
+        if (opt.kind === 'dash' && args[2]) { // 突進：第 3 個參數指定近戰目標
+          const t = findEnemy(S, args[2]);
+          if (!t || !t.alive || Math.hypot(t.x - opt.x, t.z - opt.z) >= 1.5) return `${args[2]} 不在 (${opt.x},${opt.z}) 旁邊，近戰打不到`;
+          opt.target = t;
+        }
         await G.execMagic(u, opt);
         break;
       }
