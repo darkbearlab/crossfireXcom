@@ -140,7 +140,7 @@ const unitAt = (x, z) => S.units.find(u => u.alive && !u.flying && u.x === x && 
 const occupied = (x, z, except) => S.units.some(u => u.alive && !u.flying && u !== except && u.x === x && u.z === z);
 const canAct = u => !!u && u.alive && u.team === 'player' && !u.locked && !u.crowLocked && S.side === 'player' && !S.busy && !S.gameOver && S.mode === 'move';
 const canMove = u => canAct(u) && !u.suppressed && !u.pinned;
-const refresh = () => UI.updateHUD(S);
+const refresh = () => { markCrowAims(); UI.updateHUD(S); };
 const weapon = u => u.team === 'player' ? u.weapons[u.wi] : u.gun;
 const lv = (u, t) => (t === 'gun' ? u.gunLv : u.magicLv) || 0;
 // 射手的條件骰數加減（成長樹、壓制加重）
@@ -883,7 +883,10 @@ async function reactAt(u, plan, i) {
     else if (u.dodge > 0) { u.dodge--; forceMiss = true; }
     const hit = await shoot(s, u, { reaction: true, forceMiss });
     if (forceMiss) { floatText(u, '閃過！', 'ow'); UI.log(`${u.name} 閃過了子彈！`, 'good'); }
-    if (hit) return true;
+    if (hit) {
+      if (!(u.unflinching && u.alive)) return true;
+      continue; // 不會受阻、不會被壓制：打中也攔不住，繼續走
+    }
     if (!weapon(s).keepFiring) {
       if (s.execBuff && !s.spareUsed) {
         s.spareUsed = true;
@@ -1118,27 +1121,12 @@ async function bossPhase(b) {
     UI.log(`${b.name} 從 (${from.x},${from.z}) 退到新的位置重新部署`, 'warn');
   }
 
-  // 2. 增援：離頭目和少女都有一段距離、靠著掩體，從新的方向威脅少女
-  const n = RULES.PHASE_GUARDS;
+  // 2. 增援：每個頭目有自己的增援方式（ENEMY_TYPES 的 reinforce）。專屬地圖可以用 S.mission.reinforceSpots 指定位置
+  const rule = b.reinforce || { kinds: Array(RULES.PHASE_GUARDS).fill('gunman'), where: 'guard' };
   const reCands = (S.mission.reinforceSpots || []).filter(free);
-  let group = [];
-  if (reCands.length) group = reCands.slice(0, n);
-  else {
-    const anchors = allFloor.filter(p => dist(p, b) >= 6 && ps.every(g => dist(g, p) >= 5))
-      .map(p => {
-        const sees = ps.filter(g => hasLOS(S.map, p, g)).length;
-        const near = Math.min(...ps.map(g => dist(g, p)));
-        return { p, s: coverSides(S.map, p).length * 3 + (sees ? 8 : 0) - Math.abs(near - 7) + Math.random() * 3 };
-      }).sort((a, c) => c.s - a.s);
-    const lead = anchors[0] && anchors[0].p;
-    if (lead) {
-      group = [lead, ...allFloor.filter(p => !(p.x === lead.x && p.z === lead.z) && dist(p, lead) <= 2.3)
-        .sort((a, c) => coverSides(S.map, c).length - coverSides(S.map, a).length)].slice(0, n);
-    }
-  }
-  // 剛到場：這次主動權內不能開槍、不能反應射擊
-  for (const p of group) spawnEnemy('gunman', p.x, p.z, S.map.zoneAt(p.x, p.z), true).firedOut = true;
-  if (group.length) UI.log(`增援 ${group.length} 名從 (${group[0].x},${group[0].z}) 一帶趕到（剛到場，這次主動權內不能開槍）`, 'warn');
+  const group = reCands.length ? reCands.slice(0, rule.kinds.length) : reinforceSpots(b, ps, allFloor.filter(free), rule);
+  group.forEach((p, i) => { spawnEnemy(rule.kinds[i], p.x, p.z, S.map.zoneAt(p.x, p.z), true).firedOut = true; }); // 剛到場：這次主動權內不開槍
+  if (group.length) UI.log(`增援 ${group.map((p, i) => `${ENEMY_TYPES[rule.kinds[i]].name}(${p.x},${p.z})`).join('、')} 趕到（剛到場，這次主動權內不能開槍）`, 'warn');
 
   // 3. 振奮
   for (const p of ps) { p.uses = Math.max(p.uses, p.usesMax || 0); p.dodge = Math.max(p.dodge || 0, p.dodgeMax || 0); }
@@ -1148,6 +1136,40 @@ async function bossPhase(b) {
   updateVisibility();
   refresh();
   await wait(0.6);
+}
+
+// 頭目的增援位置。watch：遠處、看得到少女、對每個看得到它的少女都有掩體
+// ambush：少女都看不到、離最近的少女 4～6 格，偏向頭目的另一側（包抄）；guard：頭目身邊 3 格內、靠掩體
+function reinforceSpots(b, ps, floor, rule) {
+  const n = rule.kinds.length;
+  const seers = p => ps.filter(g => hasLOS(S.map, g, p));
+  const near = p => Math.min(...ps.map(g => dist(g, p)));
+  const covered = p => seers(p).every(g => coverAt(S.map, p, g) > 0);
+  const side = p => coverSides(S.map, p).length;
+  const score = {
+    watch: p => near(p) < 8 || !seers(p).length || !covered(p) ? null : side(p) * 3 + seers(p).length * 4 - (near(p) - 8),
+    ambush: p => seers(p).length || near(p) < 4 || near(p) > 6.5 ? null : dist(p, b) * 0.5 - Math.abs(near(p) - 5) * 2 + side(p),
+    guard: p => dist(p, b) > 3 || near(p) < 4 ? null : side(p) * 3 + (covered(p) ? 4 : -4) - dist(p, b),
+  }[rule.where];
+  const pick = (sc, gap) => {
+    const out = [];
+    const cands = floor.map(p => ({ p, s: sc(p) })).filter(c => c.s !== null)
+      .map(c => ({ ...c, s: c.s + Math.random() * 2 })).sort((a, c) => c.s - a.s);
+    for (const c of cands) {
+      if (out.length >= n) break;
+      if (out.some(q => dist(q, c.p) < gap)) continue; // 不同格，watch／ambush 還要分開一點
+      out.push(c.p);
+    }
+    return out;
+  };
+  let out = pick(score, rule.where === 'guard' ? 1 : 2);
+  // 地形不允許時退而求其次：離少女至少 5 格、靠掩體
+  if (out.length < n) {
+    const used = out;
+    const rest = pick(p => near(p) < 5 || used.some(q => q.x === p.x && q.z === p.z) ? null : side(p) * 3 - Math.abs(near(p) - 7), 1);
+    out = [...used, ...rest.filter(p => !used.some(q => dist(q, p) < 1))].slice(0, n);
+  }
+  return out;
 }
 
 // 敵人啟動檢定
@@ -1217,6 +1239,11 @@ async function die(u) {
     return;
   }
   if (u.flock && u.flock.alive) { removeFlock(u.flock); UI.log('稻草人倒下，烏鴉一哄而散', 'good'); }
+  if (u.lockOnHit) for (const p of players()) if (p.locked === u) {
+    p.locked = false;
+    UI.log(`${u.name} 倒下，${p.name} 不再被纏住`, 'good');
+    if (p.label) UI.updateLabel(p.label, p);
+  }
   if (u.crowLocked) { const f = u.crowLocked, o = f.owner; if (o) o.crows = f.hp; removeFlock(f); }
   u.alive = false;
   u.hp = 0;
@@ -1850,6 +1877,27 @@ function crowTarget(e) {
 }
 const canLaunch = e => e.kind === 'scarecrow' && e.alive && e.alerted && !e.flock && e.crows >= e.crowMax && !!crowTarget(e);
 
+// 放烏鴉前的警告：烏鴉滿了的稻草人標出下一個目標（敵方一行動就會放）
+function markCrowAims() {
+  if (!S.units) return;
+  const ps = players();
+  const before = new Map(ps.map(p => [p, p.crowAimed]));
+  for (const p of ps) { p.crowAimed = null; p.crowAimedLast = false; }
+  for (const e of enemies()) {
+    if (e.kind !== 'scarecrow') continue;
+    const prev = e.crowAim;
+    e.crowAim = canLaunch(e) ? crowTarget(e) : null;
+    const t = e.crowAim;
+    if (t) {
+      t.crowAimed = e;
+      t.crowAimedLast = ps.filter(p => !p.crowLocked).length <= 1;
+      if (prev !== t) UI.log(`⚠ ${e.name} 的烏鴉滿了：敵方一行動就會放向 ${t.name}${t.crowAimedLast ? '（只剩她能行動，被纏住就輸）' : ''}`, 'warn');
+    }
+    if (prev !== t && e.label) UI.updateLabel(e.label, e);
+  }
+  for (const p of ps) if (before.get(p) !== p.crowAimed && p.label) UI.updateLabel(p.label, p);
+}
+
 function launchCrows(e) {
   const t = crowTarget(e);
   if (!t) return false;
@@ -1952,7 +2000,7 @@ function crowTick() {
 // 人偶：直接攻擊它（不含波及）卻沒打倒，攻擊者這次主動權不能再行動。沒打中也算
 function lockAfterAttack(u, t) {
   if (!t.lockOnHit || !t.alive || !u.alive || u.team !== 'player') return;
-  u.locked = true;
+  u.locked = t; // 記住是哪一具人偶：它倒下就解除
   floatText(u, '被纏住了', 'sup');
   UI.log(`${u.name} 沒能打倒${t.name}，被它纏住：這次主動權不能再行動`, 'warn');
   if (u.label) UI.updateLabel(u.label, u);
@@ -2257,6 +2305,7 @@ function evalTile(e, pos, ps) {
     } else s += 6;
   }
   s += bestHit * 0.5 + (flank ? 15 : 0);
+  if (e.boss && !bestHit) s -= 40; // 頭目：躲著不動不是她的作風，沒有射擊角度就去找
   if (e.kind === 'zealot' || e.kind === 'doll') s -= nearest * 4; // 狂徒、人偶：越近越好
   else if (e.kind === 'sniper') { if (nearest < 5) s -= (5 - nearest) * 6; }
   else if (nearest > 8) s -= (nearest - 8) * 5;
@@ -2267,6 +2316,13 @@ function evalTile(e, pos, ps) {
 function aiChoose(moveCount, acted) {
   const es = enemies().filter(e => e.alerted && !e.summon && !(e.cumbersome && acted.has(e)));
   if (!es.length) return null;
+  // 頭目先行動：敵方主動權一開始由她出手（她不用檢定），不會被手下的「亂了陣腳」吃掉
+  const boss = es.find(e => e.boss && !acted.has(e));
+  if (boss) { const c = aiChooseFor([boss], moveCount); if (c) return c; }
+  return aiChooseFor(es, moveCount);
+}
+
+function aiChooseFor(es, moveCount) {
   const sup = es.find(e => e.suppressed);
   if (sup) return { type: 'rally', e: sup };
   const sc = es.find(e => canLaunch(e));
@@ -2673,7 +2729,7 @@ boot();
 requestAnimationFrame(frame);
 window.__game = { S, actions, camera, THREE, scene, zoneMesh, Camp, // 除錯用
   dbg: { pickTile, strike, melee, dash, giveInitiative, actChance, spawnEnemy, segFloor, playerMove, moveOptions, quietSees, enemies, players, weapon, step: updateTweens, magicOptions, execMagic, pushInfo, execPush,
-    startMission, enterHQ, transform, spawnWave } };
+    startMission, enterHQ, transform, spawnWave, bossPhase, performMove, die, aiChoose, lockAfterAttack, enemyInitiative } };
 // 純文字介面（給代理測試用）：window.TXT
 TextUI.init({ S, actions, Camp, key, coverSides, players, enemies, weapon, visibleTargets, moveOptions, playerMove, selectUnit,
   enterTargetMode, cancelTarget, fire, magicOptions, execMagic, magicInfo, canAct, startBattle, deployTo, actChance,

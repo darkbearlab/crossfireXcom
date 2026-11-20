@@ -112,7 +112,7 @@ function girlLine(S, u) {
   const w = u.weapons[u.wi];
   const hearts = Math.ceil(Math.max(0, u.hp) / u.heartHp), maxH = Math.ceil(u.maxHp / u.heartHp);
   const mi = G.magicInfo(u);
-  const flags = [u.crowLocked && '被烏鴉纏住（隊友朝她開槍打掉烏鴉，或打中稻草人）', u.locked && '被人偶纏住（這次主動權不能再行動）', u.firedOut && '這次主動權不能再開槍', u.transformed && '變身中', u.raised && '冰上', u.dodge && '閃避×' + u.dodge,
+  const flags = [u.crowLocked && '被烏鴉纏住（隊友朝她開槍打掉烏鴉，或打中稻草人）', u.crowAimed && `⚠ ${u.crowAimed.name}的烏鴉瞄準她，敵方一行動就會放出${u.crowAimedLast ? '（只剩她能行動，被纏住就輸）' : ''}`, u.locked && '被人偶纏住（這次主動權不能再行動）', u.firedOut && '這次主動權不能再開槍', u.transformed && '變身中', u.raised && '冰上', u.dodge && '閃避×' + u.dodge,
     S.selected === u && '◀ 選取中'].filter(Boolean);
   const ri = G.reloadInfo(u);
   return `${gKey(u)} ${u.name} (${u.x},${u.z})  心 ${hearts}/${maxH}（${u.hp}/${u.maxHp}）${u.lineUsed ? ' 心線：已用或沒有' : ` 心線：掉到 ${u.lineHp / u.heartHp} 心時`}  累積 ${pips(u)} ${status(u)}` +
@@ -130,7 +130,7 @@ function enemyLine(S, e, all) {
     (e.act ? `  啟動 ${G.actChance(e)}%` : e.boss ? `  頭目第 ${e.phase} 段` : '') +
     (e.impulse ? `  衝動:${e.impulse}` : '') + (e.firedOut ? '  ✕不能再開槍' : '') +
     (e.kind === 'doll' ? `  不會受阻/壓制、每中一顆受 1 傷、移動 ${e.moveRange} 射程 ${e.range}、不反應射擊；攻擊它沒打倒的人這次主動權不能再行動` : '') +
-    (e.kind === 'scarecrow' ? `  不會動/不開槍/不會受阻壓制；身上烏鴉 ${e.crows}/${e.crowMax}${e.flock ? '（飛出中）' : e.crows < e.crowMax ? `（恢復 ${e.regen}/4）` : ''}；打中它烏鴉就傳送回去` : '') +
+    (e.kind === 'scarecrow' ? `  不會動/不開槍/不會受阻壓制；身上烏鴉 ${e.crows}/${e.crowMax}${e.flock ? '（飛出中）' : e.crowAim ? `（滿了，下次放向 ${e.crowAim.name}）` : e.crows < e.crowMax ? `（恢復 ${e.regen}/4）` : ''}；不做啟動檢定；打中它烏鴉就傳送回去` : '') +
     (e.kind === 'crows' ? `  烏鴉 ${e.hp} 隻，${e.attached ? '纏在 ' + e.attached.name + ' 身上' : '在空中飛向 ' + (e.target ? e.target.name : '?')}；沒有掩體，每中一顆打掉一隻` : '') + (seen ? '' : '  （看不到）');
 }
 

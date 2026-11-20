@@ -76,6 +76,7 @@ export function updateHUD(S) {
     else if (u.alive && u.pinned) st.push('<span class="sup">受阻</span>');
     if (u.alive && u.locked) st.push('<span class="sup">被人偶纏住：這次主動權不能再行動</span>');
     if (u.alive && u.crowLocked) st.push('<span class="sup">被烏鴉纏住：隊友朝她開槍打掉烏鴉，或打中稻草人</span>');
+    if (u.alive && u.crowAimed) st.push(`<span class="sup">⚠ ${u.crowAimed.name}的烏鴉瞄準她：敵方一行動就會放出${u.crowAimedLast ? '（只剩她能行動，被纏住就輸）' : ''}</span>`);
     if (u.alive && u.firedOut) st.push('<span class="dim">不能再開槍</span>');
     if (u.alive && u.transformed) st.push('<span class="mg">變身中</span>');
     if (u.alive && u.raised) st.push('<span class="ice">冰上</span>');
@@ -191,8 +192,8 @@ export function makeLabel(u) {
 export function updateLabel(d, u) {
   const icons = (u.team === 'enemy' && !u.alerted ? '<b class="calm">?</b> ' : '') +
     (u.execBuff && !u.spareUsed && !u.firedOut ? '<b class="execi" title="不留活口">⚔</b> ' : '') +
-    (u.suppressed ? '<b class="supi">▼</b> ' : u.pinned ? '<b class="supi">▽</b> ' : '') + (u.firedOut ? '<b class="outi">✕</b> ' : '') + (u.locked ? '<b class="outi" title="被人偶纏住">⛓</b> ' : '') + (u.crowLocked ? '<b class="outi" title="被烏鴉纏住">🐦</b> ' : '') +
-    (u.kind === 'scarecrow' ? `<b class="stri" title="身上的烏鴉">🐦${u.crows}/${u.crowMax}${u.flock ? ' 飛出中' : u.crows < u.crowMax ? ` 恢復${u.regen}/4` : ''}</b> ` : '') +
+    (u.suppressed ? '<b class="supi">▼</b> ' : u.pinned ? '<b class="supi">▽</b> ' : '') + (u.firedOut ? '<b class="outi">✕</b> ' : '') + (u.locked ? '<b class="outi" title="被人偶纏住">⛓</b> ' : '') + (u.crowLocked ? '<b class="outi" title="被烏鴉纏住">🐦</b> ' : '') + (u.crowAimed ? '<b class="outi" title="稻草人的烏鴉瞄準她：敵方一行動就會放出">⚠🐦</b> ' : '') +
+    (u.kind === 'scarecrow' ? `<b class="stri" title="身上的烏鴉">🐦${u.crows}/${u.crowMax}${u.flock ? ' 飛出中' : u.crowAim ? `→${u.crowAim.name}` : u.crows < u.crowMax ? ` 恢復${u.regen}/4` : ''}</b> ` : '') +
     (u.stress ? `<b class="stri">${'•'.repeat(Math.min(2, u.stress))}</b> ` : '');
   const bar = u.heartHp ? heartsHtml(u)
     : `<div class="pips">${Array.from({ length: u.maxHp }, (_, i) => `<i class="${i < u.hp ? 'on' : ''}${u.cuts && u.cuts.includes(i) ? ' cut' : ''}"></i>`).join('')}</div>`;

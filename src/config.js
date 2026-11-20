@@ -116,26 +116,32 @@ export const ENEMY_TYPES = {
   // 攻擊它卻沒打倒的少女，這次主動權不能再行動（lockOnHit）。動作慢：移動 3、射程 2、笨重、不反應射擊
   doll:      { name: '人偶',   act: 70, q: '精銳', maxHp: 6, dice: 2, dieMod: 25, sweetDice: 0, color: 0xd8c8b8, scale: 1.25,
                canReact: false, cumbersome: true, unflinching: true, lockOnHit: true, moveRange: 3, range: 2, bigTarget: 15, impulse: 'charge',
-               desc: '魔女的人偶：不會受阻、不會被壓制，每中一顆骰就受 1 傷（主動攻擊它每顆骰 +15%，反應射擊不加）。動作慢：移動 3 格、射程 2、每次主動權只行動一次、不反應射擊。<b>攻擊它卻沒打倒的少女，這次主動權不能再行動</b>' },
+               desc: '魔女的人偶：不會受阻、不會被壓制（所以反應射擊打中也攔不住它，會走完），每中一顆骰就受 1 傷（主動攻擊它每顆骰 +15%，反應射擊不加）。動作慢：移動 3 格、射程 2、每次主動權只行動一次、不反應射擊。<b>攻擊它卻沒打倒的少女，這次主動權不能再行動</b>（人偶被打倒就解除）' },
   // 稻草人：不會動、不開槍。放出烏鴉去纏住一名少女（不能行動、不能反應射擊）。
   // 解法：空中攔截烏鴉、隊友朝被纏住的人開槍打掉全部烏鴉（之後要慢慢恢復），或打中稻草人（烏鴉立刻傳送回去）
-  scarecrow: { name: '稻草人', act: 70, q: '精銳', maxHp: 4, dice: 1, color: 0xc8a860, scale: 1.1,
+  scarecrow: { name: '稻草人', q: '精銳', maxHp: 4, dice: 1, color: 0xc8a860, scale: 1.1,
                noGun: true, canReact: false, unflinching: true, immobile: true, bigTarget: 15, impulse: 'launch',
-               desc: '不會動、不開槍、不會受阻／壓制，每中一顆骰受 1 傷（主動攻擊它每顆骰 +15%）。烏鴉 3 隻都在身上時，會放出去纏住一名少女。<b>打中它至少一顆，烏鴉就傳送回它身上</b>' },
+               desc: '不會動、不開槍、不會受阻／壓制，每中一顆骰受 1 傷（主動攻擊它每顆骰 +15%）。不做啟動檢定（沒有感情，不會亂了陣腳）。烏鴉 3 隻都在身上時，敵方一行動就會放出去纏住一名少女（會先標出目標）。<b>打中它至少一顆，烏鴉就傳送回它身上</b>' },
   crows:     { name: '烏鴉', maxHp: 3, dice: 1, color: 0x1a1a22,
                noGun: true, canReact: false, unflinching: true, immobile: true, flying: true, summon: true, impulse: 'fly',
                desc: '衝動：往目標飛 3 格，碰到就纏住她。在空中沒有掩體，每中一顆打掉一隻；全部打掉後稻草人要慢慢恢復' },
   // 家族成員（boss）：生命分 3 段，每段 2 傷
+  // reinforce：突破階段時叫來的增援。where：watch＝遠處看得到少女的掩體後；ambush＝少女看不到、離少女 4～6 格；guard＝她身邊
   b_eye:     { name: '薇歐拉', maxHp: 6, dice: 3, dieMod: 10, color: 0x5b3f8f, boss: true, impulse: 'shoot', ignoreHalf: true,
-               desc: '眼線：主動射擊無視半掩體。打倒她「千里眼」就失效' },
+               reinforce: { kinds: ['sniper', 'gunman'], where: 'watch' },
+               desc: '眼線：主動射擊無視半掩體。突破階段時，狙擊手和槍手出現在遠處（離少女 8 格以上）看得到少女的掩體後。打倒她「千里眼」就失效' },
   b_exec:    { name: '蕾貝卡', maxHp: 6, dice: 3, color: 0x3b2a4a, boss: true, impulse: 'charge', keepFiring: true,
-               desc: '執行人：反應射擊打空不停火。打倒她「不留活口」就失效' },
+               reinforce: { kinds: ['zealot', 'zealot'], where: 'ambush' },
+               desc: '執行人：反應射擊打空不停火。突破階段時，2 名狂徒從少女看不到的地方（離少女 4～6 格）包抄。打倒她「不留活口」就失效' },
   b_book:    { name: '莫妮卡', maxHp: 6, dice: 3, color: 0x2f4a3a, boss: true, impulse: 'shoot',
-               desc: '帳房。打倒她「人手充足」就失效' },
+               reinforce: { kinds: ['gunman', 'gunman', 'gunman'], where: 'guard' },
+               desc: '帳房。突破階段時，3 名槍手圍到她身邊。打倒她「人手充足」就失效' },
   b_sis:     { name: '莉莉絲', maxHp: 6, dice: 3, color: 0x7a2a6a, boss: true, impulse: 'curse',
-               desc: '魔女姊姊。衝動：把詛咒下在最近的我方腳下。打倒她「詛咒地」就失效' },
+               reinforce: { kinds: ['doll'], where: 'ambush' },
+               desc: '魔女姊姊。衝動：把詛咒下在最近的我方腳下。突破階段時，1 具人偶從少女看不到的地方（離少女 4～6 格）出現。打倒她「詛咒地」就失效' },
   b_mother:  { name: '瑪格麗特', maxHp: 9, dice: 3, dieMod: 5, color: 0x1e1428, boss: true, impulse: 'shoot', keepFiring: true,
-               desc: '教母：反應射擊打空不停火。打倒她就結束了' },
+               reinforce: { kinds: ['mg', 'gunman'], where: 'guard' },
+               desc: '教母：反應射擊打空不停火。突破階段時，機槍手和槍手守到她身邊。打倒她就結束了' },
 };
 
 // 難度 → 一般敵人數量：難度 1 = 4 人，之後大約每升 2 級多 1 人，最多 10 人
