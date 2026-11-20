@@ -130,7 +130,7 @@ export function showTargeting(list, idx, triple = null) {
       <div class="tgt ${i === idx ? 'on' : ''}" data-i="${i}">
         <div><b>${t.unit.name}</b> <small>生命 ${t.unit.hp}/${t.unit.maxHp} · ${t.unit.unflinching ? '不會受阻／壓制，每中一顆受 1 傷' : '累積 ' + stressPips(t.unit)}${t.unit.alerted ? '' : ' · 未察覺'}</small></div>
         <div class="hit">${a ? eff : t.odds.hit}%</div>
-        <small>${diceLine(t.odds, triple)} · ${coverName(t.odds)} · 距離 ${t.odds.dist.toFixed(1)}${t.odds.sweet ? ' · 甜蜜距離' : ''}</small>${arm}${t.unit.lockOnHit ? `<br><small class="warn">⛓ 沒打倒的話，這次主動權她不能再行動（打人偶每顆骰 +${t.unit.bigTarget}%）</small>` : ''}
+        <small>${diceLine(t.odds, triple)} · ${coverName(t.odds)} · 距離 ${t.odds.dist.toFixed(1)}${t.odds.sweet ? ' · 甜蜜距離' : ''}</small>${arm}${t.unit.lockOnHit ? `<br><small class="warn">⛓ 沒打倒的話，這次主動權她不能再行動（主動攻擊人偶每顆骰 +${t.unit.bigTarget}%）</small>` : ''}
       </div>`;
     }).join('') +
     (triple === null ? '' : `<button id="tp-triple" class="${triple ? 'on' : ''}">三管齊發：${triple ? '開' : '關'}（耗 3 發、骰數加倍）</button>`) +

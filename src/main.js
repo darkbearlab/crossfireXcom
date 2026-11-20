@@ -154,7 +154,7 @@ function diceBonus(s) {
 // 破防：打被壓制的敵人時，不算壓制給的那 1 級掩體
 const breach = s => s.team === 'player' && lv(s, 'gun') >= ({ akane: 2, hikari: 3, momo: 3 }[s.girl] || 99);
 const oddsVs = (s, t, opts = {}) => shotOdds(S.map, s, s, t, {
-  suppressed: !!t.suppressed, breach: breach(s), weapon: weapon(s), diceBonus: diceBonus(s), dieBonus: t.bigTarget || 0, raised: !!t.raised, hardy: !!t.hardy, ...opts });
+  suppressed: !!t.suppressed, breach: breach(s), weapon: weapon(s), diceBonus: diceBonus(s), dieBonus: opts.reaction ? 0 : (t.bigTarget || 0), raised: !!t.raised, hardy: !!t.hardy, ...opts });
 const iceAt = (x, z) => S.ice.find(i => i.x === x && i.z === z);
 const isExit = p => S.mission && S.mission.exits.some(e => e.x === p.x && e.z === p.z);
 const adjObjective = u => {
@@ -829,7 +829,7 @@ function planReactions(mover, cells, knownOnly = false) {
     let best = null;
     cells.forEach((c, i) => {
       if (!hasLOS(S.map, r, c)) return;
-      const o = shotOdds(S.map, r, r, c, { reaction: true, weapon: w, diceBonus: diceBonus(r), dieBonus: mover.bigTarget || 0, raised: !!mover.raised, hardy: !!mover.hardy, suppressed: !!mover.suppressed, breach: breach(r) });
+      const o = shotOdds(S.map, r, r, c, { reaction: true, weapon: w, diceBonus: diceBonus(r), raised: !!mover.raised, hardy: !!mover.hardy, suppressed: !!mover.suppressed, breach: breach(r) });
       if (o.hit >= RULES.REACTION_MIN && (!best || o.hit > best.odds.hit)) best = { shooter: r, idx: i, odds: o };
     });
     if (best) out.push(best);

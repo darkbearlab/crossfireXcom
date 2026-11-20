@@ -113,7 +113,7 @@ export const ENEMY_TYPES = {
   // 攻擊它卻沒打倒的少女，這次主動權不能再行動（lockOnHit）。動作慢：移動 3、射程 2、笨重、不反應射擊
   doll:      { name: '人偶',   act: 70, q: '精銳', maxHp: 6, dice: 2, dieMod: 25, sweetDice: 0, color: 0xd8c8b8, scale: 1.25,
                canReact: false, cumbersome: true, unflinching: true, lockOnHit: true, moveRange: 3, range: 2, bigTarget: 15, impulse: 'charge',
-               desc: '魔女的人偶：不會受阻、不會被壓制，每中一顆骰就受 1 傷（打它每顆骰 +15%）。動作慢：移動 3 格、射程 2、每次主動權只行動一次、不反應射擊。<b>攻擊它卻沒打倒的少女，這次主動權不能再行動</b>' },
+               desc: '魔女的人偶：不會受阻、不會被壓制，每中一顆骰就受 1 傷（主動攻擊它每顆骰 +15%，反應射擊不加）。動作慢：移動 3 格、射程 2、每次主動權只行動一次、不反應射擊。<b>攻擊它卻沒打倒的少女，這次主動權不能再行動</b>' },
   // 家族成員（boss）：生命分 3 段，每段 2 傷
   b_eye:     { name: '薇歐拉', maxHp: 6, dice: 3, dieMod: 10, color: 0x5b3f8f, boss: true, impulse: 'shoot', ignoreHalf: true,
                desc: '眼線：主動射擊無視半掩體。打倒她「千里眼」就失效' },
