@@ -526,7 +526,6 @@ function startMission() {
     S.genOp = opKey;
   }
   S.map = gen.map;
-  S.scouted = null;
   S.mission = gen.mission;
   S.crates = gen.crates;
   S.theme = gen.theme;
@@ -727,44 +726,9 @@ function updateVisibility() {
   for (const e of enemies()) {
     const vis = ps.some(p => hasLOS(S.map, p, e));
     e.mesh.visible = vis;
-    if (vis) { e.spotted = true; e.lastSeen = { x: e.x, z: e.z }; }
+    if (vis) e.spotted = true;
   }
-  // 偵察過的格子：少女視野內看過的地方
-  const m = S.map;
-  if (m) {
-    if (!S.scouted || S.scouted.length !== m.w * m.h) S.scouted = new Uint8Array(m.w * m.h);
-    for (const p of ps) for (let z = 0; z < m.h; z++) for (let x = 0; x < m.w; x++) {
-      const i = z * m.w + x;
-      if (S.scouted[i] || Math.hypot(x - p.x, z - p.z) > RULES.SIGHT) continue;
-      if (hasLOS(m, p, { x, z })) S.scouted[i] = 1;
-    }
-  }
-  S.threatVer = (S.threatVer || 0) + 1;
   drawZones();
-}
-
-// 路線有沒有可能被「位置不明的敵人」看到：經過的格子看得到沒偵察過的地方，或看不到的敵人最後出現的位置
-const threatCache = new Map();
-function unknownThreat(cells) {
-  const hidden = enemies().filter(e => !e.mesh.visible);
-  if (!hidden.length || !S.map) return 0;
-  if (threatCache.ver !== S.threatVer) { threatCache.clear(); threatCache.ver = S.threatVer; }
-  const m = S.map;
-  const spots = hidden.filter(e => e.lastSeen).map(e => e.lastSeen);
-  const seesUnknown = c => {
-    const k = key(c.x, c.z);
-    if (threatCache.has(k)) return threatCache.get(k);
-    let r = spots.some(s => Math.hypot(s.x - c.x, s.z - c.z) <= RULES.SIGHT && hasLOS(m, s, c));
-    for (let z = Math.max(0, c.z - RULES.SIGHT); !r && z <= Math.min(m.h - 1, c.z + RULES.SIGHT); z++)
-      for (let x = Math.max(0, c.x - RULES.SIGHT); !r && x <= Math.min(m.w - 1, c.x + RULES.SIGHT); x++) {
-        if (S.scouted && S.scouted[z * m.w + x]) continue;
-        if (!m.walkable(x, z) || Math.hypot(x - c.x, z - c.z) > RULES.SIGHT) continue;
-        if (hasLOS(m, { x, z }, c)) r = true;
-      }
-    threatCache.set(k, r);
-    return r;
-  };
-  return cells.some(seesUnknown) ? hidden.length : 0;
 }
 
 // 未警戒的敵人看不看得到 p：只看自己的責任區、視距短、看不穿半掩體與隱蔽區
@@ -1359,13 +1323,11 @@ function drawPreview(u, cells, line, color) {
 }
 
 const spotRow = spot => spot ? `<br><span class="spot">👁 會被 ${spot.e.name} 發現，移動停在黃圈</span>` : '';
-function riskRows(u, plan, extra = 0, cells = null) {
-  const n = cells ? unknownThreat(cells) : 0;
-  const unk = n ? `<br><span class="spot">⚠ 路線經過未偵察的區域（還有 ${n} 名敵人位置不明，預估沒算進去）</span>` : '';
-  if (!plan.length) return '<br><small>已知敵人無法反應射擊</small>' + unk;
+function riskRows(u, plan, extra = 0) {
+  if (!plan.length) return '<br><small>已知敵人無法反應射擊</small>';
   let skip = (u.dodge || 0) + extra;
   const rows = plan.map(r => `${r.shooter.name} ${skip-- > 0 ? (keepsFiring(r.shooter) ? `<b>第一發落空</b>，之後 ${r.odds.hit}%` : '<b>必定落空</b>') : r.odds.hit + '%'}`).join('<br>');
-  return `<br><span class="warn">⚠ 反應射擊</span><br>${rows}<br>被命中機率 <b>${Math.round(moveRisk(u, plan, extra) * 100)}%</b>（只算已知敵人）${unk}`;
+  return `<br><span class="warn">⚠ 反應射擊</span><br>${rows}<br>被命中機率 <b>${Math.round(moveRisk(u, plan, extra) * 100)}%</b>（只算已知敵人）`;
 }
 const confirmHint = () => touchMode ? '　<span class="hint">再點一次確認</span>' : '';
 
@@ -1417,7 +1379,7 @@ function updateHover() {
   const cr = S.crates.find(c => c.x === t.x && c.z === t.z);
   if (cr) extra.push(cr.type === 'ammo' ? '彈藥箱' : '醫療包');
   const head = (mv.vault ? '翻越' : `移動 ${dist(u, mv).toFixed(1)} 格`) + (extra.length ? `（${extra.join('・')}）` : '') + confirmHint();
-  showTip(`<b>${head}</b>${spotRow(spot)}${riskRows(u, plan, 0, cells)}`);
+  showTip(`<b>${head}</b>${spotRow(spot)}${riskRows(u, plan)}`);
 }
 
 function magicHover(u, t) {
@@ -1428,7 +1390,7 @@ function magicHover(u, t) {
     const cells = pathCells(u, opt.mv);
     const { plan, spot } = drawPreview(u, cells, [u, t], 0xffa04f);
     const tg = enemies().filter(e => dist(e, opt) < 1.5).sort((a, b) => a.hp - b.hp)[0];
-    showTip(`<b>突進 → 近戰 ${tg ? tg.name : ''}</b>${confirmHint()}<br><small>近戰必中：直接受傷 ${RULES.MELEE_WOUNDS} 次並壓制（無視裝甲）、不發出槍聲。沒碰到敵人就退回次數</small>${spotRow(spot)}${riskRows(u, plan, m >= 4 ? 1 : 0, cells)}`);
+    showTip(`<b>突進 → 近戰 ${tg ? tg.name : ''}</b>${confirmHint()}<br><small>近戰必中：直接受傷 ${RULES.MELEE_WOUNDS} 次並壓制（無視裝甲）、不發出槍聲。沒碰到敵人就退回次數</small>${spotRow(spot)}${riskRows(u, plan, m >= 4 ? 1 : 0)}`);
   } else if (opt.kind === 'ice') {
     const r = opt.rider;
     const sub = r ? (r.team === 'enemy' ? '被抬起的敵人不能移動、算半掩體' : '站在冰塊上算半掩體') : `全掩體・擋視線・耐久 ${m >= 1 ? 5 : RULES.ICE_HP}`;
@@ -1436,7 +1398,7 @@ function magicHover(u, t) {
   } else {
     const cells = [{ x: t.x, z: t.z, t: 1 }];
     const { plan, spot } = drawPreview(u, cells, [u, t], 0xff8fc0);
-    showTip(`<b>空投到這裡</b>${confirmHint()}<br><small>備彈 -3・起跳${m >= 3 ? '不發出槍聲' : '的槍聲會驚動附近敵人'}</small>${spotRow(spot)}${riskRows(u, plan, 0, cells)}`);
+    showTip(`<b>空投到這裡</b>${confirmHint()}<br><small>備彈 -3・起跳${m >= 3 ? '不發出槍聲' : '的槍聲會驚動附近敵人'}</small>${spotRow(spot)}${riskRows(u, plan)}`);
   }
 }
 
@@ -1446,7 +1408,7 @@ function pushHover(u, pi) {
   let txt = `<b>推冰塊 ${pi.cells.length} 格</b>${confirmHint()}`;
   if (r) {
     const { plan, spot } = drawPreview(r, pi.cells, [pi.ice, end], 0x9fe8ff);
-    txt += `<br><small>${r.name} 跟著滑（半掩體）</small>${spotRow(spot)}${riskRows(r, plan, 0, pi.cells)}`;
+    txt += `<br><small>${r.name} 跟著滑（半掩體）</small>${spotRow(spot)}${riskRows(r, plan)}`;
   } else setPathLine([pi.ice, end], 0x9fe8ff);
   if (pi.blocker && pi.blocker.team === 'enemy' && lv(u, 'magic') >= 2) txt += `<br><small>撞上 ${pi.blocker.name}，把她擊退 1 格</small>`;
   showTip(txt);
@@ -2170,9 +2132,9 @@ async function enemyInitiative() {
     if (!act) break;
     const chance = actChance(act.e);
     if (Math.random() * 100 >= chance) {
-      // 猶豫的單位沒有行動，下面照樣結算它的衝動
-      if (act.e.mesh.visible) { focusUnit(act.e); floatText(act.e, '猶豫…', 'miss'); }
-      UI.log(`${act.e.name} 猶豫了（啟動 ${chance}%），交出主動權前沒行動的敵人結算衝動`, 'good');
+      // 啟動失敗＝亂了陣腳：敵方的指揮斷了，主動權交回我方，沒行動的敵人（包括這一個）各自憑衝動行事
+      if (act.e.mesh.visible) { focusUnit(act.e); floatText(act.e, '亂了陣腳', 'miss'); }
+      UI.log(`${act.e.name} 亂了陣腳（啟動 ${chance}% 失敗）：敵方的指揮斷了，沒行動的敵人各自憑衝動行事`, 'good');
       Rec.count('hesitate');
       await wait(0.5);
       failed = true;
@@ -2201,7 +2163,7 @@ async function enemyInitiative() {
     if (S.grab) { S.grab = false; UI.banner('心線：敵方主動權被打斷', 'player'); return true; }
     if (!ok) { failed = true; break; }
   }
-  // 主動權即將易手（猶豫、行動失敗或放棄）：這輪沒行動的敵人執行衝動，衝動不做啟動檢定。
+  // 主動權即將易手（亂了陣腳、行動失敗或放棄）：這輪沒行動的敵人執行衝動，衝動不做啟動檢定。
   // 放棄（沒有想做的事）時，沒有衝動的敵人也會對最好的目標開一槍，不讓我方的失手白白沒有代價
   const passed = !failed && !S.gameOver && enemies().some(e => e.alerted);
   if (passed) UI.log('敵方放棄主動權，沒行動的敵人結算衝動', 'dim');
@@ -2526,4 +2488,4 @@ window.__game = { S, actions, camera, THREE, scene, zoneMesh, Camp, // 除錯用
 // 純文字介面（給代理測試用）：window.TXT
 TextUI.init({ S, actions, Camp, key, coverSides, players, enemies, weapon, visibleTargets, moveOptions, playerMove, selectUnit,
   enterTargetMode, cancelTarget, fire, magicOptions, execMagic, magicInfo, canAct, startBattle, deployTo, actChance,
-  planReactions, pathCells, moveRisk, unknownThreat, reloadInfo, canTriple, canPlant, newGame, newEndless, continueGame, setInstant: on => { instant = on; } });
+  planReactions, pathCells, moveRisk, reloadInfo, canTriple, canPlant, newGame, newEndless, continueGame, setInstant: on => { instant = on; } });

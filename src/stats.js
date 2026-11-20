@@ -134,7 +134,7 @@ function summaryText(s) {
     `壓制：少女被壓制 ${s.supGirl} 次、敵人被壓制 ${s.supEnemy} 次；我方起身 ${s.rally}；敵方起身 ${s.eRally} 次`,
     `傷害：少女受到 ${s.dmgGirl}（愛心擋下 ${s.blocked}）、敵人受到 ${s.dmgEnemy}`,
     `打倒 ${s.kills}、逃跑 ${s.fled}、少女倒下 ${s.downed}`,
-    `心線觸發 ${s.heartLines} 次；失敗行動被救回 ${s.grabSaves} 次（${Object.entries(s.saveKinds || {}).map(([k, v]) => `${k} ${v}`).join('、') || '—'}）；敵人猶豫 ${s.hesitate} 次、衝動 ${s.impulses} 次`,
+    `心線觸發 ${s.heartLines} 次；失敗行動被救回 ${s.grabSaves} 次（${Object.entries(s.saveKinds || {}).map(([k, v]) => `${k} ${v}`).join('、') || '—'}）；敵人亂了陣腳 ${s.hesitate} 次、衝動 ${s.impulses} 次`,
   ];
   return L.join('\n');
 }
@@ -143,7 +143,7 @@ function fullText(m) {
   const s = summary(m);
   const inits = m.inits.map(i => `#${i.no} ${i.side === 'player' ? '我方' : '敵方'}：` +
     (i.acts.map(a => `${a.k}${a.ok ? '✓' : '✗'}${a.saved ? `(${a.saved})` : ''}`).join(' ') || '（無行動）') +
-    (i.hesitated ? ' 猶豫' : '') + (i.impulses ? ` 衝動×${i.impulses}` : '') +
+    (i.hesitated ? ' 亂了陣腳' : '') + (i.impulses ? ` 衝動×${i.impulses}` : '') +
     (i.side === 'player' && i.girlsSup ? ` [開始時 ${i.girlsSup}/${i.girls} 被壓制]` : '') +
     (i.hitsOnGirls ? ` [命中少女 ${i.hitsOnGirls}]` : '')).join('\n');
   return `==== 戰鬥紀錄 ====\n${summaryText(s)}\n\n---- 主動權流程 ----\n${inits}\n\n---- 完整紀錄（主動權編號 / 類別 / 內容）----\n${m.log.join('\n')}\n`;

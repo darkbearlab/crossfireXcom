@@ -162,6 +162,7 @@ function look(all = false) {
   out.push('-- 敵人');
   const es = S.units.filter(u => u.team === 'enemy').map(e => enemyLine(S, e, all)).filter(Boolean);
   out.push(es.length ? es.join('\n') : '  （看不到敵人）');
+  if (!all && S.side !== 'deploy' && S.units.some(u => u.team === 'enemy' && u.alive && !u.mesh.visible)) out.push('  （還有敵人的氣息）');
   const u = S.selected;
   if (S.side === 'player' && u && u.alive && u.team === 'player') {
     out.push(`-- ${u.name} 可以射擊的目標`);
@@ -179,11 +180,11 @@ function movesText(S, u, n = 30) {
   const list = [...G.moveOptions(u).values()].map(mv => {
     const plan = G.planReactions(u, G.pathCells(u, mv), true);
     const risk = Math.round(G.moveRisk(u, plan) * 100);
-    return { mv, risk, d: Math.hypot(mv.x - u.x, mv.z - u.z), cover: G.coverSides(S.map, mv).length, unk: G.unknownThreat(G.pathCells(u, mv)) };
+    return { mv, risk, d: Math.hypot(mv.x - u.x, mv.z - u.z), cover: G.coverSides(S.map, mv).length };
   });
   list.sort((a, b) => a.risk - b.risk || b.mv.x - a.mv.x);
-  return `${u.name} 可移動 ${list.length} 格（依風險排序，前 ${Math.min(n, list.length)} 個；風險＝路上被反應射擊打中的機率，只算看得到的敵人；⚠未偵察＝路線會被位置不明的敵人看到）\n` +
-    list.slice(0, n).map(o => `  (${o.mv.x},${o.mv.z}) 距離 ${o.d.toFixed(1)}${o.mv.vault ? ' 翻越' : ''} 掩體面 ${o.cover} 風險 ${o.risk}%${o.unk ? ' ⚠未偵察' : ''}${S.curse && S.curse.has(G.key(o.mv.x, o.mv.z)) ? ' ✖詛咒格（會被壓制）' : ''}`).join('\n');
+  return `${u.name} 可移動 ${list.length} 格（依風險排序，前 ${Math.min(n, list.length)} 個；風險＝路上被反應射擊打中的機率，只算看得到的敵人）\n` +
+    list.slice(0, n).map(o => `  (${o.mv.x},${o.mv.z}) 距離 ${o.d.toFixed(1)}${o.mv.vault ? ' 翻越' : ''} 掩體面 ${o.cover} 風險 ${o.risk}%${S.curse && S.curse.has(G.key(o.mv.x, o.mv.z)) ? ' ✖詛咒格（會被壓制）' : ''}`).join('\n');
 }
 
 // ---------- 指令 ----------
@@ -323,11 +324,10 @@ async function run(line) {
             if (o.kind === 'ice') return { o, txt: `(${o.x},${o.z})${o.rider ? '抬起' + o.rider.name : ''}`, r: 0 };
             const cells = o.kind === 'dash' ? G.pathCells(u, o.mv) : [{ x: o.x, z: o.z, t: 1 }];
             const r = Math.round(G.moveRisk(u, G.planReactions(u, cells, true), o.kind === 'dash' && u.magicLv >= 4 ? 1 : 0) * 100);
-            const unk = G.unknownThreat(cells);
             const tg = o.kind === 'dash' ? G.enemies().filter(e => Math.hypot(e.x - o.x, e.z - o.z) < 1.5).map(e => e.tag).join('') : '';
-            return { o, r, txt: `(${o.x},${o.z})${tg ? '→' + tg : ''} ${r}%${unk ? '⚠' : ''}` };
+            return { o, r, txt: `(${o.x},${o.z})${tg ? '→' + tg : ''} ${r}%` };
           }).sort((a, b) => a.r - b.r);
-          return `${u.name} 魔法可用位置（${list.length}，依風險排序；% 是途中被反應射擊打中的機率，只算已知敵人；⚠＝會被位置不明的敵人看到${u.ability === 'dash' ? '；→ 後面是能近戰的敵人編號' : ''}）：\n` +
+          return `${u.name} 魔法可用位置（${list.length}，依風險排序；% 是途中被反應射擊打中的機率，只算已知敵人${u.ability === 'dash' ? '；→ 後面是能近戰的敵人編號' : ''}）：\n` +
             list.slice(0, 120).map(x => x.txt).join('  ');
         }
         const opt = opts.get(G.key(+args[0], +args[1]));

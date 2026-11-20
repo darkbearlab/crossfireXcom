@@ -62,7 +62,9 @@ export function updateHUD(S) {
   $('btn-start').hidden = !deploying;
   for (const id of ['btn-shoot', 'btn-reload', 'btn-swap', 'btn-magic', 'btn-end']) $(id).hidden = deploying;
   const seen = S.units.filter(u => u.team === 'enemy' && u.alive && u.mesh.visible).length;
-  $('enemy-count').textContent = `可見敵人 ${seen}`;
+  // 還沒全殲時提示「還有敵人的氣息」（不說在哪、有幾個）
+  const hidden = S.side !== 'deploy' && S.units.some(u => u.team === 'enemy' && u.alive && !u.mesh.visible);
+  $('enemy-count').textContent = `可見敵人 ${seen}` + (hidden ? ' · 還有敵人的氣息' : '');
 
   const sq = $('squad');
   sq.innerHTML = '';
