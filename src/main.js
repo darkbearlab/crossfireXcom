@@ -13,7 +13,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { T, RULES, THEMES, ENEMY_TYPES, WEAPONS } from './config.js';
 import { generateMap, ri, GameMap } from './map.js';
-import { hasLOS, quietLOS, coverSides, shotOdds, key, dist, clearMove, lineCells, vaultTargets, ORTH } from './grid.js';
+import { hasLOS, quietLOS, coverSides, coverAt, shotOdds, key, dist, clearMove, lineCells, vaultTargets, ORTH } from './grid.js';
 import { makeUnitMesh, addHalo, heartShape } from './units.js';
 import * as UI from './ui.js';
 import * as Camp from './campaign.js';
@@ -433,7 +433,8 @@ function makeGirlUnit(gs) {
     maxHp: d.maxHp, hp: gs.hp, gunLv: gs.gun, magicLv: gs.magic, stress: 0, pinned: false,
     ability: d.ability, weapons: outfit(d, gs), wi: 0,
     uses: gs.magic >= 5 && d.ability !== 'transform' ? 2 : 1,
-    dodge: d.id === 'akane' ? 1 : 0, dashDodge: 0, hardy: d.id === 'momo',
+    usesMax: gs.magic >= 5 && d.ability !== 'transform' ? 2 : 1,
+    dodge: d.id === 'akane' ? 1 : 0, dodgeMax: d.id === 'akane' ? 1 : 0, dashDodge: 0, hardy: d.id === 'momo',
     transformed: false, raised: false,
     // 愛心：一顆心 = HEART_HP 點；第一次掉到一半愛心（往下取整）時觸發心線
     // 心線：以上場時的心數算一半（帶傷上場也有一次保險；只剩一顆心就沒有）
@@ -626,8 +627,11 @@ function endMission(win, why) {
   for (const u of girls) hp[u.girl] = u.alive ? Math.max(1, Math.min(u.hp, GIRL[u.girl].maxHp)) : 0;
   const killed = S.units.filter(u => u.member && !u.alive && !u.fled).map(u => u.member);
   const notes = Camp.finish({ win, deployed: girls.map(u => u.girl), hp, downed: girls.filter(u => !u.alive).map(u => u.girl), killed });
-  const rows = girls.map(u => `<li>${u.name}：${u.alive ? `HP ${hp[u.girl]}/${GIRL[u.girl].maxHp}` : '倒下後送'}</li>`).join('');
-  const body = (win ? `<p>${why}，主動權交換了 ${S.initNo - 1} 次。</p>` : '<p>上場的兩人都倒下了。這張地圖要重打。</p>') +
+  const rows = girls.map(u => {
+    const now = Camp.girlState(u.girl).hp;
+    return `<li>${u.name}：${u.alive ? `HP ${hp[u.girl]}${now !== hp[u.girl] ? ` → ${now}` : ''}/${GIRL[u.girl].maxHp}` : '倒下後送'}</li>`;
+  }).join('');
+  const body = (win ? `<p>${why}。主動權共 ${S.initNo} 次（易手 ${S.initNo - 1} 次）。</p>` : '<p>上場的兩人都倒下了。這張地圖要重打。</p>') +
     `<ul>${rows}</ul>` + (notes.length ? `<ul class="notes">${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '') +
     (win ? '<p style="opacity:.6">彈藥會在下張地圖補滿。</p>' : '') +
     '<p class="rec-btns"><button class="rec-dl">匯出這場紀錄</button> <button class="rec-cp">複製</button></p>';
@@ -888,7 +892,7 @@ async function reactAt(u, plan, i) {
       if (s.execBuff && !s.spareUsed) {
         s.spareUsed = true;
         floatText(s, '不留活口！', 'sup');
-        UI.log(`${s.name}（不留活口）打空了，但這次還能繼續開槍`, 'warn');
+        UI.log(`家族加持「不留活口」：${s.name} 這發沒中不算用掉反應射擊，還能再開`, 'warn');
       } else s.firedOut = true;
     }
     if (s.label) UI.updateLabel(s.label, s);
@@ -1082,21 +1086,64 @@ async function heartLine(u) {
 }
 
 // 頭目突破階段：起身、叫來護衛、主動權交給敵方
+// 頭目突破階段：
+// 1. 重新部署：頭目自己挑一個安全的位置（不是移動，不會觸發反應射擊）。專屬地圖可以用 S.mission.bossSpots 指定候選點
+// 2. 增援從別的方向趕到，是新的局面而不是再攻堅一次。專屬地圖可以用 S.mission.reinforceSpots 指定
+// 3. 少女們振奮起來：每張地圖一次的技能（魔法次數、朱音的閃避）恢復
+// 累積的命中歸零；頭目在這個行動結束前打不動（不會被一口氣連跳兩段）
 async function bossPhase(b) {
   b.phase++;
   standUp(b);
+  b.stress = 0;
   UI.banner(`${b.name}：第 ${b.phase} 階段`, 'enemy');
   floatText(b, '階段突破！', 'crit');
-  const spots = [];
-  for (let z = b.z - 3; z <= b.z + 3; z++) for (let x = b.x - 3; x <= b.x + 3; x++) {
-    if (S.map.inB(x, z) && S.map.walkable(x, z) && !unitAt(x, z) && !iceAt(x, z)) spots.push({ x, z });
+  const ps = players();
+  const free = p => S.map.inB(p.x, p.z) && S.map.walkable(p.x, p.z) && !unitAt(p.x, p.z) && !iceAt(p.x, p.z);
+  const allFloor = [];
+  for (let z = 0; z < S.map.h; z++) for (let x = 0; x < S.map.w; x++) if (free({ x, z })) allFloor.push({ x, z });
+  // 安全度：沒有少女看得到最好；看得到的話，要被掩體擋著
+  const safety = p => ps.reduce((s, g) => s + (!hasLOS(S.map, g, p) ? 3 : coverAt(S.map, p, g) > 0 ? 1 : -4), 0);
+
+  // 1. 頭目重新部署
+  const bossCands = (S.mission.bossSpots || []).filter(free);
+  const pool = bossCands.length ? bossCands : allFloor.filter(p => ps.every(g => dist(g, p) >= 5));
+  const spot = pool.map(p => ({ p, s: safety(p) * 10 + coverSides(S.map, p).length * 3 + Math.min(...ps.map(g => dist(g, p))) + Math.random() * 2 }))
+    .sort((a, c) => c.s - a.s)[0];
+  if (spot) {
+    const from = { x: b.x, z: b.z };
+    b.x = spot.p.x; b.z = spot.p.z;
+    b.mesh.position.set(b.x, 0, b.z);
+    b.zone = S.map.zoneAt(b.x, b.z);
+    UI.log(`${b.name} 從 (${from.x},${from.z}) 退到新的位置重新部署`, 'warn');
   }
-  spots.sort((a, c) => dist(a, b) - dist(c, b));
-  const n = Math.min(RULES.PHASE_GUARDS, spots.length);
-  // 護衛剛到場：這次主動權內不能開槍、不能反應射擊。頭目在這個行動結束前打不動（不會被一口氣連跳兩段）
-  for (let i = 0; i < n; i++) spawnEnemy('gunman', spots[i].x, spots[i].z, S.map.zoneAt(spots[i].x, spots[i].z), true).firedOut = true;
+
+  // 2. 增援：離頭目和少女都有一段距離、靠著掩體，從新的方向威脅少女
+  const n = RULES.PHASE_GUARDS;
+  const reCands = (S.mission.reinforceSpots || []).filter(free);
+  let group = [];
+  if (reCands.length) group = reCands.slice(0, n);
+  else {
+    const anchors = allFloor.filter(p => dist(p, b) >= 6 && ps.every(g => dist(g, p) >= 5))
+      .map(p => {
+        const sees = ps.filter(g => hasLOS(S.map, p, g)).length;
+        const near = Math.min(...ps.map(g => dist(g, p)));
+        return { p, s: coverSides(S.map, p).length * 3 + (sees ? 8 : 0) - Math.abs(near - 7) + Math.random() * 3 };
+      }).sort((a, c) => c.s - a.s);
+    const lead = anchors[0] && anchors[0].p;
+    if (lead) {
+      group = [lead, ...allFloor.filter(p => !(p.x === lead.x && p.z === lead.z) && dist(p, lead) <= 2.3)
+        .sort((a, c) => coverSides(S.map, c).length - coverSides(S.map, a).length)].slice(0, n);
+    }
+  }
+  // 剛到場：這次主動權內不能開槍、不能反應射擊
+  for (const p of group) spawnEnemy('gunman', p.x, p.z, S.map.zoneAt(p.x, p.z), true).firedOut = true;
+  if (group.length) UI.log(`增援 ${group.length} 名從 (${group[0].x},${group[0].z}) 一帶趕到（剛到場，這次主動權內不能開槍）`, 'warn');
+
+  // 3. 振奮
+  for (const p of ps) { p.uses = Math.max(p.uses, p.usesMax || 0); p.dodge = Math.max(p.dodge || 0, p.dodgeMax || 0); }
+  UI.log('少女們振奮起來：每張地圖一次的技能恢復了', 'good');
+
   b.shield = true;
-  UI.log(`${b.name} 進入第 ${b.phase} 階段，叫來了 ${n} 名護衛（剛到場，這次主動權內不能開槍）`, 'warn');
   updateVisibility();
   refresh();
   await wait(0.6);
@@ -1419,6 +1466,7 @@ function pickupCrate(u) {
   const i = S.crates.findIndex(c => c.x === u.x && c.z === u.z);
   if (i < 0) return;
   const cr = S.crates[i];
+  if (cr.type !== 'ammo' && u.hp >= u.maxHp) { UI.log(`${u.name} 生命是滿的，醫療包留在原地`, 'dim'); return; }
   S.crates.splice(i, 1);
   if (cr.mesh) { world.remove(cr.mesh); disposeTree(cr.mesh); }
   if (cr.type === 'ammo') {
@@ -1587,11 +1635,18 @@ const actions = {
     swapGunMesh(u);
     floatText(u, `換${nw.short}`, 'ow');
     if (!gives) { UI.log(`${u.name} 拔出${nw.name}`, 'dim'); await resolvePlayerAction(true); return; }
+    let also = '';
+    if (nw.ammo <= 0 && nw.reserve > 0) { // 換回來的主武器是空的：一起換彈（反正都要交出主動權）
+      const k = Math.min(nw.mag, nw.reserve);
+      nw.ammo += k;
+      nw.reserve -= k;
+      also = '並換好彈';
+    }
     S.busy = true;
     await exposeReact(u);
     S.busy = false;
     if (checkEnd()) return;
-    await endWithHandover(`${u.name} 換回${nw.name}，交出主動權`);
+    await endWithHandover(`${u.name} 換回${nw.name}${also}，交出主動權`);
   },
   async plant() {
     const u = S.selected;
@@ -1746,7 +1801,7 @@ async function dash(u, opt) {
   if (!ok) return false;
   const adj = enemies().filter(e => dist(e, u) < 1.5).sort((a, b) => a.hp - b.hp);
   if (adj.length) await melee(u, adj[0]);
-  else { u.uses++; UI.log(`${u.name} 的突進沒碰到敵人（被發現停下），次數退回`, 'warn'); }
+  else { u.uses++; Rec.tag('魔法：突進（退回）'); UI.log(`${u.name} 的突進沒碰到敵人（被發現停下），次數退回`, 'warn'); }
   return true;
 }
 
@@ -2026,6 +2081,7 @@ async function recoil(s, t) {
   s.x = to.x;
   s.z = to.z;
   floatText(s, '後座力！', 'ow');
+  UI.log(`${s.name} 被後座力推到 (${s.x},${s.z})`, 'dim');
   pickupCrate(s);
   landed(s);
   updateVisibility();
@@ -2470,4 +2526,4 @@ window.__game = { S, actions, camera, THREE, scene, zoneMesh, Camp, // 除錯用
 // 純文字介面（給代理測試用）：window.TXT
 TextUI.init({ S, actions, Camp, key, coverSides, players, enemies, weapon, visibleTargets, moveOptions, playerMove, selectUnit,
   enterTargetMode, cancelTarget, fire, magicOptions, execMagic, magicInfo, canAct, startBattle, deployTo, actChance,
-  planReactions, pathCells, moveRisk, unknownThreat, reloadInfo, canTriple, newGame, newEndless, continueGame, setInstant: on => { instant = on; } });
+  planReactions, pathCells, moveRisk, unknownThreat, reloadInfo, canTriple, canPlant, newGame, newEndless, continueGame, setInstant: on => { instant = on; } });

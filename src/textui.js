@@ -54,7 +54,7 @@ const gKey = u => GIRL_KEY[u.girl] || '?';
 // 敵人編號（e.tag）在生成時就固定，戰鬥紀錄裡的名字也帶著它（例如「槍手3」）
 const eKey = (S, e) => e.tag || '?';
 const pips = u => '●'.repeat(Math.min(2, u.stress || 0)) + '○'.repeat(2 - Math.min(2, u.stress || 0));
-const status = u => u.suppressed ? '壓制' : u.pinned ? '受阻' : '正常';
+const status = u => u.suppressed ? ((u.stress || 0) < 2 ? '壓制（被重機槍強制）' : '壓制') : u.pinned ? '受阻' : '正常';
 
 function findGirl(S, k) {
   if (!k) return S.selected && S.selected.team === 'player' ? S.selected : null;
@@ -183,7 +183,7 @@ function movesText(S, u, n = 30) {
   });
   list.sort((a, b) => a.risk - b.risk || b.mv.x - a.mv.x);
   return `${u.name} 可移動 ${list.length} 格（依風險排序，前 ${Math.min(n, list.length)} 個；風險＝路上被反應射擊打中的機率，只算看得到的敵人；⚠未偵察＝路線會被位置不明的敵人看到）\n` +
-    list.slice(0, n).map(o => `  (${o.mv.x},${o.mv.z}) 距離 ${o.d.toFixed(1)}${o.mv.vault ? ' 翻越' : ''} 掩體面 ${o.cover} 風險 ${o.risk}%${o.unk ? ' ⚠未偵察' : ''}`).join('\n');
+    list.slice(0, n).map(o => `  (${o.mv.x},${o.mv.z}) 距離 ${o.d.toFixed(1)}${o.mv.vault ? ' 翻越' : ''} 掩體面 ${o.cover} 風險 ${o.risk}%${o.unk ? ' ⚠未偵察' : ''}${S.curse && S.curse.has(G.key(o.mv.x, o.mv.z)) ? ' ✖詛咒格（會被壓制）' : ''}`).join('\n');
 }
 
 // ---------- 指令 ----------
@@ -232,7 +232,7 @@ async function run(line) {
       case 'ok': if (!clickBtn(b => ['s-ok', 'ov-btn'].includes(b.id))) return '畫面上沒有主要按鈕'; break;
       case 'hq': {
         const ops = G.Camp.ops(), C = G.Camp.C;
-        return '作戰：\n' + ops.map((o, i) => `  ${i + 1}. ${o.name}（${o.kind}）難度 ${G.Camp.level(o)} 敵人約 ${G.Camp.enemyEstimate(o)}`).join('\n') +
+        return (document.querySelector('#overlay #s-ok') ? '（畫面上還有劇情，先 ok 才會回到作戰室）\n' : '') + '作戰：\n' + ops.map((o, i) => `  ${i + 1}. ${o.name}（${o.kind}）難度 ${G.Camp.level(o)} 敵人約 ${G.Camp.enemyEstimate(o)}`).join('\n') +
           '\n少女：\n' + C.girls.map(g => `  ${GIRL_KEY[g.id]} ${GIRL[g.id].name} 生命 ${g.hp}/${GIRL[g.id].maxHp} 槍法 ${g.gun} 魔法 ${g.magic} 獎章 ${g.medals}` +
             `${g.evac ? ` 後送中（${g.evac}）` : ''}${(C.deploy || []).includes(g.id) ? ' ✓出擊' : ''}`).join('\n');
       }
@@ -250,6 +250,8 @@ async function run(line) {
         if (!g) return '用法：learn A gun';
         clickBtn(b => b.classList.contains('node') && b.dataset.g === id && b.dataset.t === t && +b.dataset.i === g[t]);
         await sleep(20);
+        if (g.evac > 0) return `${GIRL[id].name} 後送中，歸隊後才能學`;
+        if (document.querySelector('#overlay #s-ok')) return '畫面上還有劇情，先 ok';
         const node = TREES[id][t][g[t]];
         if (!clickBtn(b => b.classList.contains('learn'))) return '學不了：要在作戰室，而且有獎章、還沒學滿';
         return `學會了 ${GIRL[id].name} ${t === 'gun' ? '槍法' : '魔法'} ${g[t]}：${node}\n` + await run('hq');
@@ -281,8 +283,10 @@ async function run(line) {
         if (u !== S.selected) G.selectUnit(u);
         const t = findEnemy(S, args[0]);
         if (!t || !t.alive) return '沒有這個敵人（用 targets 看編號）';
+        if (u.weapons[u.wi].ammo <= 0) return `${u.name} 的${u.weapons[u.wi].name}彈匣空了：reload 換彈，或 swap 換槍`;
+        if (u.firedOut) return `${u.name} 這次主動權不能再開槍（反應射擊打空了）`;
         G.enterTargetMode(t);
-        if (S.mode !== 'target') return '不能射擊（沒彈、不能再開槍、或沒有視線）';
+        if (S.mode !== 'target') return `${u.name} 看不到 ${t.name}`;
         const i = S.targets.findIndex(o => o.unit === t);
         if (i < 0) { G.cancelTarget(); return `看不到 ${t.name}`; }
         S.targetIdx = i;
@@ -294,6 +298,9 @@ async function run(line) {
       case 'rally': case 'reload': case 'swap': case 'plant': {
         const u = girlArg(); const e = needAct(u); if (e) return e;
         if (u !== S.selected) G.selectUnit(u);
+        if (cmd === 'plant' && !G.canPlant(u)) return S.mission.type !== 'sabotage' ? '這張地圖不用安裝炸藥' : S.mission.objective.planted ? '炸藥已經裝好了，撤回左側' : `要站在終端旁邊（終端在 ${S.mission.objective.x},${S.mission.objective.z}）`;
+        if (cmd === 'rally' && !(u.suppressed || u.pinned)) return `${u.name} 沒有受阻或被壓制，不用起身`;
+        if (cmd === 'reload' && !G.reloadInfo(u)) { const w = u.weapons[u.wi]; return w.ammo >= w.mag ? `${w.name}彈匣是滿的${u.weapons.length > 1 && u.weapons[1 - u.wi].ammo < u.weapons[1 - u.wi].mag ? `（另一把 ${u.weapons[1 - u.wi].name} 沒滿：先 swap）` : ''}` : `${w.name}沒有備彈了`; }
         if (cmd === 'reload' || cmd === 'swap') {
           const ri = cmd === 'reload' ? G.reloadInfo(u) : null;
           const gives = cmd === 'reload' ? !!(ri && ri.gives) : (u.weapons.length > 1 && !u.weapons[1 - u.wi].sidearm);
@@ -311,7 +318,18 @@ async function run(line) {
         if (!mi || !mi.usable) return `不能用魔法：${mi ? mi.why : '沒有魔法'}`;
         if (u.ability === 'transform') { await G.actions.magic(); break; }
         const opts = G.magicOptions(u);
-        if (args.length < 2) return `${u.name} 魔法可用位置（${opts.size}）：` + [...opts.values()].slice(0, 80).map(o => `(${o.x},${o.z})${o.rider ? '抬起' + o.rider.name : ''}`).join(' ');
+        if (args.length < 2) {
+          const list = [...opts.values()].map(o => {
+            if (o.kind === 'ice') return { o, txt: `(${o.x},${o.z})${o.rider ? '抬起' + o.rider.name : ''}`, r: 0 };
+            const cells = o.kind === 'dash' ? G.pathCells(u, o.mv) : [{ x: o.x, z: o.z, t: 1 }];
+            const r = Math.round(G.moveRisk(u, G.planReactions(u, cells, true), o.kind === 'dash' && u.magicLv >= 4 ? 1 : 0) * 100);
+            const unk = G.unknownThreat(cells);
+            const tg = o.kind === 'dash' ? G.enemies().filter(e => Math.hypot(e.x - o.x, e.z - o.z) < 1.5).map(e => e.tag).join('') : '';
+            return { o, r, txt: `(${o.x},${o.z})${tg ? '→' + tg : ''} ${r}%${unk ? '⚠' : ''}` };
+          }).sort((a, b) => a.r - b.r);
+          return `${u.name} 魔法可用位置（${list.length}，依風險排序；% 是途中被反應射擊打中的機率，只算已知敵人；⚠＝會被位置不明的敵人看到${u.ability === 'dash' ? '；→ 後面是能近戰的敵人編號' : ''}）：\n` +
+            list.slice(0, 120).map(x => x.txt).join('  ');
+        }
         const opt = opts.get(G.key(+args[0], +args[1]));
         if (!opt) return '那裡不能用魔法（不帶座標可列出可用位置）';
         await G.execMagic(u, opt);

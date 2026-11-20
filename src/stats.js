@@ -16,7 +16,7 @@ export function begin(meta) {
     meta, start: now(), end: null, result: null, log: [], inits: [], cur: null,
     shots: {}, supGirl: 0, supEnemy: 0, rally: { n: 0, fail: 0 }, eRally: 0,
     dmgGirl: 0, dmgEnemy: 0, blocked: 0, kills: 0, fled: 0, downed: 0,
-    heartLines: 0, grabSaves: 0, hesitate: 0, impulses: 0,
+    heartLines: 0, grabSaves: 0, saveKinds: {}, girlHits: 0, hesitate: 0, impulses: 0,
   };
   kind = null;
 }
@@ -45,7 +45,7 @@ export function tag(k) { kind = k; }
 export function playerAct(ok, saved = '') {
   if (!M || !M.cur) return;
   M.cur.acts.push({ k: kind || '其他', ok, saved });
-  if (saved) M.grabSaves++;
+  if (saved) { M.grabSaves++; M.saveKinds[saved] = (M.saveKinds[saved] || 0) + 1; }
   kind = null;
 }
 
@@ -63,7 +63,7 @@ export function shot(team, reaction, chance, hit) {
 
 export function damage(t, dmg, cut) {
   if (!M) return;
-  if (t.team === 'player') { M.dmgGirl += dmg; M.blocked += cut; if (M.cur && M.cur.side === 'enemy') M.cur.hitsOnGirls++; }
+  if (t.team === 'player') { M.dmgGirl += dmg; M.blocked += cut; M.girlHits++; if (M.cur && M.cur.side === 'enemy') M.cur.hitsOnGirls++; }
   else M.dmgEnemy += dmg;
 }
 
@@ -117,7 +117,7 @@ function summary(m) {
     rally: `${m.rally.n} 次，被打斷 ${m.rally.fail}`, eRally: m.eRally,
     dmgGirl: m.dmgGirl, blocked: m.blocked, dmgEnemy: m.dmgEnemy,
     kills: m.kills, fled: m.fled, downed: m.downed,
-    heartLines: m.heartLines, grabSaves: m.grabSaves, hesitate: m.hesitate, impulses: m.impulses,
+    heartLines: m.heartLines, grabSaves: m.grabSaves, saveKinds: m.saveKinds || {}, girlHits: m.girlHits || 0, hesitate: m.hesitate, impulses: m.impulses,
   };
 }
 
@@ -125,16 +125,16 @@ function summaryText(s) {
   const L = [
     `任務：${s.meta.op}（${s.meta.map}，難度 ${s.meta.level}）  結果：${s.result || '進行中'}  開始：${s.start}`,
     `出擊：${s.meta.girls}　敵人：${s.meta.enemies}`,
-    `主動權：共 ${s.inits} 次（我方 ${s.pInits}／敵方 ${s.eInits}）`,
+    `主動權：共 ${s.inits} 次（我方 ${s.pInits}／敵方 ${s.eInits}；易手 ${Math.max(0, s.inits - 1)} 次）`,
     `我方每次主動權成功行動：平均 ${s.pActsAvg}；第一個行動就失敗 ${s.pZero} 次（${s.pZeroPct}）；最長連續「拿到就失敗」${s.drought} 次`,
     `我方拿到主動權時：有人被壓制 ${s.startSupPct}；全員被壓制 ${s.allSupPct}`,
-    `敵方每次主動權：平均行動 ${s.eActsAvg}、最多 ${s.eActsMax}；平均命中少女 ${s.eHitsAvg} 次`,
+    `敵方每次主動權：平均行動 ${s.eActsAvg}、最多 ${s.eActsMax}；平均命中少女 ${s.eHitsAvg} 次（只算敵方主動權內）。整場少女被命中 ${s.girlHits} 次（含我方行動時的反應射擊）`,
     `射擊：` + (Object.entries(s.shots).map(([k, v]) => `${k} ${v}`).join('；') || '—'),
     `我方行動種類：` + (Object.entries(s.kinds).map(([k, v]) => `${k} ${v}`).join('；') || '—'),
     `壓制：少女被壓制 ${s.supGirl} 次、敵人被壓制 ${s.supEnemy} 次；我方起身 ${s.rally}；敵方起身 ${s.eRally} 次`,
     `傷害：少女受到 ${s.dmgGirl}（愛心擋下 ${s.blocked}）、敵人受到 ${s.dmgEnemy}`,
     `打倒 ${s.kills}、逃跑 ${s.fled}、少女倒下 ${s.downed}`,
-    `心線 ${s.heartLines} 次（救回失敗行動 ${s.grabSaves} 次）、敵人猶豫 ${s.hesitate} 次、衝動 ${s.impulses} 次`,
+    `心線觸發 ${s.heartLines} 次；失敗行動被救回 ${s.grabSaves} 次（${Object.entries(s.saveKinds || {}).map(([k, v]) => `${k} ${v}`).join('、') || '—'}）；敵人猶豫 ${s.hesitate} 次、衝動 ${s.impulses} 次`,
   ];
   return L.join('\n');
 }
