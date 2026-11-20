@@ -147,7 +147,8 @@ function targetsText(S, u) {
   }).join('\n');
 }
 
-function look(all = false) {
+// recent = 附上最近紀錄（指令輸出已經列出這次的新紀錄時不重複附）
+function look(all = false, recent = true) {
   const S = G.S;
   const ov = document.getElementById('overlay');
   if (ov && !ov.hidden) {
@@ -173,7 +174,7 @@ function look(all = false) {
     const mv = G.moveOptions(u);
     out.push(`-- ${u.name} 可移動 ${u.suppressed || u.pinned ? 0 : mv.size} 格（用 moves 列出）`);
   }
-  out.push('-- 最近紀錄\n' + logBuf.slice(-8).join('\n'));
+  if (recent) out.push('-- 最近紀錄\n' + logBuf.slice(-8).join('\n'));
   return out.join('\n');
 }
 
@@ -349,7 +350,7 @@ async function run(line) {
   }
   await idle();
   const lines = logBuf.slice(from);
-  const out = `> ${line}\n` + (msg ? msg + '\n' : '') + (lines.length ? lines.join('\n') + '\n' : '') + '\n' + look();
+  const out = `> ${line}\n` + (msg ? msg + '\n' : '') + (lines.length ? lines.join('\n') + '\n' : '') + '\n' + look(false, !lines.length);
   updatePanel(out);
   return out;
 }
