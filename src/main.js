@@ -528,7 +528,8 @@ function startMission() {
   S.quietSight = S.buffs.includes('eye') ? 7 : RULES.QUIET_SIGHT;
   const opKey = op.kind + ':' + op.name;
   let gen;
-  if (C.retry && C.retryGen && C.retryOp === opKey) gen = unpackGen(C.retryGen);
+  if (op.kind === 'boss' && C.mode === 'story') Camp.markBoss(op.member); // 記下頭目的出場順序
+  if (C.retry && !op.detour && C.retryGen && C.retryOp === opKey) gen = unpackGen(C.retryGen);
   else {
     const extra = [];
     let type;
@@ -541,8 +542,11 @@ function startMission() {
     gen = generateMap(Camp.level(op), { type, extra, bonus: 2 * S.buffs.filter(b => b === 'book').length });
     gen.curse = S.buffs.includes('sis') ? pickCurse(gen) : [];
     gen.theme = THEMES[ri(0, THEMES.length - 1)];
-    C.retryGen = packGen(gen); // 輸了要重打同一張：存進存檔，重新載入也不會換圖
-    C.retryOp = opKey;
+    gen.conds = op.kind === 'facility' ? facilityConds(gen, Camp.level(op)) : [];
+    if (!op.detour) { // 替代作戰不覆蓋原本要重打的那張圖
+      C.retryGen = packGen(gen); // 輸了要重打同一張：存進存檔，重新載入也不會換圖
+      C.retryOp = opKey;
+    }
     Camp.save();
   }
   S.map = gen.map;
@@ -551,6 +555,8 @@ function startMission() {
   S.theme = gen.theme;
   S.curse = new Set(gen.curse);
   S.waves = op.kind === 'finale' ? C.production : 0;
+  S.conds = gen.conds || [];
+  S.condTimer = S.conds.includes('timer') ? { every: RULES.FAC_TIMER[Camp.level(op) >= 9 ? 1 : 0], count: null } : null;
   S.opName = op.name;
   S.triple = false;
   S.gameOver = false;
@@ -568,6 +574,7 @@ function startMission() {
     const e = spawnEnemy(p.type, p.x, p.z, p.zone);
     if (e.boss && S.mission.type === 'hunt' && !S.mission.boss) { S.mission.boss = e; S.mission.bossName = e.name; }
   }
+  for (const e of enemies()) if (e.boss) tuneBoss(e, op);
 
   const p0 = gen.playerSpawns[0];
   controls.target.set(p0.x + 3, 0, p0.z);
@@ -583,6 +590,7 @@ function startMission() {
   UI.log(UI.missionText(S.mission) + (S.mission.type === 'sabotage' ? '，再撤回左側' : ''), 'sys');
   if (S.buffs.length) UI.log('家族加持：' + [...new Set(S.buffs)].map(b => FAMILY_BY_ID[b].buff).join('、'), 'warn');
   if (S.waves) UI.log(`增援會分 ${S.waves} 波抵達`, 'warn');
+  for (const c of S.conds) UI.log('設施條件：' + COND_TEXT[c](), 'warn');
   if (enemies().some(e => e.member) && S.mission.type !== 'hunt') UI.log('有家族成員在場！打倒她可以拔掉加持', 'warn');
   S.initNo = 0;
   S.deployZone = gen.deployZone;
@@ -646,12 +654,14 @@ function endMission(win, why) {
   const hp = {};
   for (const u of girls) hp[u.girl] = u.alive ? Math.max(1, Math.min(u.hp, GIRL[u.girl].maxHp)) : 0;
   const killed = S.units.filter(u => u.member && !u.alive && !u.fled).map(u => u.member);
-  const notes = Camp.finish({ win, deployed: girls.map(u => u.girl), hp, downed: girls.filter(u => !u.alive).map(u => u.girl), killed });
+  const detour = !!(Camp.C.op && Camp.C.op.detour);
+  const notes = Camp.finish({ win, deployed: girls.map(u => u.girl), hp, downed: girls.filter(u => !u.alive).map(u => u.girl), killed,
+    bossPhase: S.mission.boss ? S.mission.boss.phase : 0 });
   const rows = girls.map(u => {
     const now = Camp.girlState(u.girl).hp;
     return `<li>${u.name}：${u.alive ? `HP ${hp[u.girl]}${now !== hp[u.girl] ? ` → ${now}` : ''}/${GIRL[u.girl].maxHp}` : '倒下後送'}</li>`;
   }).join('');
-  const body = (win ? `<p>${why}。主動權共 ${S.initNo} 次（易手 ${S.initNo - 1} 次）。</p>` : `<p>${why || '上場的兩人都倒下了'}。這張地圖要重打。</p>`) +
+  const body = (win ? `<p>${why}。主動權共 ${S.initNo} 次（易手 ${S.initNo - 1} 次）。</p>` : `<p>${why || '上場的兩人都倒下了'}。${detour ? '替代作戰沒有成功，原本的作戰還等著重打。' : '這張地圖要重打。'}</p>`) +
     `<ul>${rows}</ul>` + (notes.length ? `<ul class="notes">${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '') +
     (win ? '<p style="opacity:.6">彈藥會在下張地圖補滿。</p>' : '') +
     '<p class="rec-btns"><button class="rec-dl">匯出這場紀錄</button> <button class="rec-cp">複製</button></p>';
@@ -668,7 +678,7 @@ function endMission(win, why) {
 // ================= 主動權 =================
 async function giveInitiative(side) {
   if (S.gameOver) return;
-  for (const u of S.units) { u.firedOut = false; u.spareUsed = false; u.shield = false; u.locked = false; }
+  for (const u of S.units) { u.firedOut = false; u.spareUsed = false; u.shield = false; u.locked = false; u.shotsUsed = 0; u.shotAt = null; }
   S.grab = false;       // 心線：要把主動權搶回我方
   S.forceEnemy = false; // 頭目突破階段：主動權要交給敵方
   S.initDeaths = 0;     // 這次主動權內倒下的敵人數（啟動檢定用）
@@ -692,6 +702,7 @@ async function giveInitiative(side) {
   S.busy = true;
   S.selected = null;
   refresh();
+  await facilityTimer();
   const anyAlert = enemies().some(e => e.alerted);
   if (anyAlert) { UI.banner('敵方取得主動權', 'enemy'); await wait(0.8); }
   const failed = await enemyInitiative();
@@ -772,6 +783,10 @@ function alertEnemies(list, why) {
     e.alerted = true;
     if (e.mesh.visible) floatText(e, '！警戒', 'sup');
     if (e.label) UI.updateLabel(e.label, e);
+  }
+  if (S.condTimer && S.condTimer.count === null) {
+    S.condTimer.count = 0;
+    UI.log(`警報響了：之後每 ${S.condTimer.every} 個敵方主動權，會有 2 名增援從撤離點那一側趕到`, 'warn');
   }
   if (why === 'spot') {
     UI.banner('被發現了！', 'enemy');
@@ -1125,7 +1140,9 @@ async function bossPhase(b) {
   }
 
   // 2. 增援：每個頭目有自己的增援方式（ENEMY_TYPES 的 reinforce）。專屬地圖可以用 S.mission.reinforceSpots 指定位置
-  const rule = b.reinforce || { kinds: Array(RULES.PHASE_GUARDS).fill('gunman'), where: 'guard' };
+  const base = b.reinforce || { kinds: Array(RULES.PHASE_GUARDS).fill('gunman'), where: 'guard' };
+  const rule = b.reinforceCut ? { ...base, kinds: base.kinds.slice(0, Math.max(1, base.kinds.length - b.reinforceCut)) } : base;
+  if (b.kind === 'b_mother' && b.phase >= 3) b.shotCap = 4;
   const reCands = (S.mission.reinforceSpots || []).filter(free);
   const group = reCands.length ? reCands.slice(0, rule.kinds.length) : reinforceSpots(b, ps, allFloor.filter(free), rule);
   group.forEach((p, i) => { spawnEnemy(rule.kinds[i], p.x, p.z, S.map.zoneAt(p.x, p.z), true).firedOut = true; }); // 剛到場：這次主動權內不開槍
@@ -1173,6 +1190,112 @@ function reinforceSpots(b, ps, floor, rule) {
     out = [...used, ...rest.filter(p => !used.some(q => dist(q, p) < 1))].slice(0, n);
   }
   return out;
+}
+
+// ---------- 頭目的強度與射擊上限（依出場順序） ----------
+// 第一個出場的頭目 -1 骰、突破時增援少 1 人；第 3、4 個 +1 骰。射擊上限見 RULES.BOSS_SHOTS
+function tuneBoss(e, op) {
+  if (e.kind === 'b_mother') {
+    e.shotCap = 3;
+    const C = Camp.C;
+    if (op.kind === 'finale' && C.finaleKeep && e.cuts) { // 決戰重打：保留已打破的第 1 段
+      e.phase = 2;
+      e.hp = e.cuts[0];
+      UI.log(`${e.name} 的第 1 段上次已經打破了，這次從第 2 段開始`, 'good');
+    }
+    return;
+  }
+  const idx = Camp.C.mode === 'story' && e.member ? Camp.bossIndex(e.member) : 1;
+  if (idx === 0) {
+    e.gun.dice = Math.max(1, e.gun.dice - 1);
+    e.dice = e.gun.dice;
+    e.reinforceCut = 1;
+  } else if (idx >= 2) {
+    e.gun.dice += 1;
+    e.dice = e.gun.dice;
+  }
+  e.shotCap = RULES.BOSS_SHOTS[Math.min(idx, RULES.BOSS_SHOTS.length - 1)];
+}
+const bossCapped = e => !!e.shotCap && (e.shotsUsed || 0) >= e.shotCap;
+const bossMayShoot = (e, t) => !e.shotCap || ((e.shotAt && e.shotAt.get(t)) || 0) < RULES.BOSS_SAME_TARGET;
+function countBossShot(e, t) {
+  if (!e.shotCap) return;
+  e.shotsUsed = (e.shotsUsed || 0) + 1;
+  e.shotAt = e.shotAt || new Map();
+  e.shotAt.set(t, (e.shotAt.get(t) || 0) + 1);
+  if (e.label) UI.updateLabel(e.label, e);
+}
+
+// ---------- 設施條件（難度 5 起 1 個、難度 9 起 2 個） ----------
+const COND_TEXT = {
+  timer: () => `警報響起後，每 ${S.condTimer ? S.condTimer.every : 4} 個敵方主動權會有 2 名增援從撤離點那一側趕到`,
+  plant: () => '裝好炸藥後，往撤離點的路上會立刻冒出 2 名增援，全圖進入警戒',
+  special: () => '這裡有魔女的東西（人偶或稻草人）',
+};
+function facilityConds(gen, level) {
+  if (level < 5) return [];
+  const pool = ['timer', 'special'];
+  if (gen.mission.type === 'sabotage') pool.push('plant');
+  const out = [];
+  const n = level >= 9 ? 2 : 1;
+  while (out.length < n && pool.length) out.push(pool.splice(ri(0, pool.length - 1), 1)[0]);
+  if (out.includes('special') && !gen.enemies.some(p => p.type === 'doll' || p.type === 'scarecrow')) {
+    const cand = gen.enemies.filter(p => p.type === 'gunman' || p.type === 'zealot');
+    if (cand.length) cand[ri(0, cand.length - 1)].type = Math.random() < 0.5 ? 'doll' : 'scarecrow';
+  }
+  return out;
+}
+const exitCenter = () => {
+  const ex = S.mission.exits || [];
+  if (!ex.length) return { x: 0, z: S.map.h / 2 };
+  return { x: ex.reduce((s, p) => s + p.x, 0) / ex.length, z: ex.reduce((s, p) => s + p.z, 0) / ex.length };
+};
+// 在 score(p) 最高的空格叫出 n 名敵人（離少女至少 minD 格、彼此分開）
+function callIn(kind, n, score, minD) {
+  const ps = players();
+  const c = [];
+  for (let z = 0; z < S.map.h; z++) for (let x = 0; x < S.map.w; x++) {
+    const p = { x, z };
+    if (!S.map.walkable(x, z) || unitAt(x, z) || iceAt(x, z) || isExit(p) || ps.some(g => dist(g, p) < minD)) continue;
+    const s = score(p);
+    if (s !== null) c.push({ p, s: s + Math.random() * 0.5 });
+  }
+  c.sort((a, b) => b.s - a.s);
+  const out = [];
+  for (const o of c) {
+    if (out.length >= n) break;
+    if (out.some(q => dist(q, o.p) < 1.5)) continue;
+    out.push(o.p);
+  }
+  return out.map(p => spawnEnemy(kind, p.x, p.z, S.map.zoneAt(p.x, p.z), true));
+}
+async function facilityTimer() {
+  const t = S.condTimer;
+  if (!t || t.count === null || S.gameOver) return;
+  t.count++;
+  if (t.count % t.every) return;
+  const ex = exitCenter();
+  const edge = p => p.x === 0 || p.z === 0 || p.x === S.map.w - 1 || p.z === S.map.h - 1;
+  const got = callIn('gunman', 2, p => edge(p) ? -dist(p, ex) : null, 4);
+  if (!got.length) return;
+  UI.banner('設施增援抵達！', 'enemy');
+  UI.log(`增援 ${got.map(e => `${e.name}(${e.x},${e.z})`).join('、')} 從撤離點那一側趕到`, 'warn');
+  updateVisibility();
+  refresh();
+  await wait(0.5);
+}
+async function plantAlarm() {
+  const o = S.mission.objective, ex = exitCenter();
+  const mid = { x: (o.x + ex.x) / 2, z: (o.z + ex.z) / 2 };
+  const got = callIn('gunman', 2, p => -dist(p, mid) + coverSides(S.map, p).length * 0.5, 3);
+  alertEnemies(enemies(), 'plant');
+  if (got.length) {
+    UI.banner('警報！增援堵住撤離路線', 'enemy');
+    UI.log(`炸藥觸發警報：${got.map(e => `${e.name}(${e.x},${e.z})`).join('、')} 冒出來堵住往撤離點的路，全圖進入警戒`, 'warn');
+  }
+  updateVisibility();
+  refresh();
+  await wait(0.4);
 }
 
 // 敵人啟動檢定
@@ -1706,6 +1829,7 @@ const actions = {
     floatText(u, '炸藥安裝完成', 'ow');
     UI.log(`${u.name} 在終端安裝了炸藥，撤回左側！`, 'good');
     UI.banner('炸藥已安裝', 'player');
+    if (S.conds.includes('plant')) await plantAlarm();
     drawZones();
     await resolvePlayerAction(true);
   },
@@ -2200,7 +2324,7 @@ async function airdrop(u, opt) {
   const m = lv(u, 'magic');
   const from = { x: u.x, z: u.z };
   let ally = null, allyTo = null;
-  if (m >= 4) {
+  if (m >= 4 && !u.carryUsed) { // 帶人空投每張地圖 1 次
     ally = players().find(p => p !== u && dist(p, u) < 1.5 && !p.suppressed && !p.pinned) || null;
     if (ally) {
       const spots = [];
@@ -2210,6 +2334,7 @@ async function airdrop(u, opt) {
       }
       allyTo = spots.sort((a, b) => dist(a, from) - dist(b, from))[0] || null;
       if (!allyTo) ally = null;
+      else u.carryUsed = true;
     }
   }
   if (u.raised) leaveIce(u);
@@ -2337,8 +2462,8 @@ function aiChooseFor(es, moveCount, minGain = RULES.AI_MOVE_GAIN) {
 
   let shot = null;
   for (const e of es) {
-    if (e.firedOut || e.noGun) continue;
-    const t = visibleTargets(e)[0];
+    if (e.firedOut || e.noGun || bossCapped(e)) continue;
+    const t = visibleTargets(e).find(o => bossMayShoot(e, o.unit));
     if (t && (!shot || t.odds.hit > shot.odds.hit)) shot = { e, t: t.unit, odds: t.odds };
   }
   if (shot && shot.odds.hit >= RULES.AI_SHOOT) return { type: 'shoot', ...shot };
@@ -2394,6 +2519,7 @@ async function enemyInitiative() {
     } else if (act.type === 'shoot') {
       focusOn((act.e.x + act.t.x) / 2, (act.e.z + act.t.z) / 2);
       await wait(0.35);
+      countBossShot(act.e, act.t);
       ok = await shoot(act.e, act.t);
     } else if (act.type === 'launch') {
       if (act.e.mesh.visible) { focusUnit(act.e); await wait(0.3); }
@@ -2429,9 +2555,10 @@ async function impulses(acted, passed = false) {
     if (e.pinned && (e.impulse === 'charge' || e.impulse === 'flee')) continue; // 受阻不能移動
     if (!e.alerted) { await patrol(e); }
     else if (e.impulse === 'shoot') {
-      const t = visibleTargets(e)[0];
+      const t = bossCapped(e) ? null : visibleTargets(e).find(o => bossMayShoot(e, o.unit));
       if (!t || e.firedOut) continue;
       impulseNote(e, '開槍');
+      countBossShot(e, t.unit);
       await shoot(e, t.unit);
     } else if (e.impulse === 'charge') {
       const ps = players();

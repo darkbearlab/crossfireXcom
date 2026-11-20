@@ -32,7 +32,8 @@ const HELP = `指令（座標是 x z；角色用代號 A 朱音 / H 光 / Y 雪�
   hq                  作戰室：列出作戰與少女
   op N                選第 N 個作戰（從 1 開始）
   squad A H           選出擊的兩人
-  learn A gun|magic   用獎章學下一格成長樹
+  learn A gun|magic   用獎章學下一格成長樹（第 5 格要 2 枚）
+  spend A heal|evac   成長樹點滿後：1 枚獎章回 1 顆心／後送少 1 場
   go                  出擊
   deploy A x z        部署階段：把角色擺到 (x,z)
   start               部署完成，開始行動
@@ -241,9 +242,9 @@ async function run(line) {
       case 'ok': if (!clickBtn(b => ['s-ok', 'ov-btn'].includes(b.id))) return '畫面上沒有主要按鈕'; break;
       case 'hq': {
         const ops = G.Camp.ops(), C = G.Camp.C;
-        return (document.querySelector('#overlay #s-ok') ? '（畫面上還有劇情，先 ok 才會回到作戰室）\n' : '') + '作戰：\n' + ops.map((o, i) => `  ${i + 1}. ${o.name}（${o.kind}）難度 ${G.Camp.level(o)} 敵人約 ${G.Camp.enemyEstimate(o)}`).join('\n') +
+        return (document.querySelector('#overlay #s-ok') ? '（畫面上還有劇情，先 ok 才會回到作戰室）\n' : '') + '作戰：\n' + ops.map((o, i) => `  ${i + 1}. ${o.detour ? '整備（替代作戰）：' : C.retry && i === 0 ? '重打：' : ''}${o.name}（${o.kind}）難度 ${G.Camp.level(o)} 敵人約 ${G.Camp.enemyEstimate(o)}`).join('\n') +
           '\n少女：\n' + C.girls.map(g => `  ${GIRL_KEY[g.id]} ${GIRL[g.id].name} 生命 ${g.hp}/${GIRL[g.id].maxHp} 槍法 ${g.gun} 魔法 ${g.magic} 獎章 ${g.medals}` +
-            `${g.evac ? ` 後送中（還要 ${g.evac} 場；可出擊的人不到 2 個時會半血提前歸隊）` : ''}${(C.deploy || []).includes(g.id) ? (g.evac ? ' ✓出擊（但後送中，不能出擊）' : ' ✓出擊') : ''}`).join('\n');
+            `${g.evac ? ` 後送中（還要 ${g.evac} 場；可出擊的人不到 2 個時會提前歸隊，至少 2/3 血）` : ''}${(C.deploy || []).includes(g.id) ? (g.evac ? ' ✓出擊（但後送中，不能出擊）' : ' ✓出擊') : ''}`).join('\n');
       }
       case 'op': if (!clickBtn(b => b.dataset.o === String(+args[0] - 1))) return '沒有這個作戰（先 hq）'; return run('hq');
       case 'squad': {
@@ -262,8 +263,13 @@ async function run(line) {
         if (g.evac > 0) return `${GIRL[id].name} 後送中，歸隊後才能學`;
         if (document.querySelector('#overlay #s-ok')) return '畫面上還有劇情，先 ok';
         const node = TREES[id][t][g[t]];
-        if (!clickBtn(b => b.classList.contains('learn'))) return '學不了：要在作戰室，而且有獎章、還沒學滿';
+        if (!clickBtn(b => b.classList.contains('learn'))) return `學不了：要在作戰室，而且獎章夠（這格要 ${G.Camp.nodeCost(g[t])} 枚，現在 ${g.medals} 枚）、還沒學滿`;
         return `學會了 ${GIRL[id].name} ${t === 'gun' ? '槍法' : '魔法'} ${g[t]}：${node}\n` + await run('hq');
+      }
+      case 'spend': { // 成長樹點滿後：spend A heal|evac
+        const id = Object.keys(GIRL_KEY).find(k => GIRL_KEY[k] === (args[0] || '').toUpperCase());
+        if (!id || !G.Camp.spend(id, args[1])) return '用不了：要兩條成長樹都點滿、有 1 枚獎章；heal＝回 1 顆心（沒後送、沒滿血），evac＝後送少 1 場';
+        return run('hq');
       }
       case 'go': if (!clickBtn(b => b.id === 'hq-go' && !b.disabled)) return '還不能出擊（選作戰與兩名少女）'; break;
       case 'deploy': {

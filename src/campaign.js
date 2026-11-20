@@ -61,9 +61,40 @@ export function enemyEstimate(op) {
   return enemyCount(level(op)) + 2 * book + extra;
 }
 
-// 可以選的作戰
+const opKey = o => o ? o.kind + ':' + o.name : '';
+
+// 可以選的作戰。輸了：保留「重打」；頭目戰、突襲、決戰輸了，另外開放替代作戰（每次失敗最多 RULES.DETOURS 場）
 export function ops() {
-  if (C.retry && C.op) return [C.op];
+  if (C.retry && !C.pending && C.op) { C.pending = C.op; C.detours = 0; } // 舊存檔
+  if (C.retry && C.pending) {
+    const out = [C.pending];
+    if (C.detours > 0) out.push(...detourOps());
+    return out;
+  }
+  return baseOps();
+}
+
+// 替代作戰：不推高難度、不推進「坐不住」，獎章照發
+function detourOps() {
+  const p = C.pending;
+  let list;
+  if (p.kind === 'finale') list = [{ kind: 'manor', name: '突襲莊園（整備）' }];
+  else list = baseOps().filter(o => opKey(o) !== opKey(p));
+  return list.slice(0, 2).map(o => ({ ...o, detour: true }));
+}
+
+// 頭目的出場順序（0 起算）：還沒出場的就是下一個
+export function bossIndex(member) {
+  const order = C.bossOrder || [];
+  const i = order.indexOf(member);
+  return i >= 0 ? i : order.length;
+}
+export function markBoss(member) {
+  C.bossOrder = C.bossOrder || [];
+  if (!C.bossOrder.includes(member)) { C.bossOrder.push(member); save(); }
+}
+
+function baseOps() {
   if (C.mode === 'endless') {
     if (!C.nextOp) {
       const all = Object.values(FACILITIES).flat();
@@ -77,7 +108,8 @@ export function ops() {
       if (!m.alive) continue;
       const d = FAMILY_BY_ID[m.id];
       if (m.facilities > 0) out.push({ kind: 'facility', member: m.id, name: FACILITIES[m.id][2 - m.facilities] });
-      else out.push({ kind: 'boss', member: m.id, name: `${d.title}・${d.name}現身` });
+      else if (C.done >= RULES.FIRST_BOSS_AT) out.push({ kind: 'boss', member: m.id, name: `${d.title}・${d.name}現身` });
+      // 設施拆完但任務數還不夠：她還坐得住，先不出現在清單上
     }
   } else if (C.phase === 'manor') {
     if (C.manorRaids < 3) out.push({ kind: 'manor', name: `突襲莊園（第 ${C.manorRaids + 1} 次）` });
@@ -88,27 +120,48 @@ export function ops() {
 
 export function level(op) {
   if (C.mode === 'endless') return 5 + C.done;
-  return 1 + C.done + ({ boss: 1, manor: 2, finale: 2 }[op.kind] || 0);
+  // 第一個出場的頭目不加頭目的 +1
+  const boss = op.kind === 'boss' ? (bossIndex(op.member) === 0 ? 0 : 1) : 0;
+  return 1 + C.done + boss + ({ manor: 2, finale: 2 }[op.kind] || 0);
 }
 
-// 可出擊的人不到 2 個時，後送最快回來的人提前歸隊（半血）
+// 可出擊的人不到 2 個時，後送最快回來的人提前歸隊（至少 2/3 血）
 export function ensureAvailable() {
   const recalled = [];
   const ev = C.girls.filter(g => g.evac > 0).sort((a, b) => a.evac - b.evac);
   while (C.girls.filter(g => g.evac === 0).length < 2 && ev.length) {
     const g = ev.shift();
     g.evac = 0;
-    g.hp = Math.ceil(GIRL[g.id].maxHp / 2);
+    g.hp = Math.max(g.hp, Math.ceil(GIRL[g.id].maxHp * RULES.EARLY_RETURN));
     recalled.push(g.id);
   }
   if (recalled.length) save();
   return recalled;
 }
 
+// 成長樹每格的價格：第 5 格要 2 枚
+export const nodeCost = i => (i >= 4 ? 2 : 1);
 export function learn(id, tree) {
   const g = girlState(id);
-  if (!g || g.medals <= 0 || g[tree] >= 5) return false;
+  if (!g || g[tree] >= 5 || g.medals < nodeCost(g[tree])) return false;
+  g.medals -= nodeCost(g[tree]);
   g[tree]++;
+  save();
+  return true;
+}
+// 兩條成長樹都點滿後，1 枚獎章換：回 1 顆心（heal），或後送少 1 場（evac）
+export const maxed = g => g.gun >= 5 && g.magic >= 5;
+export function spend(id, what) {
+  const g = girlState(id);
+  if (!g || !maxed(g) || g.medals < 1) return false;
+  if (what === 'heal') {
+    if (g.evac > 0 || g.hp >= GIRL[id].maxHp) return false;
+    g.hp = Math.min(GIRL[id].maxHp, g.hp + RULES.HEART_HP);
+  } else if (what === 'evac') {
+    if (g.evac <= 0) return false;
+    g.evac--;
+    if (g.evac === 0) g.hp = GIRL[id].maxHp;
+  } else return false;
   g.medals--;
   save();
   return true;
@@ -135,19 +188,57 @@ export function finish(r) {
       }
     }
   }
+  const op = C.op;
+  // 獎章：出擊的人打贏 1、打輸 0.5；沒出擊的人 0.5；打倒頭目全員再 +1
+  const bossDown = r.win && (op.kind === 'boss' || op.kind === 'finale') || r.killed.length > 0;
+  for (const g of C.girls) {
+    g.medals = (g.medals || 0) + (r.deployed.includes(g.id) ? (r.win ? RULES.MEDAL_WIN : RULES.MEDAL_LOSS) : RULES.MEDAL_BENCH)
+      + (bossDown ? RULES.MEDAL_BOSS : 0);
+  }
+  notes.push(`獎章：出擊的人 +${r.win ? RULES.MEDAL_WIN : RULES.MEDAL_LOSS}、沒出擊的人 +${RULES.MEDAL_BENCH}${bossDown ? `；打倒頭目，全員再 +${RULES.MEDAL_BOSS}` : ''}`);
+
+  if (op.detour) {
+    // 替代作戰：用掉一次，不推高難度、不推進「坐不住」；原本輸掉的那場還在
+    C.detours = Math.max(0, (C.detours || 0) - 1);
+    rest(r, notes, r.win);
+    if (r.win) afterDetour(op, notes);
+    notes.push(C.detours > 0 ? `還可以再打 ${C.detours} 場替代作戰，或回去重打「${C.pending.name}」` : `接下來要重打「${C.pending.name}」`);
+    C.op = null;
+    save();
+    return notes;
+  }
   if (!r.win) {
     C.retry = true;
+    if (!C.pending || opKey(C.pending) !== opKey(op)) {
+      C.pending = op;
+      C.detours = ['boss', 'manor', 'finale'].includes(op.kind) ? RULES.DETOURS : 0;
+    } else if (['boss', 'manor', 'finale'].includes(op.kind)) C.detours = RULES.DETOURS; // 每次失敗都重新給
+    // 決戰：保留已打破的段數（最多 1 段）
+    if (op.kind === 'finale' && r.bossPhase > 1) {
+      C.finaleKeep = 1;
+      notes.push('教母的第 1 段已經打破，重打決戰時從第 2 段開始');
+    }
+    if (C.detours > 0) notes.push(`可以先改打 ${C.detours} 場替代作戰（不推高難度）整備，再回來重打`);
     rest(r, notes, false); // 輸了也算過了一場：沒上場的人照樣休息、後送倒數，不會卡在同一張圖
     save();
     return notes;
   }
 
   C.retry = false;
+  C.pending = null;
+  C.detours = 0;
+  if (op.kind === 'finale') C.finaleKeep = 0;
   C.done++;
-  for (const g of C.girls) g.medals++;
-  notes.push('每個人都拿到 1 枚獎章');
   rest(r, notes, true);
   return afterWin(notes);
+}
+
+// 替代作戰打贏：突襲莊園照樣削弱產能，但最少留 1 波
+function afterDetour(op, notes) {
+  if (C.mode === 'story' && op.kind === 'manor') {
+    C.production = Math.max(1, C.production - 1);
+    notes.push(`莊園增援產能 ${C.production}（替代作戰最少留 1 波）`);
+  }
 }
 
 // 一場任務過去後的休養。win：上場沒倒下的人整頓回一顆心（只有打贏才有）
@@ -166,6 +257,7 @@ function rest(r, notes, win) {
       if (r.downed.includes(g.id)) continue;
       g.evac--;
       if (g.evac === 0) { g.hp = GIRL[g.id].maxHp; notes.push(`${nm(g.id)} 歸隊了`); }
+      else g.hp = Math.min(GIRL[g.id].maxHp, g.hp + RULES.HEART_HP); // 後送中每場回 1 顆心（提前歸隊時用得到）
     } else if (g.hp < GIRL[g.id].maxHp) {
       g.hp = Math.min(GIRL[g.id].maxHp, g.hp + RULES.BENCH_HEAL);
       notes.push(`${nm(g.id)} 休息 +${RULES.BENCH_HEAL} HP`);
@@ -181,7 +273,8 @@ function afterWin(notes) {
       const m = C.members.find(x => x.id === op.member);
       if (m.alive && m.facilities > 0) {
         m.facilities--;
-        if (m.facilities === 0) notes.push(`${FAMILY_BY_ID[m.id].name} 坐不住了，準備現身`);
+        if (m.facilities === 0) notes.push(C.done >= RULES.FIRST_BOSS_AT ? `${FAMILY_BY_ID[m.id].name} 坐不住了，準備現身`
+          : `${FAMILY_BY_ID[m.id].name} 的設施都被拆了，但她還沉得住氣（全戰役完成 ${RULES.FIRST_BOSS_AT} 場後現身）`);
       }
     }
     if (op.kind === 'manor') {

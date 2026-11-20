@@ -1,7 +1,7 @@
 // 標題畫面與作戰室（任務之間：選作戰、點成長樹、選出擊的兩人）。
 import * as Camp from './campaign.js';
 import { GIRLS, TREES, FAMILY, FAMILY_BY_ID, STORY } from './girls.js';
-import { WEAPONS } from './config.js';
+import { WEAPONS, RULES } from './config.js';
 
 const $ = id => document.getElementById(id);
 const hex = c => '#' + c.toString(16).padStart(6, '0');
@@ -81,7 +81,7 @@ function render() {
   if (C.mode === 'story') {
     fam = FAMILY.map(d => {
       const m = C.members.find(x => x.id === d.id);
-      const left = m.alive && C.phase === 'facilities' ? ` · 設施 ${m.facilities}` : '';
+      const left = m.alive && C.phase === 'facilities' ? (m.facilities > 0 ? ` · 設施 ${m.facilities}` : C.done < RULES.FIRST_BOSS_AT ? ` · 還沉得住氣（完成 ${RULES.FIRST_BOSS_AT} 場後現身）` : ' · 現身') : '';
       return `<div class="fam ${m.alive ? '' : 'down'}"><b>${d.title}・${d.name}</b>${left}<br><small>${d.buff}：${d.desc}</small></div>`;
     }).join('');
     if (C.phase === 'facilities') fam += `<div class="fam note"><small>莊園之前，每個成員的加持只在她自己的設施生效；退守莊園後，所有仍存活成員的加持一起生效。</small></div>`;
@@ -100,7 +100,7 @@ function render() {
 
   const opsHtml = C.phase === 'done' ? '' : ops.map((o, i) => `
     <button class="op ${i === st.op ? 'on' : ''} ${o.kind}" data-o="${i}">
-      <b>${C.retry ? '重打：' : ''}${o.name}</b><small>${opDesc(o)} · 難度 ${Camp.level(o)}（敵人 ${Camp.enemyEstimate(o)}${o.kind === 'manor' ? '，可能有成員在場' : o.kind === 'finale' ? `，增援 ${C.production} 波×3` : ''}）</small>
+      <b>${o.detour ? '整備：' : C.retry && i === 0 ? '重打：' : ''}${o.name}</b>${o.detour ? '<small>替代作戰：不推高難度、不推進「坐不住」，獎章照發</small>' : ''}<small>${opDesc(o)} · 難度 ${Camp.level(o)}（敵人 ${Camp.enemyEstimate(o)}${o.kind === 'manor' ? '，可能有成員在場' : o.kind === 'finale' ? `，增援 ${C.production} 波×3` : ''}）</small>
       <small class="opbuff">${opBuffs(o)}</small>
     </button>`).join('');
 
@@ -115,10 +115,11 @@ function render() {
     let det = '';
     if (st.detail && st.detail.g === d.id) {
       const { t, i } = st.detail;
-      const can = i === g[t] && g.medals > 0;
-      const state = i < g[t] ? '（已學會）' : i === g[t] ? (g.medals > 0 ? '' : '（需要獎章）') : '（要先學前一格）';
+      const cost = Camp.nodeCost(i);
+      const can = i === g[t] && g.medals >= cost;
+      const state = i < g[t] ? '（已學會）' : i === g[t] ? (g.medals >= cost ? '' : `（需要 ${cost} 枚獎章）`) : '（要先學前一格）';
       det = `<div class="det"><b>${t === 'gun' ? '槍法' : '魔法'} ${i + 1}</b> ${TREES[d.id][t][i]} <span class="dim">${state}</span>
-        ${can ? `<button class="learn" data-g="${d.id}" data-t="${t}">學習（1 枚獎章）</button>` : ''}</div>`;
+        ${can ? `<button class="learn" data-g="${d.id}" data-t="${t}">學習（${cost} 枚獎章）</button>` : ''}</div>`;
     }
     const weap = d.weapons.map(w => WEAPONS[w].name).join(' ＋ ');
     const status = g.evac > 0
@@ -131,13 +132,14 @@ function render() {
       <div class="gw dim">被動：${d.passive}<br>魔法：${d.active}</div>
       ${trees}${det}
       <div class="gf"><span class="medal">獎章 ${g.medals}</span>${status}</div>
+      ${Camp.maxed(g) && g.medals >= 1 ? `<div class="gf spend">成長樹已滿：${g.evac > 0 ? `<button class="spend" data-g="${d.id}" data-w="evac">1 枚：後送少 1 場</button>` : g.hp < d.maxHp ? `<button class="spend" data-g="${d.id}" data-w="heal">1 枚：回 1 顆心</button>` : '<span class="dim">獎章留著，受傷或後送時可以用</span>'}</div>` : ''}
     </div>`;
   }).join('');
 
   const avail = C.girls.filter(g => g.evac === 0).length;
   const need = Math.min(2, avail);
   const ready = C.phase !== 'done' && C.deploy.length === need && op;
-  const notes = [...st.notes, ...st.recalled.map(id => `${GIRLS.find(g => g.id === id).name} 提前歸隊（半血）`)];
+  const notes = [...st.notes, ...st.recalled.map(id => `${GIRLS.find(g => g.id === id).name} 提前歸隊（至少 2/3 血）`)];
 
   const o = open(`
     <h1>${head}</h1>
@@ -158,6 +160,7 @@ function render() {
     render();
   });
   o.querySelectorAll('.learn').forEach(b => b.onclick = () => { Camp.learn(b.dataset.g, b.dataset.t); render(); });
+  o.querySelectorAll('.spend').forEach(b => b.onclick = () => { Camp.spend(b.dataset.g, b.dataset.w); render(); });
   o.querySelectorAll('.dep').forEach(b => b.onclick = () => {
     const id = b.dataset.g;
     if (C.deploy.includes(id)) C.deploy = C.deploy.filter(x => x !== id);
