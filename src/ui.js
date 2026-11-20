@@ -122,12 +122,16 @@ export function showTargeting(list, idx, triple = null) {
   const el = $('target-panel');
   el.hidden = false;
   el.innerHTML = `<div class="tp-title">選擇目標 <small>Tab 切換 · 點擊敵人也可</small></div>` +
-    list.map((t, i) => `
+    list.map((t, i) => {
+      const a = t.unit.armor || 0, n = triple ? t.odds.dice * 2 : t.odds.dice, eff = effHit(t.odds, a, n);
+      const arm = a ? `<br><small class="${eff ? 'warn' : 'bad'}">裝甲 ${a}：要中 ${a + 1} 顆才有效${eff ? '' : '，這槍不可能有效'}（至少中一顆 ${effHit(t.odds, 0, n)}%）</small>` : '';
+      return `
       <div class="tgt ${i === idx ? 'on' : ''}" data-i="${i}">
         <div><b>${t.unit.name}</b> <small>生命 ${t.unit.hp}/${t.unit.maxHp} · 累積 ${stressPips(t.unit)}${t.unit.alerted ? '' : ' · 未察覺'}</small></div>
-        <div class="hit">${t.odds.hit}%</div>
-        <small>${diceLine(t.odds, triple)} · ${coverName(t.odds)} · 距離 ${t.odds.dist.toFixed(1)}${t.odds.sweet ? ' · 甜蜜距離' : ''}</small>
-      </div>`).join('') +
+        <div class="hit">${a ? eff : t.odds.hit}%</div>
+        <small>${diceLine(t.odds, triple)} · ${coverName(t.odds)} · 距離 ${t.odds.dist.toFixed(1)}${t.odds.sweet ? ' · 甜蜜距離' : ''}</small>${arm}
+      </div>`;
+    }).join('') +
     (triple === null ? '' : `<button id="tp-triple" class="${triple ? 'on' : ''}">三管齊發：${triple ? '開' : '關'}（耗 3 發、骰數加倍）</button>`) +
     `<div class="tp-btns"><button id="tp-fire">開火 (Enter)</button><button id="tp-cancel">取消 (Esc)</button></div>`;
   el.querySelectorAll('.tgt').forEach(d => d.onclick = () => H.pickTarget(+d.dataset.i));
@@ -137,6 +141,18 @@ export function showTargeting(list, idx, triple = null) {
 }
 
 export function hideTargeting() { $('target-panel').hidden = true; }
+
+// 扣掉裝甲後「真正有效」的機率：n 顆骰至少中 armor+1 顆
+export function effHit(o, armor = 0, n = o.dice) {
+  const p = o.die / 100;
+  if (!armor) return Math.round((1 - Math.pow(1 - p, n)) * 100);
+  let miss = 0, c = 1;
+  for (let k = 0; k <= armor && k <= n; k++) {
+    miss += c * Math.pow(p, k) * Math.pow(1 - p, n - k);
+    c = c * (n - k) / (k + 1);
+  }
+  return Math.max(0, Math.round((1 - miss) * 100));
+}
 
 // 累積命中：● 已累積 ○ 未累積（滿了之後每下受傷）
 export function stressPips(u) {

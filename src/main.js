@@ -1355,7 +1355,7 @@ function updateHover() {
     else if (weapon(u).ammo <= 0) showTip(`<b>${occ.name}</b><br><small>彈匣空了</small>${info}`);
     else if (hasLOS(S.map, u, occ)) {
       const o = oddsVs(u, occ);
-      showTip(`<b>${occ.name}</b> ${o.dice} 骰×${o.die}%：至少中一顆 <b>${o.hit}%</b><br><small>${UI.coverName(o)}${occ.suppressed ? ' · 壓制中' : occ.pinned ? ' · 受阻' : ''} · 點敵人瞄準</small>${info}`);
+      showTip(`<b>${occ.name}</b> ${o.dice} 骰×${o.die}%：至少中一顆 <b>${o.hit}%</b>${occ.armor ? `<br>裝甲 ${occ.armor}：要中 ${occ.armor + 1} 顆才有效 <b>${UI.effHit(o, occ.armor)}%</b>` : ''}<br><small>${UI.coverName(o)}${occ.suppressed ? ' · 壓制中' : occ.pinned ? ' · 受阻' : ''} · 點敵人瞄準</small>${info}`);
     } else showTip(`<b>${occ.name}</b><br><small>無視線</small>${info}`);
     return;
   }
@@ -1537,6 +1537,11 @@ async function fire() {
   const t = S.targets[S.targetIdx];
   const u = S.selected;
   const triple = S.triple && canTriple(u);
+  // 扣掉裝甲後不可能有效的射擊：擋下來，免得白白交出主動權
+  if (t.unit.armor && UI.effHit(t.odds, t.unit.armor, triple ? t.odds.dice * 2 : t.odds.dice) === 0) {
+    UI.toast(`${t.unit.name} 有裝甲：${triple ? t.odds.dice * 2 : t.odds.dice} 骰就算全中也會被擋光，這槍不可能有效`, 2600);
+    return;
+  }
   S.mode = 'move';
   UI.hideTargeting();
   tgtRing.visible = false;

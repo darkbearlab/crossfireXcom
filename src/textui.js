@@ -138,7 +138,8 @@ function targetsText(S, u) {
   if (u.firedOut) return '  （這次主動權不能再開槍）';
   return ts.map(t => {
     const o = t.odds;
-    const armor = t.unit.armor ? `，裝甲 ${t.unit.armor}：實際生效 ${Math.round((1 - Math.pow(1 - o.die / 100, o.dice) - o.dice * (o.die / 100) * Math.pow(1 - o.die / 100, o.dice - 1)) * 100)}%` : '';
+    const ef = t.unit.armor ? UI.effHit(o, t.unit.armor) : 0;
+    const armor = t.unit.armor ? `，裝甲 ${t.unit.armor}：實際生效 ${ef}%${ef ? '' : '（不可能有效，開不了）'}` : '';
     return `  ${eKey(S, t.unit)} ${t.unit.name}：${o.dice} 骰 × ${o.die}% → 至少中一顆 ${o.hit}%，平均中 ${(o.dice * o.die / 100).toFixed(1)}${armor}` +
       `  ${UI.coverName(o)}  距離 ${o.dist.toFixed(1)}${o.sweet ? ' 甜蜜距離' : ''}`;
   }).join('\n');

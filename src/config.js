@@ -93,7 +93,7 @@ export const WEAPONS = {
 // 敵人：普通武器不追蹤彈藥。impulse = 衝動：主動權易手時，這輪沒行動過的單位會強制做的事。
 // act / q = 啟動值與品質（新兵 45、老手 60、精銳 70、軍官 80）。頭目不檢定，改成生命分 3 段。
 // maxHp 以「傷」計（一般 1、精銳 2）；dice = 骰數（甜蜜距離 1–3 格再 +1），dieMod = 每顆骰的命中修正（%）。
-// armor：每次攻擊少算 1 下命中。
+// armor：每次攻擊少算 1 下命中。裝甲和多血不並存：有裝甲的只有 1 傷，頭目不穿裝甲。
 export const ENEMY_TYPES = {
   gunman:    { name: '槍手',   act: 60, q: '老手', maxHp: 1, dice: 2, color: 0xc0453a, impulse: 'shoot',
                desc: '衝動：對最近的可見目標開槍' },
@@ -107,19 +107,19 @@ export const ENEMY_TYPES = {
                desc: '主動射擊無視半掩體；不會反應射擊' },
   mg:        { name: '機槍手', act: 70, q: '精銳', maxHp: 2, dice: 3, dieMod: -5, color: 0x7a3434, keepFiring: true, cumbersome: true,
                desc: '3 骰。笨重：每次主動權只行動一次；反應射擊打空不會停火' },
-  brute:     { name: '重裝兵', act: 70, q: '精銳', maxHp: 2, dice: 2, color: 0x8e2f6e, armor: 1, scale: 1.2,
+  brute:     { name: '重裝兵', act: 70, q: '精銳', maxHp: 1, dice: 2, color: 0x8e2f6e, armor: 1, scale: 1.2,
                desc: '裝甲：每次攻擊少算 1 下命中' },
   // 家族成員（boss）：生命分 3 段，每段 2 傷
   b_eye:     { name: '薇歐拉', maxHp: 6, dice: 3, dieMod: 10, color: 0x5b3f8f, boss: true, impulse: 'shoot', ignoreHalf: true,
                desc: '眼線：主動射擊無視半掩體。打倒她「千里眼」就失效' },
-  b_exec:    { name: '蕾貝卡', maxHp: 6, dice: 3, color: 0x3b2a4a, boss: true, impulse: 'charge', armor: 1, keepFiring: true,
-               desc: '執行人：裝甲，反應射擊打空不停火。打倒她「不留活口」就失效' },
+  b_exec:    { name: '蕾貝卡', maxHp: 6, dice: 3, color: 0x3b2a4a, boss: true, impulse: 'charge', keepFiring: true,
+               desc: '執行人：反應射擊打空不停火。打倒她「不留活口」就失效' },
   b_book:    { name: '莫妮卡', maxHp: 6, dice: 3, color: 0x2f4a3a, boss: true, impulse: 'shoot',
                desc: '帳房。打倒她「人手充足」就失效' },
   b_sis:     { name: '莉莉絲', maxHp: 6, dice: 3, color: 0x7a2a6a, boss: true, impulse: 'curse',
                desc: '魔女姊姊。衝動：把詛咒下在最近的我方腳下。打倒她「詛咒地」就失效' },
-  b_mother:  { name: '瑪格麗特', maxHp: 9, dice: 3, dieMod: 5, color: 0x1e1428, boss: true, impulse: 'shoot', armor: 1, keepFiring: true,
-               desc: '教母：裝甲，反應射擊打空不停火。打倒她就結束了' },
+  b_mother:  { name: '瑪格麗特', maxHp: 9, dice: 3, dieMod: 5, color: 0x1e1428, boss: true, impulse: 'shoot', keepFiring: true,
+               desc: '教母：反應射擊打空不停火。打倒她就結束了' },
 };
 
 // 難度 → 一般敵人數量：難度 1 = 4 人，之後大約每升 2 級多 1 人，最多 10 人
@@ -133,6 +133,7 @@ export function enemyGroups(level, bonus = 0) {
   const pool = ['gunman', 'gunman', 'zealot'];
   if (level >= 3) pool.push('mg', 'sniper');
   if (level >= 4) pool.push('brute');
+  if (level >= 8) pool.push('brute', 'brute'); // 後期小兵多穿裝甲
   const pick = () => pool[Math.floor(Math.random() * pool.length)];
   while (n > 0) {
     if (n >= 2 && Math.random() < 0.3) { groups.push([pick(), pick()]); n -= 2; }
