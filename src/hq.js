@@ -2,6 +2,7 @@
 import * as Camp from './campaign.js';
 import { GIRLS, TREES, FAMILY, FAMILY_BY_ID, STORY } from './girls.js';
 import { WEAPONS, RULES, ITEMS, SLOTS, COUNTERS } from './config.js';
+const GIRL_BY = id => GIRLS.find(g => g.id === id);
 
 const $ = id => document.getElementById(id);
 const hex = c => '#' + c.toString(16).padStart(6, '0');
@@ -89,12 +90,12 @@ function render() {
 
   let fam = '';
   if (C.mode === 'story') {
-    fam = FAMILY.map(d => {
+    fam = Camp.rosterFamily().map(d => {
       const m = C.members.find(x => x.id === d.id);
       const left = m.alive && C.phase === 'field' ? (m.repels >= RULES.REPELS ? ' · 找到據點了' : ` · 擊退 ${m.repels}/${RULES.REPELS}`) + (m.boost ? ` · 強化 +${m.boost} 骰` : '') : '';
       return `<div class="fam ${m.alive ? '' : 'down'}"><b>${d.title}・${d.name}</b>${left}<br><small>${d.buff}：${d.desc}</small></div>`;
     }).join('');
-    if (C.phase === 'field') fam += `<div class="fam note"><small>成員會在自己的設施偶爾現身，擊退 ${RULES.REPELS} 次就找到她的據點。打倒 ${RULES.MANOR_AT} 名成員後家族退守莊園，剩下的成員會和教母一起出現。</small></div>`;
+    if (C.phase === 'field') fam += `<div class="fam note"><small>成員會在自己的設施偶爾現身，擊退 ${RULES.REPELS} 次就找到她的據點。打倒 ${Camp.manorAt()} 名成員後家族退守莊園，剩下的成員會和教母一起出現。</small></div>`;
     const cards = C.cards.map(c => c.revealed
       ? `<div class="fam card"><b>${COUNTERS[c.id].name}</b> · ${c.left} 回合後生效<br><small>${COUNTERS[c.id].desc}</small></div>`
       : `<div class="fam card hidden"><b>？？？</b> · ${c.left} 回合後生效<br><small>蓋著的反制。打贏設施作戰可以翻開</small></div>`).join('');
@@ -120,7 +121,7 @@ function render() {
     </button>`).join('');
 
   const stashList = Object.entries(C.stash || {}).filter(([, n]) => n > 0);
-  const girls = GIRLS.map(d => {
+  const girls = Camp.rosterGirls().map(d => {
     const g = Camp.girlState(d.id);
     const dep = C.deploy.includes(d.id);
     const trees = ['gun', 'magic'].map(t => {
@@ -158,8 +159,15 @@ function render() {
   const need = Math.min(2, avail);
   const isRest = op && op.kind === 'rest';
   const ready = C.phase !== 'done' && op && (isRest || (C.deploy.length === need && need > 0));
+  const mk = Camp.market();
+  const loot = C.loot || 0;
+  const marketHtml = C.phase === 'done' ? '' : `<div class="sec">黑市 · 戰利品 ${loot}</div><div class="market">
+    ${mk.buy.map((o, i) => `<button class="mk-buy" data-i="${i}" ${o.sold || loot < o.price ? 'disabled' : ''} title="${ITEMS[o.item].desc}">${o.sold ? '（已買）' : ''}${ITEMS[o.item].name}：${o.price} 戰利品</button>`).join('')}
+    ${mk.trades.map((t, i) => `<button class="mk-trade" data-i="${i}" ${t.done || (C.stash[t.give] || 0) < t.n ? 'disabled' : ''} title="${ITEMS[t.get].desc}">${t.done ? '（已換）' : ''}${ITEMS[t.give].name}×${t.n} → ${ITEMS[t.get].name}</button>`).join('')}
+    ${stashList.length ? `<select class="mk-sell"><option value="">賣掉倉庫的東西…</option>${stashList.map(([k, n]) => `<option value="${k}">${ITEMS[k].name}（${n}）→ ${Camp.sellPrice(k)} 戰利品</option>`).join('')}</select>` : ''}
+    <small class="dim">黑市每回合換貨；戰利品打贏 3、打輸 1，每打倒 2 名敵人再 +1。買賣不花回合</small></div>`;
   const stashHtml = stashList.length ? stashList.map(([k, n]) => `<span title="${ITEMS[k].desc}">${ITEMS[k].name}×${n}</span>`).join('、') : '<span class="dim">空的</span>';
-  const notes = [...st.notes, ...st.recalled.map(id => `${GIRLS.find(g => g.id === id).name} 提前歸隊（至少 2/3 血）`)];
+  const notes = [...st.notes, ...st.recalled.map(id => `${GIRL_BY(id).name} 提前歸隊（至少 2/3 血）`)];
 
   const o = open(`
     <h1>${head}</h1>
@@ -168,6 +176,7 @@ function render() {
     <div class="sec">${C.mode === 'story' ? '家族與反制' : '家族的加持'}</div><div class="fams">${fam}</div>
     ${opsHtml ? `<div class="sec">選擇作戰</div><div class="ops">${opsHtml}</div><div class="story small">${opStory(op)}</div>` : ''}
     <div class="sec">魔法少女（選 ${need} 人出擊；點數字看成長樹）</div>
+    ${marketHtml}
     <div class="stash"><b>倉庫</b>：${stashHtml}<br><small class="dim">每人帶 ${SLOTS} 個道具或裝備。${Object.entries(ITEMS).map(([, it]) => `${it.name}：${it.desc}`).join('；')}</small></div>
     <div class="girls">${girls}</div>
     ${C.phase !== 'done' ? `<button id="hq-go" ${ready ? '' : 'disabled'}>${isRest ? '休整（不出擊）▶' : '出擊 ▶'}</button>` : ''}
@@ -182,6 +191,9 @@ function render() {
   });
   o.querySelectorAll('.learn').forEach(b => b.onclick = () => { Camp.learn(b.dataset.g, b.dataset.t); render(); });
   o.querySelectorAll('.spend').forEach(b => b.onclick = () => { Camp.spend(b.dataset.g, b.dataset.w); render(); });
+  o.querySelectorAll('.mk-buy').forEach(b => b.onclick = () => { Camp.buy(+b.dataset.i); render(); });
+  o.querySelectorAll('.mk-trade').forEach(b => b.onclick = () => { Camp.trade(+b.dataset.i); render(); });
+  o.querySelectorAll('.mk-sell').forEach(s => s.onchange = () => { if (s.value) Camp.sell(s.value); render(); });
   o.querySelectorAll('.unequip').forEach(b => b.onclick = () => { Camp.unequip(b.dataset.g, b.dataset.k); render(); });
   o.querySelectorAll('.equip').forEach(s => s.onchange = () => { if (s.value) Camp.equip(s.dataset.g, s.value); render(); });
   o.querySelectorAll('.dep').forEach(b => b.onclick = () => {

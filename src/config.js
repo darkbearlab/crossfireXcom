@@ -51,7 +51,7 @@ export const RULES = {
   CARD_TURNS: [4, 6],     // 反制的倒數（回合）
   REPELS: 2,              // 擊退成員幾次，解鎖她的據點
   APPEAR: [0.25, 0.1, 0.75], // 成員在自己設施現身的機率：基本、每回合沒現身 +、上限
-  MANOR_AT: 3,            // 打倒幾名成員後退守莊園
+  MANOR_AT: 3,            // 打倒幾名成員後退守莊園（家族 4 人時；人數更多時改成「剩 3 人時」，見 campaign.manorAt）
   MELEE_WOUNDS: 1,        // 朱音近戰：必中，不經過三階直接受傷這麼多次並壓制（無視裝甲）
   ICE_HP: 3,              // 冰塊被打幾下會碎
   ICE_RANGE: 5,           // 冰塊放置距離
@@ -164,14 +164,30 @@ export const ENEMY_TYPES = {
 // ---------- 戰役 v2：道具與裝備（每人 3 格） ----------
 // use：消耗品，戰鬥中用掉就沒了；gear：裝備，一直帶著
 export const ITEMS = {
-  medkit: { name: '醫療包', kind: 'use', desc: '行動：回 1 顆心（不交主動權）' },
-  apround: { name: '穿甲彈', kind: 'use', desc: '裝填後，下一次主動射擊無視裝甲（不交主動權）' },
-  flash: { name: '閃光彈', kind: 'use', desc: '丟向 6 格內看得到的敵人：她和周圍 1 格的敵人進入壓制（會發出聲響）' },
-  vest: { name: '防彈背心', kind: 'gear', desc: '上場時多 1 顆心（只在這場內）' },
-  mag: { name: '擴充彈匣', kind: 'gear', desc: '主武器彈匣 +2、備彈 +4' },
-  scope: { name: '瞄準鏡', kind: 'gear', desc: '所有武器每顆骰 +5%' },
+  medkit: { name: '醫療包', kind: 'use', price: 2, desc: '行動：回 1 顆心（不交主動權）' },
+  apround: { name: '穿甲彈', kind: 'use', price: 2, desc: '裝填後，下一次主動射擊無視裝甲（不交主動權）' },
+  flash: { name: '閃光彈', kind: 'use', price: 3, desc: '丟向 6 格內看得到的敵人：她和周圍 1 格的敵人進入壓制（會發出聲響）' },
+  vest: { name: '防彈背心', kind: 'gear', price: 5, desc: '上場時多 1 顆心（只在這場內）' },
+  mag: { name: '擴充彈匣', kind: 'gear', price: 4, desc: '主武器彈匣 +2、備彈 +4' },
+  scope: { name: '瞄準鏡', kind: 'gear', price: 6, desc: '所有武器每顆骰 +5%' },
 };
 export const SLOTS = 3;
+
+// ---------- 黑市（像 XCOM2 的黑市）：用戰利品買、把道具賣掉換戰利品、以物易物。每回合換貨 ----------
+export const MARKET = {
+  BUY: 3,                 // 每回合賣幾樣
+  TRADES: 2,              // 每回合幾筆以物易物
+  SELL: 0.5,              // 賣回去拿到原價的幾成（無條件捨去，至少 1）
+  DISCOUNT: [0.7, 1.3],   // 這回合價格浮動
+  LOOT_WIN: 3, LOOT_LOSS: 1, LOOT_PER_KILLS: 2, // 戰利品：打贏 3、打輸 1，每打倒 2 名敵人再 +1
+};
+
+// ---------- 名單：每場戰役開始時決定雙方的名單 ----------
+// 現在魔法少女和家族都只有 4 名，所以全部上場；之後增加到 7 名時，從池子裡隨機或手選
+export const ROSTER = {
+  girls: 4,               // 一場戰役的魔法少女人數
+  family: 4,              // 一場戰役的家族成員人數（不含教母）
+};
 
 // ---------- 戰役 v2：家族的反制（像黑地事件）。生效一張，家族威脅 +1 ----------
 export const COUNTERS = {

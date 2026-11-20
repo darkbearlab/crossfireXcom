@@ -1,27 +1,45 @@
 // 戰役狀態（v2）：回合、家族的反制（黑地事件）、家族威脅、成員現身／擊退／據點、莊園、隊伍（後送/獎章/成長樹/道具）、存檔。
 // 每個回合在作戰室做一件事：出擊（不論輸贏）或休整。回合結束時反制倒數 -1，倒數到 0 就生效、家族威脅 +1。
-import { RULES, enemyCount, ITEMS, SLOTS, COUNTERS } from './config.js';
+import { RULES, enemyCount, ITEMS, SLOTS, COUNTERS, MARKET, ROSTER } from './config.js';
 import { GIRLS, GIRL, FAMILY, FAMILY_BY_ID, FACILITIES, GODMOTHER } from './girls.js';
 
 const SAVE = 'mgx_save_v2', META = 'mgx_meta_v1';
 export let C = null;
 
-const freshGirls = () => GIRLS.map(g => ({ id: g.id, hp: g.maxHp, gun: 0, magic: 0, medals: 0, evac: 0, slots: [] }));
+const freshGirls = ids => ids.map(id => ({ id, hp: GIRL[id].maxHp, gun: 0, magic: 0, medals: 0, evac: 0, slots: [] }));
 export const girlState = id => C.girls.find(g => g.id === id);
+
+// ---------- 名單：每場戰役開始時決定雙方的名單 ----------
+// pick：手選的 id 陣列（不夠的隨機補滿）；沒給就從池子裡隨機挑。池子不比名單大時就是全員
+export function pickRoster(pool, size, pick = []) {
+  const ids = pool.map(x => x.id);
+  const out = pick.filter(id => ids.includes(id)).slice(0, size);
+  const rest = ids.filter(id => !out.includes(id)).sort(() => Math.random() - 0.5);
+  while (out.length < size && rest.length) out.push(rest.shift());
+  return ids.filter(id => out.includes(id)); // 照池子的順序
+}
+export const rosterGirls = () => C.girls.map(g => GIRLS.find(d => d.id === g.id));
+export const rosterFamily = () => (C.family || FAMILY.map(m => m.id)).map(id => FAMILY_BY_ID[id]);
+// 退守莊園的門檻：家族 4 人時打倒 3 人；人數更多時，剩 3 人就退守
+export const manorAt = () => { const n = rosterFamily().length; return n <= 4 ? Math.min(RULES.MANOR_AT, n) : n - 3; };
 const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
 const pickOne = a => a[Math.floor(Math.random() * a.length)];
 // 設施的外觀名稱：一開始不知道是誰的
 const SITES = ['碼頭倉庫', '地下停車場', '廢棄工廠', '商業大樓', '老舊公寓', '貨運站', '夜市後巷', '舊車站'];
 
-export function newStory() {
+// opts = { girls:[id], family:[id] }：手選的名單（可以只選一部分，其餘隨機）
+export function newStory(opts = {}) {
+  const girls = pickRoster(GIRLS, ROSTER.girls, opts.girls);
+  const family = pickRoster(FAMILY, ROSTER.family, opts.family);
   C = {
-    mode: 'story', v: 2, turn: 0, threat: 0, phase: 'field', production: 3, manorRaids: 0,
-    members: FAMILY.map(m => ({ id: m.id, alive: true, repels: 0, lastSeen: 0, boost: 0 })),
-    girls: freshGirls(), deploy: [], op: null, board: null, cards: [], mods: {}, lost: null, lostGen: null,
-    stash: { medkit: 2, flash: 1 }, bossOrder: [], done: 0, hv: 1,
+    mode: 'story', v: 2, turn: 0, threat: 0, phase: 'field', production: 3, manorRaids: 0, family,
+    members: family.map(id => ({ id, alive: true, repels: 0, lastSeen: 0, boost: 0 })),
+    girls: freshGirls(girls), deploy: [], op: null, board: null, cards: [], mods: {}, lost: null, lostGen: null,
+    stash: { medkit: 2, flash: 1 }, loot: 0, market: null, bossOrder: [], done: 0, hv: 1,
   };
   fillCards();
   C.board = makeBoard();
+  C.market = makeMarket();
   save();
 }
 
@@ -30,8 +48,10 @@ export function newEndless() {
   const base = meta.girls || freshGirls();
   C = {
     mode: 'endless', v: 2, done: 0, buffs: [], deploy: [], op: null, retry: false, nextOp: null, hv: 1, mods: {}, stash: { medkit: 2, flash: 1 },
-    girls: base.map(g => ({ ...g, hp: GIRL[g.id].maxHp, evac: 0, medals: g.medals || 0, slots: [] })),
+    loot: 0, market: null, family: meta.family || FAMILY.map(m => m.id),
+    girls: base.filter(g => GIRL[g.id]).map(g => ({ ...g, hp: GIRL[g.id].maxHp, evac: 0, medals: g.medals || 0, slots: [] })),
   };
+  C.market = makeMarket();
   save();
 }
 
@@ -79,6 +99,7 @@ function endTurn(notes) {
   }
   fillCards();
   C.board = makeBoard();
+  C.market = makeMarket();
 }
 
 // 情報：翻開一張蓋著的反制
@@ -254,6 +275,55 @@ export function consume(id, item) {
   if (i >= 0) { g.slots.splice(i, 1); save(); }
 }
 
+// ---------- 黑市：用戰利品買、賣道具換戰利品、以物易物。每回合換貨 ----------
+function makeMarket() {
+  const keys = Object.keys(ITEMS);
+  const mul = () => MARKET.DISCOUNT[0] + Math.random() * (MARKET.DISCOUNT[1] - MARKET.DISCOUNT[0]);
+  const buy = [...keys].sort(() => Math.random() - 0.5).slice(0, MARKET.BUY)
+    .map(item => ({ item, price: Math.max(1, Math.round(ITEMS[item].price * mul())) }));
+  const trades = [];
+  for (let i = 0; i < MARKET.TRADES; i++) {
+    const get = keys[Math.floor(Math.random() * keys.length)];
+    const give = keys.filter(k => k !== get)[Math.floor(Math.random() * (keys.length - 1))];
+    // 價值接近：便宜的換貴的要多給幾個
+    const n = Math.max(1, Math.round(ITEMS[get].price / ITEMS[give].price));
+    trades.push({ give, n, get });
+  }
+  return { buy, trades };
+}
+export const sellPrice = item => Math.max(1, Math.floor(ITEMS[item].price * MARKET.SELL));
+export function market() { if (!C.market) C.market = makeMarket(); return C.market; }
+export function buy(i) {
+  const o = market().buy[i];
+  if (!o || o.sold || (C.loot || 0) < o.price) return false;
+  C.loot -= o.price;
+  o.sold = true;
+  C.stash[o.item] = (C.stash[o.item] || 0) + 1;
+  save();
+  return true;
+}
+export function sell(item) {
+  if (!ITEMS[item] || !(C.stash[item] > 0)) return false;
+  C.stash[item]--;
+  C.loot = (C.loot || 0) + sellPrice(item);
+  save();
+  return true;
+}
+export function trade(i) {
+  const t = market().trades[i];
+  if (!t || t.done || (C.stash[t.give] || 0) < t.n) return false;
+  C.stash[t.give] -= t.n;
+  C.stash[t.get] = (C.stash[t.get] || 0) + 1;
+  t.done = true;
+  save();
+  return true;
+}
+function gainLoot(r, notes) {
+  const n = (r.win ? MARKET.LOOT_WIN : MARKET.LOOT_LOSS) + Math.floor((r.kills || 0) / MARKET.LOOT_PER_KILLS);
+  C.loot = (C.loot || 0) + n;
+  notes.push(`戰利品 +${n}（共 ${C.loot}）：可以在黑市用`);
+}
+
 // ---------- 休整：不戰鬥，算一個回合 ----------
 export function restTurn() {
   const notes = ['休整了一個回合'];
@@ -287,6 +357,7 @@ export function finish(r) {
     g.hp = 0;
     notes.push(`${nm(id)} 倒下後送，${RULES.EVAC_MISSIONS} 個回合後歸隊`);
   }
+  gainLoot(r, notes);
   if (C.mode !== 'story') return finishEndless(r, notes);
 
   const op = C.op;
@@ -337,6 +408,7 @@ export function finish(r) {
       const meta = loadMeta();
       meta.endless = true;
       meta.girls = C.girls.map(g => ({ id: g.id, gun: g.gun, magic: g.magic, medals: g.medals }));
+      meta.family = C.family;
       saveMeta(meta);
     }
     if (op.kind === 'finale') C.finaleKeep = 0;
@@ -350,7 +422,7 @@ export function finish(r) {
     if (op.kind === 'boss' && r.bossPhase > 1) { C.bossKeep = op.member; notes.push('她的第 1 段已經打破，重打據點時從第 2 段開始'); }
     notes.push(`「${op.name}」留在作戰清單上，可以重打（同一張地圖），也可以先做別的事`);
   }
-  if (C.phase === 'field' && C.members.filter(m => !m.alive).length >= RULES.MANOR_AT) {
+  if (C.phase === 'field' && C.members.filter(m => !m.alive).length >= manorAt()) {
     C.phase = 'manor';
     if (C.lost && (C.lost.kind === 'facility' || C.lost.kind === 'boss')) { C.lost = null; C.lostGen = null; }
     notes.push('家族退守莊園！剩下的成員會在決戰時和教母一起出現');
@@ -397,7 +469,8 @@ function finishEndless(r, notes) {
   C.done++;
   rest(r, notes, true);
   if (C.done % 2 === 0) {
-    const id = FAMILY[Math.floor(Math.random() * FAMILY.length)].id;
+    const fam = rosterFamily();
+    const id = fam[Math.floor(Math.random() * fam.length)].id;
     C.buffs.push(id);
     notes.push(`敵人得到新的加持：${FAMILY_BY_ID[id].buff}`);
   }
@@ -407,6 +480,7 @@ function finishEndless(r, notes) {
   saveMeta(meta);
   C.nextOp = null;
   C.op = null;
+  C.market = makeMarket();
   save();
   return notes;
 }

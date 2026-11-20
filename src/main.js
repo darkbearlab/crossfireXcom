@@ -679,8 +679,9 @@ function endMission(win, why) {
   const killed = S.units.filter(u => u.member && !u.alive && !u.fled).map(u => u.member);
   const detour = false;
   const repelled = S.units.filter(u => u.repelled).map(u => u.member);
+  const kills = S.units.filter(u => u.team === 'enemy' && !u.summon && !u.alive && !u.fled).length;
   const notes = Camp.finish({ win, deployed: girls.map(u => u.girl), hp, downed: girls.filter(u => !u.alive).map(u => u.girl), killed,
-    repelled, appeared: S.appeared || [], bossPhase: S.mission.boss ? S.mission.boss.phase : 0 });
+    repelled, appeared: S.appeared || [], kills, bossPhase: S.mission.boss ? S.mission.boss.phase : 0 });
   const rows = girls.map(u => {
     const now = Camp.girlState(u.girl).hp;
     return `<li>${u.name}：${u.alive ? `HP ${hp[u.girl]}${now !== hp[u.girl] ? ` → ${now}` : ''}/${GIRL[u.girl].maxHp}` : '倒下後送'}</li>`;
@@ -2989,7 +2990,8 @@ function frame(now) {
 }
 
 const continueGame = () => { Camp.load(); enterHQ(); };
-const newGame = () => { Camp.newStory(); HQ.showStory('序章', STORY.intro, '前往作戰室 ▶', () => enterHQ()); };
+// opts：手選的名單 { girls:[id], family:[id] }，不足的隨機補
+const newGame = (opts = {}) => { Camp.newStory(opts); HQ.showStory('序章', STORY.intro, '前往作戰室 ▶', () => enterHQ()); };
 const newEndless = () => { Camp.newEndless(); enterHQ(); };
 function boot() {
   HQ.showTitle({ onContinue: continueGame, onNew: newGame, onEndless: newEndless });

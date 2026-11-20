@@ -3,28 +3,28 @@
 
 export const GIRLS = [
   {
-    id: 'akane', name: '朱音', title: '熱血', color: 0xe0463c, hair: 0xb5281f,
+    id: 'akane', key: 'A', name: '朱音', title: '熱血', color: 0xe0463c, hair: 0xb5281f,
     hearts: 4, maxHp: 12, weapons: ['duals'], ability: 'dash',
     passive: '每張地圖第一次被反應射擊必定落空',
     active: '突進：移動後，對終點相鄰的一名敵人近戰（不會發出槍聲）',
     line: '衝啊！子彈打不到我的啦！',
   },
   {
-    id: 'hikari', name: '光', title: '王道', color: 0xf5f0f5, hair: 0xff8fc0,
+    id: 'hikari', key: 'H', name: '光', title: '王道', color: 0xf5f0f5, hair: 0xff8fc0,
     hearts: 4, maxHp: 12, weapons: ['ar', 'pistol'], ability: 'transform',
     passive: '開戰時是肉身；她自己的行動失敗時自動變身，主動權不易手。變身後多 1 顆心，敵人優先打她',
     active: '（變身是被動）',
     line: '大家放心，有我在！',
   },
   {
-    id: 'yukino', name: '雪乃', title: '文靜', color: 0x34507a, hair: 0xcfeeff,
+    id: 'yukino', key: 'Y', name: '雪乃', title: '文靜', color: 0x34507a, hair: 0xcfeeff,
     hearts: 5, maxHp: 15, weapons: ['hmg', 'pistol'], ability: 'ice',
     passive: '重機槍主動射擊必定壓制目標（沒命中也算）。看起來很細，其實很壯',
     active: '冰塊：變出全掩體、擋視線的冰塊；放在隊友腳下會把她抬起來（半掩體）。相鄰時點冰塊可以推動',
     line: '……我重訓，是為了讓人好好聽我說話。',
   },
   {
-    id: 'momo', name: '小桃', title: '暴躁', color: 0xf2c230, hair: 0xff8a3a,
+    id: 'momo', key: 'M', name: '小桃', title: '暴躁', color: 0xf2c230, hair: 0xff8a3a,
     hearts: 3, maxHp: 9, weapons: ['tri', 'magnum'], ability: 'airdrop',
     passive: '開霰彈槍後自己被擊退 1 格；個子小，掩體常態 +1 級（站在空地也算半掩體）',
     active: '空投：槍口抵地三管齊發，把自己彈到任意一格（備彈 -3，落地時彈匣是滿的）',

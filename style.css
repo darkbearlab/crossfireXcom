@@ -266,3 +266,6 @@ html, body, button, #hud, #hud * { touch-action: manipulation; }
 .hq .gf.slots { flex-wrap: wrap; gap: 4px; font-size: 12px; }
 .hq .gf.slots button, .hq .gf.slots select { font-size: 12px; padding: 2px 6px; }
 #target-panel .it-sub { margin: 4px 4px 0 0; }
+.hq .market { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+.hq .market button, .hq .market select { font-size: 12px; padding: 4px 8px; }
+.hq .market small { flex-basis: 100%; }

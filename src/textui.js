@@ -7,14 +7,14 @@
 // 第一次呼叫 TXT.do（或網址有 ?text）就開啟「快速模式」：動畫瞬間完成，不受畫面是否顯示影響。
 // 一般玩家沒用到 TXT 時，動畫照常。
 import { ITEMS, COUNTERS, SLOTS, RULES, T, WEAPONS } from './config.js';
-import { GIRL, TREES, FAMILY_BY_ID } from './girls.js';
+import { GIRL, GIRLS, TREES, FAMILY_BY_ID } from './girls.js';
 import * as UI from './ui.js';
 import * as Rec from './stats.js';
 
 let G = null;           // main.js 提供的內部函式
 let fastSet = false;    // 快速模式是否已經設定過
 const logBuf = [];      // 所有戰鬥紀錄
-const GIRL_KEY = { akane: 'A', hikari: 'H', yukino: 'Y', momo: 'M' };
+const GIRL_KEY = Object.fromEntries(GIRLS.map(g => [g.id, g.key])); // 代號寫在 girls.js
 
 export function init(api) {
   G = api;
@@ -35,6 +35,7 @@ const HELP = `指令（座標是 x z；角色用代號 A 朱音 / H 光 / Y 雪�
   learn A gun|magic   用獎章學下一格成長樹（第 5 格要 2 枚）
   spend A heal|evac   成長樹點滿後：1 枚獎章回 1 顆心／後送少 1 場
   equip A 道具 | unequip A 道具   帶上／放回倉庫（每人 3 格；medkit apround flash vest mag scope）
+  market | buy N | trade N | sell 道具   黑市（作戰室；用戰利品買、以物易物、賣掉換戰利品）
   use [A] 道具 [N]    戰鬥中用消耗品：medkit 回 1 心、apround 下一槍無視裝甲、flash 丟向敵人 N（不交主動權）
   go                  出擊
   deploy A x z        部署階段：把角色擺到 (x,z)
@@ -238,7 +239,16 @@ async function run(line) {
       case 'help': return HELP;
       case 'look': return look(args[0] === 'all');
       case 'title': location.reload(); return '重新載入中…';
-      case 'new': G.newGame(); await sleep(20); clickBtn(b => b.id === 's-ok'); break;
+      case 'new': { // new [girls=A,H,...] [family=eye,book,...]：手選名單（不足的隨機補）
+        const opt = {};
+        for (const a of args) {
+          const [k, v] = a.split('=');
+          if (k === 'girls') opt.girls = v.split(',').map(x => Object.keys(GIRL_KEY).find(id => GIRL_KEY[id] === x.toUpperCase()) || x);
+          if (k === 'family') opt.family = v.split(',');
+        }
+        G.newGame(opt);
+      }
+        await sleep(20); clickBtn(b => b.id === 's-ok'); break;
       case 'endless': G.newEndless(); break;
       case 'continue': if (!G.Camp.hasSave()) return '沒有存檔'; G.continueGame(); break;
       case 'ok': if (!clickBtn(b => ['s-ok', 'ov-btn'].includes(b.id))) return '畫面上沒有主要按鈕'; break;
@@ -248,6 +258,7 @@ async function run(line) {
         const fam = story ? `第 ${C.turn + 1} 回合　家族威脅 ${C.threat}（每生效一張反制 +1，難度 +2）${C.phase === 'manor' ? '　莊園階段' : ''}\n反制：\n` +
           C.cards.map(c => c.revealed ? `  ${COUNTERS[c.id].name}（${c.left} 回合後生效）：${COUNTERS[c.id].desc}` : `  ？？？（${c.left} 回合後生效；打贏設施可翻開）`).join('\n') +
           `\n成員：` + C.members.map(m => `${FAMILY_BY_ID[m.id].name}${m.alive ? `（擊退 ${m.repels}/2${m.boost ? `，強化 +${m.boost}` : ''}）` : '（已打倒）'}`).join('、') +
+          `\n戰利品：${C.loot || 0}（黑市：market）` +
           `\n倉庫：` + (Object.entries(C.stash || {}).filter(([, n]) => n > 0).map(([k, n]) => `${k}=${ITEMS[k].name}×${n}`).join('、') || '空的') + '\n' : '';
         return (document.querySelector('#overlay #s-ok') ? '（畫面上還有劇情，先 ok 才會回到作戰室）\n' : '') + fam + '作戰：\n' + ops.map((o, i) => `  ${i + 1}. ${o.retry ? '重打：' : ''}${o.name}（${o.kind}）${o.kind === 'rest' ? '不出擊，選了直接 go' : `難度 ${G.Camp.level(o)} 敵人約 ${G.Camp.enemyEstimate(o)}`}`).join('\n') +
           '\n少女：\n' + C.girls.map(g => `  ${GIRL_KEY[g.id]} ${GIRL[g.id].name} 生命 ${g.hp}/${GIRL[g.id].maxHp} 槍法 ${g.gun} 魔法 ${g.magic} 獎章 ${g.medals}` +
@@ -285,6 +296,20 @@ async function run(line) {
         if (!(cmd === 'equip' ? G.Camp.equip(id, args[1]) : G.Camp.unequip(id, args[1]))) return cmd === 'equip' ? `帶不了：倉庫沒有，或 ${SLOTS} 格滿了` : '她沒有帶這個';
         G.enterHQ();
         return run('hq');
+      }
+      case 'market': {
+        const C = G.Camp.C, mk = G.Camp.market();
+        return `黑市（戰利品 ${C.loot || 0}；每回合換貨，買賣不花回合）\n買（buy N）：\n` +
+          mk.buy.map((o, i) => `  ${i + 1}. ${o.item}=${ITEMS[o.item].name} ${o.price} 戰利品${o.sold ? '（已買）' : ''}：${ITEMS[o.item].desc}`).join('\n') +
+          `\n以物易物（trade N）：\n` + mk.trades.map((t, i) => `  ${i + 1}. ${ITEMS[t.give].name}×${t.n} → ${ITEMS[t.get].name}${t.done ? '（已換）' : ''}`).join('\n') +
+          `\n賣（sell 道具代號）：` + Object.keys(ITEMS).map(k => `${k} ${G.Camp.sellPrice(k)}`).join('、') +
+          `\n倉庫：` + (Object.entries(C.stash || {}).filter(([, n]) => n > 0).map(([k, n]) => `${k}×${n}`).join('、') || '空的');
+      }
+      case 'buy': case 'trade': case 'sell': {
+        const ok = cmd === 'sell' ? G.Camp.sell(args[0]) : G.Camp[cmd](+args[0] - 1);
+        if (!ok) return cmd === 'buy' ? '買不了：戰利品不夠、已經買了或編號不對' : cmd === 'trade' ? '換不了：倉庫的東西不夠、已經換了或編號不對' : '賣不了：倉庫沒有這個';
+        G.enterHQ();
+        return run('market');
       }
       case 'use': { // use A medkit | use A flash N
         const u = girlArg(); const e = needAct(u); if (e) return e;
