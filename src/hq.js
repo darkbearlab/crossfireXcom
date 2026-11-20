@@ -43,6 +43,9 @@ export function showStory(title, html, btn, cb) {
   o.querySelector('#s-ok').onclick = cb;
 }
 
+// 重畫作戰室，保留目前選的作戰（裝備、黑市之後用；showHQ 會重設選擇）
+export function refresh() { if (st.onGo) render(); }
+
 export function showHQ(onGo, notes = []) {
   st = { op: 0, detail: null, onGo, notes, recalled: Camp.ensureAvailable() };
   const C = Camp.C;

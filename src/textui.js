@@ -294,7 +294,7 @@ async function run(line) {
         const id = Object.keys(GIRL_KEY).find(k => GIRL_KEY[k] === (args[0] || '').toUpperCase());
         if (!id || !ITEMS[args[1]]) return `用法：${cmd} A 道具代號（${Object.keys(ITEMS).join('/')}）`;
         if (!(cmd === 'equip' ? G.Camp.equip(id, args[1]) : G.Camp.unequip(id, args[1]))) return cmd === 'equip' ? `帶不了：倉庫沒有，或 ${SLOTS} 格滿了` : '她沒有帶這個';
-        G.enterHQ();
+        G.refreshHQ(); // 不重設選好的作戰
         return run('hq');
       }
       case 'market': {
@@ -308,7 +308,7 @@ async function run(line) {
       case 'buy': case 'trade': case 'sell': {
         const ok = cmd === 'sell' ? G.Camp.sell(args[0]) : G.Camp[cmd](+args[0] - 1);
         if (!ok) return cmd === 'buy' ? '買不了：戰利品不夠、已經買了或編號不對' : cmd === 'trade' ? '換不了：倉庫的東西不夠、已經換了或編號不對' : '賣不了：倉庫沒有這個';
-        G.enterHQ();
+        G.refreshHQ(); // 不重設選好的作戰
         return run('market');
       }
       case 'use': { // use A medkit | use A flash N
