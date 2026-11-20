@@ -1,6 +1,7 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: #111; color: #e6edf3;
   font-family: "Microsoft JhengHei", "Noto Sans TC", system-ui, sans-serif; }
+#app { position: fixed; inset: 0; overflow: hidden; }
 #app canvas { display: block; }
 #hud { position: fixed; inset: 0; pointer-events: none; }
 #hud > * { pointer-events: auto; }

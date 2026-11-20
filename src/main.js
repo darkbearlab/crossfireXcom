@@ -21,16 +21,20 @@ import * as HQ from './hq.js';
 import { GIRL, FAMILY, FAMILY_BY_ID, STORY } from './girls.js';
 
 // ================= 場景 =================
+// 畫面大小一律取 #app（position: fixed; inset: 0，和 HUD 同一個框），
+// 不用 innerWidth/innerHeight：平板瀏覽器的網址列伸縮、頁面被捲動時兩者會對不上，點擊就會偏
+const appEl = document.getElementById('app');
+const view = { w: appEl.clientWidth || innerWidth, h: appEl.clientHeight || innerHeight };
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.setSize(innerWidth, innerHeight);
+renderer.setSize(view.w, view.h);
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-document.getElementById('app').appendChild(renderer.domElement);
+appEl.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(42, innerWidth / innerHeight, 0.1, 200);
+const camera = new THREE.PerspectiveCamera(42, view.w / view.h, 0.1, 200);
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.mouseButtons = { LEFT: null, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
 controls.enablePan = false;
@@ -2101,7 +2105,8 @@ const ndc = new THREE.Vector2();
 const groundPlane = new THREE.Plane(UP, 0);
 
 function pickTile(ev) {
-  ndc.set(ev.clientX / innerWidth * 2 - 1, -(ev.clientY / innerHeight) * 2 + 1);
+  const r = renderer.domElement.getBoundingClientRect();
+  ndc.set((ev.clientX - r.left) / r.width * 2 - 1, -((ev.clientY - r.top) / r.height) * 2 + 1);
   raycaster.setFromCamera(ndc, camera);
   const vis = S.units.filter(u => u.alive && u.mesh.visible).map(u => u.mesh);
   const hit = raycaster.intersectObjects(vis, true)[0];
@@ -2124,7 +2129,7 @@ let pendingTap = null;
 function dragPan(dx, dy) {
   const fwd = controls.target.clone().sub(camera.position).setY(0).normalize();
   const right = new THREE.Vector3().crossVectors(fwd, UP);
-  const scale = camera.position.distanceTo(controls.target) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 2 / innerHeight;
+  const scale = camera.position.distanceTo(controls.target) * Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)) * 2 / view.h;
   const d = right.multiplyScalar(-dx * scale).addScaledVector(fwd, dy * scale * 1.4);
   camGoal.add(d);
   controls.target.add(d);
@@ -2243,12 +2248,20 @@ addEventListener('keyup', e => keys.delete(e.key.toLowerCase()));
 addEventListener('blur', () => keys.clear());
 
 function onResize() {
-  camera.aspect = innerWidth / innerHeight;
+  view.w = appEl.clientWidth || innerWidth;
+  view.h = appEl.clientHeight || innerHeight;
+  if (scrollX || scrollY) scrollTo(0, 0);
+  camera.aspect = view.w / view.h;
   camera.fov = camera.aspect < 0.8 ? 62 : 42; // 直式螢幕視角放寬
   camera.updateProjectionMatrix();
-  renderer.setSize(innerWidth, innerHeight);
+  renderer.setSize(view.w, view.h);
 }
 addEventListener('resize', onResize);
+addEventListener('orientationchange', () => setTimeout(onResize, 300));
+if (window.visualViewport) visualViewport.addEventListener('resize', onResize);
+if (window.ResizeObserver) new ResizeObserver(onResize).observe(appEl);
+// 頁面不該捲動；平板上點輸入框或拉動時被捲上去，畫面就會整個往上偏
+addEventListener('scroll', () => { if (scrollX || scrollY) scrollTo(0, 0); });
 onResize();
 
 // ================= 標籤 / 漂浮文字 =================
@@ -2260,7 +2273,7 @@ function floatText(u, text, cls) {
 const tmpV = new THREE.Vector3();
 function toScreen(v) {
   tmpV.copy(v).project(camera);
-  return { x: (tmpV.x + 1) / 2 * innerWidth, y: (1 - tmpV.y) / 2 * innerHeight };
+  return { x: (tmpV.x + 1) / 2 * view.w, y: (1 - tmpV.y) / 2 * view.h };
 }
 
 function updateLabels(dt) {
@@ -2289,6 +2302,8 @@ function frame(now) {
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   time += dt;
+  // 保險：有些平板瀏覽器網址列伸縮時不一定送 resize
+  if (appEl.clientWidth !== view.w || appEl.clientHeight !== view.h || scrollY) onResize();
   updateTweens(dt);
   updateCamera(dt);
   controls.update();
@@ -2322,5 +2337,5 @@ function boot() {
 boot();
 requestAnimationFrame(frame);
 window.__game = { S, actions, camera, THREE, scene, zoneMesh, Camp, // 除錯用
-  dbg: { damage, giveInitiative, actChance, spawnEnemy, segFloor, playerMove, moveOptions, quietSees, enemies, players, weapon, step: updateTweens, magicOptions, execMagic, pushInfo, execPush,
+  dbg: { pickTile, damage, giveInitiative, actChance, spawnEnemy, segFloor, playerMove, moveOptions, quietSees, enemies, players, weapon, step: updateTweens, magicOptions, execMagic, pushInfo, execPush,
     startMission, enterHQ, transform, spawnWave } };
