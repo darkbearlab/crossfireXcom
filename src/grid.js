@@ -9,25 +9,32 @@ export const ORTH = [[1, 0], [-1, 0], [0, 1], [0, -1]];
 function clearLine(map, ax, az, bx, bz) {
   const dx = bx - ax, dz = bz - az;
   const steps = Math.ceil(Math.hypot(dx, dz) * 6);
-  for (let i = 1; i < steps; i++) {
+  const full = (x, z) => map.inB(x, z) && map.get(x, z) === T.FULL;
+  let px = ax, pz = az;
+  for (let i = 1; i <= steps; i++) {
     const t = i / steps;
     const x = Math.round(ax + dx * t), z = Math.round(az + dz * t);
+    // 斜著擠過兩塊全掩體相接的牆角：算擋住
+    if (x !== px && z !== pz && full(px, z) && full(x, pz)) return false;
+    px = x; pz = z;
     if ((x === ax && z === az) || (x === bx && z === bz)) continue;
-    if (map.get(x, z) === T.FULL) return false;
+    if (full(x, z)) return false;
   }
   return true;
 }
 
-function adjFull(map, p) {
-  return ORTH.some(([dx, dz]) => map.inB(p.x + dx, p.z + dz) && map.get(p.x + dx, p.z + dz) === T.FULL);
-}
-
-// 「探身」：站在全掩體旁可從旁邊一格看出去。兩邊都檢查，所以視線是對稱的。
+// 「探身」：貼著全掩體、目標在牆的那一側時，往旁邊跨一格、沿著牆邊看出去。
+// 跨出去的那一格前面不能也是牆（要站在牆的盡頭才探得出去）。兩邊都檢查，所以視線是對稱的。
 function peekLine(map, from, to) {
-  if (!adjFull(map, from)) return false;
-  for (const [dx, dz] of ORTH) {
-    const px = from.x + dx, pz = from.z + dz;
-    if (map.walkable(px, pz) && clearLine(map, px, pz, to.x, to.z)) return true;
+  const full = (x, z) => map.inB(x, z) && map.get(x, z) === T.FULL;
+  const vx = to.x - from.x, vz = to.z - from.z;
+  for (const [wx, wz] of ORTH) {
+    if (!full(from.x + wx, from.z + wz) || wx * vx + wz * vz <= 0) continue;
+    for (const [sx, sz] of [[wz, wx], [-wz, -wx]]) { // 沿牆的兩個方向
+      const px = from.x + sx, pz = from.z + sz;
+      if (!map.walkable(px, pz) || full(px + wx, pz + wz)) continue;
+      if (clearLine(map, px, pz, to.x, to.z)) return true;
+    }
   }
   return false;
 }
