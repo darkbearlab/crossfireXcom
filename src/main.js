@@ -1885,6 +1885,8 @@ function markCrowAims() {
   for (const p of ps) { p.crowAimed = null; p.crowAimedLast = false; }
   for (const e of enemies()) {
     if (e.kind !== 'scarecrow') continue;
+    const pc = e.mesh && e.mesh.userData.perched; // 身上停著的烏鴉跟著數量
+    if (pc) pc.forEach((c, i) => (c.visible = i < e.crows));
     const prev = e.crowAim;
     e.crowAim = canLaunch(e) ? crowTarget(e) : null;
     const t = e.crowAim;

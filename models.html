@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>模型一覽</title>
+  <style>html,body{margin:0;height:100%;background:#1b1d24;overflow:hidden}#tip{position:fixed;left:8px;top:6px;color:#ccc;font:13px sans-serif}</style>
+  <script type="importmap">
+  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+                 "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+  </script>
+</head>
+<body>
+<div id="tip">模型一覽（除錯用，拖曳旋轉）：?row=girls|bosses|enemies|all</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { ENEMY_TYPES } from './src/config.js';
+import { GIRLS } from './src/girls.js';
+import { makeUnitMesh, makeScarecrowMesh, makeCrowMesh, addHalo } from './src/units.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x2a2d36);
+const cam = new THREE.PerspectiveCamera(35, innerWidth / innerHeight, 0.1, 100);
+scene.add(new THREE.HemisphereLight(0xdde6ff, 0x3a3040, 1.4));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(4, 8, 6); sun.castShadow = true;
+sun.shadow.camera.left = -12; sun.shadow.camera.right = 12; sun.shadow.camera.top = 6; sun.shadow.camera.bottom = -6;
+scene.add(sun);
+const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 10), new THREE.MeshStandardMaterial({ color: 0x4a505c }));
+floor.rotation.x = -Math.PI / 2; floor.receiveShadow = true; scene.add(floor);
+
+const row = new URLSearchParams(location.search).get('row') || 'all';
+const list = [];
+if (row === 'girls' || row === 'all') for (const g of GIRLS) list.push(() => {
+  const m = makeUnitMesh('player', 'girl', g.color, g.weapons[0], 1, { hair: g.hair, girl: g.id });
+  if (g.id === 'hikari' && row === 'girls') { const t = makeUnitMesh('player', 'girl', g.color, g.weapons[0], 1, { hair: g.hair, girl: g.id }); addHalo(t); list.extra = t; }
+  return m;
+});
+if (row === 'girls') list.push(() => list.extra);
+const tpl = k => ENEMY_TYPES[k];
+if (row === 'bosses' || row === 'all') for (const k of ['b_exec', 'b_eye', 'b_mother', 'b_book', 'b_sis'])
+  list.push(() => makeUnitMesh('enemy', k, tpl(k).color, 'ar', 1, { boss: true, mother: k === 'b_mother' }));
+if (row === 'enemies' || row === 'all') {
+  for (const k of ['gunman', 'zealot', 'conscript', 'officer', 'sniper', 'mg', 'brute', 'doll'])
+    list.push(() => makeUnitMesh('enemy', k, tpl(k).color, 'ar', tpl(k).scale || 1, {}));
+  list.push(() => makeScarecrowMesh(tpl('scarecrow').color, 1.1));
+  list.push(() => { const c = makeCrowMesh(3); c.position.y = 0.8; const g = new THREE.Group(); g.add(c); return g; });
+}
+const n = list.length, gap = 1.1;
+list.forEach((f, i) => { const m = f(); m.position.x = (i - (n - 1) / 2) * gap; m.rotation.y = -0.35; scene.add(m); });
+const w = n * gap;
+cam.position.set(0, 2.0, Math.max(5, w * 1.25));
+const ctl = new OrbitControls(cam, renderer.domElement);
+ctl.target.set(0, 0.8, 0); ctl.update();
+window.__cam = cam; window.__ctl = ctl;
+addEventListener('resize', () => { cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight); });
+renderer.setAnimationLoop(() => renderer.render(scene, cam));
+</script>
+</body>
+</html>
