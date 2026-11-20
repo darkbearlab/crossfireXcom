@@ -1026,7 +1026,7 @@ function actChance(e) {
   if (e.hp < e.maxHp / 2) c -= RULES.ACT_HURT;
   return Math.max(5, Math.min(95, c));
 }
-const activates = e => Math.random() * 100 < actChance(e);
+
 
 // 起身、換彈這類「暴露」的行動：看得到她的敵人可以原地開一次反應射擊。回傳 true = 被命中
 async function exposeReact(u) {
@@ -1994,15 +1994,16 @@ async function enemyInitiative() {
   for (let i = 0; i < RULES.AI_MAX_ACTIONS && !S.gameOver; i++) {
     const act = aiChoose(moveCount, acted);
     if (!act) break;
-    acted.add(act.e);
     const chance = actChance(act.e);
     if (Math.random() * 100 >= chance) {
+      // 猶豫的單位沒有行動，下面照樣結算它的衝動
       if (act.e.mesh.visible) { focusUnit(act.e); floatText(act.e, '猶豫…', 'miss'); }
       UI.log(`${act.e.name} 猶豫了（啟動 ${chance}%），主動權交回我方`, 'good');
       await wait(0.5);
       failed = true;
       break;
     }
+    acted.add(act.e);
     let ok = true;
     if (act.type === 'rally') {
       rally(act.e);
@@ -2022,7 +2023,7 @@ async function enemyInitiative() {
     if (S.grab) { S.grab = false; UI.banner('心線：敵方主動權被打斷', 'player'); return true; }
     if (!ok) { failed = true; break; }
   }
-  // 主動權即將易手：這輪沒行動的敵人執行衝動
+  // 主動權即將易手（猶豫或行動失敗）：這輪沒行動的敵人執行衝動，衝動不做啟動檢定
   await impulses(acted);
   return failed;
 }
@@ -2035,7 +2036,6 @@ async function impulses(acted) {
     if (S.gameOver) return;
     if (S.grab) { S.grab = false; UI.banner('心線：敵方主動權被打斷', 'player'); return; }
     if (!e.alive || acted.has(e) || e.suppressed) continue;
-    if (e.alerted && !activates(e)) { if (e.mesh.visible) floatText(e, '猶豫…', 'miss'); continue; }
     if (!e.alerted) { await patrol(e); }
     else if (e.impulse === 'shoot') {
       const t = visibleTargets(e)[0];
