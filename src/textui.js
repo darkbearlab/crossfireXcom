@@ -128,7 +128,7 @@ function enemyLine(S, e, all) {
   if (!seen && !all) return null;
   return `${eKey(S, e)} ${e.name} (${e.x},${e.z})  生命 ${e.hp}/${e.maxHp}  累積 ${pips(e)} ${status(e)}  ${e.alerted ? '警戒' : '未察覺'}` +
     (e.noGun ? '  不開槍' : `  ${e.dice} 骰${e.dieMod ? `(${e.dieMod > 0 ? '+' : ''}${e.dieMod}%)` : ''}`) +
-    (e.act ? `  啟動 ${G.actChance(e)}%` : e.boss ? `  頭目第 ${e.phase} 段` : '') +
+    (e.act ? `  啟動 ${G.actChance(e)}%` : e.boss ? `  頭目第 ${e.phase} 段` : '') + (e.shotCap ? `  這次敵方主動權已開槍 ${e.shotsUsed || 0}/${e.shotCap}（同一人最多 2 槍）` : '') +
     (e.impulse ? `  衝動:${e.impulse}` : '') + (e.firedOut ? '  ✕不能再開槍' : '') +
     (e.kind === 'doll' ? `  不會受阻/壓制、每中一顆受 1 傷、移動 ${e.moveRange} 射程 ${e.range}、不反應射擊；攻擊它沒打倒的人這次主動權不能再行動` : '') +
     (e.kind === 'scarecrow' ? `  不會動/不開槍/不會受阻壓制；身上烏鴉 ${e.crows}/${e.crowMax}${e.flock ? '（飛出中）' : e.crowAim ? `（滿了，下次放向 ${e.crowAim.name}）` : e.crows < e.crowMax ? `（恢復 ${e.regen}/4）` : ''}；不做啟動檢定；打中它烏鴉就傳送回去` : '') +
@@ -258,6 +258,7 @@ async function run(line) {
         const t = args[1] === 'magic' ? 'magic' : 'gun';
         const g = id && G.Camp.girlState(id);
         if (!g) return '用法：learn A gun';
+        if (g.evac > 0) return `${GIRL[id].name} 後送中，歸隊後才能學`;
         clickBtn(b => b.classList.contains('node') && b.dataset.g === id && b.dataset.t === t && +b.dataset.i === g[t]);
         await sleep(20);
         if (g.evac > 0) return `${GIRL[id].name} 後送中，歸隊後才能學`;
@@ -338,7 +339,7 @@ async function run(line) {
             if (o.kind === 'ice') return { o, txt: `(${o.x},${o.z})${o.rider ? '抬起' + o.rider.name : ''}`, r: 0 };
             const cells = o.kind === 'dash' ? G.pathCells(u, o.mv) : [{ x: o.x, z: o.z, t: 1 }];
             const r = Math.round(G.moveRisk(u, G.planReactions(u, cells, true), o.kind === 'dash' && u.magicLv >= 4 ? 1 : 0) * 100);
-            const tg = o.kind === 'dash' ? G.enemies().filter(e => Math.hypot(e.x - o.x, e.z - o.z) < 1.5).map(e => e.tag).join('') : '';
+            const tg = o.kind === 'dash' ? G.enemies().filter(e => e.mesh.visible && Math.hypot(e.x - o.x, e.z - o.z) < 1.5).map(e => e.tag).join('') : '';
             return { o, r, txt: `(${o.x},${o.z})${tg ? '→' + tg : ''} ${r}%` };
           }).sort((a, b) => a.r - b.r);
           return `${u.name} 魔法可用位置（${list.length}，依風險排序；% 是途中被反應射擊打中的機率，只算已知敵人${u.ability === 'dash' ? '；→ 後面是能近戰的敵人編號' : ''}）：\n` +

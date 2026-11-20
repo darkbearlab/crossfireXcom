@@ -1186,7 +1186,8 @@ function reinforceSpots(b, ps, floor, rule) {
   // 地形不允許時退而求其次：離少女至少 5 格、靠掩體
   if (out.length < n) {
     const used = out;
-    const rest = pick(p => near(p) < 5 || used.some(q => q.x === p.x && q.z === p.z) ? null : side(p) * 3 - Math.abs(near(p) - 7), 1);
+    const want = rule.where === 'ambush' ? 5 : 7; // 包抄型還是要近（4～6 格），其他照原本離遠一點
+    const rest = pick(p => near(p) < 4 || used.some(q => q.x === p.x && q.z === p.z) ? null : side(p) * 3 - Math.abs(near(p) - want) * 2, 1);
     out = [...used, ...rest.filter(p => !used.some(q => dist(q, p) < 1))].slice(0, n);
   }
   return out;
@@ -1973,8 +1974,10 @@ async function dash(u, opt) {
   pickupCrate(u);
   landed(u);
   if (!ok) return false;
-  const adj = enemies().filter(e => dist(e, u) < 1.5).sort((a, b) => a.hp - b.hp);
-  const pick = opt.target && adj.includes(opt.target) ? opt.target : adj[0]; // 指定了近戰目標就打她，否則打血最少的
+  // 預定的目標：指定的那個，否則是終點旁邊看得到的敵人。中途停下時，不會改打旁邊另一個敵人
+  const planned = opt.target ? [opt.target] : enemies().filter(e => e.mesh.visible && dist(e, opt.mv) < 1.5);
+  const adj = enemies().filter(e => dist(e, u) < 1.5 && planned.includes(e)).sort((a, b) => a.hp - b.hp);
+  const pick = adj[0]; // 打血最少的預定目標
   if (pick) await melee(u, pick);
   else { u.uses++; Rec.tag('魔法：突進（退回）'); UI.log(`${u.name} 的突進沒碰到敵人（被發現停下），次數退回`, 'warn'); }
   return true;
@@ -2451,8 +2454,30 @@ function aiChoose(moveCount, acted) {
   // 頭目先行動：敵方主動權一開始由她出手（她不用檢定），不會被手下的「亂了陣腳」吃掉
   const boss = es.find(e => e.boss && !acted.has(e));
   // 她沒有好的射擊或移動時，只要有一步能改善位置（找角度、靠近）就走，不把回合讓給手下發呆
-  if (boss) { const c = aiChooseFor([boss], moveCount, 0); if (c) return c; }
+  if (boss) {
+    const c = aiChooseFor([boss], moveCount, 0) || bossSeek(boss, moveCount);
+    if (c) return c;
+  }
   return aiChooseFor(es, moveCount);
+}
+
+// 頭目看不到任何少女、又沒有更好的位置時：挑一步縮短和最近少女距離的移動（風險低的優先）。
+// 不這樣做的話，靠近少女的路都有反應射擊風險，扣掉風險後「不動」永遠最划算，她就一直發呆
+function bossSeek(e, moveCount) {
+  if (e.suppressed || e.pinned || (moveCount.get(e) || 0) >= 2 || visibleTargets(e).length) return null;
+  const ps = players();
+  if (!ps.length) return null;
+  const near = p => Math.min(...ps.map(g => dist(g, p)));
+  const now = near(e);
+  let best = null;
+  for (const mv of moveOptions(e).values()) {
+    const d = near(mv);
+    if (d >= now - 0.5) continue;
+    const risk = hitChance(planReactions(e, pathCells(e, mv)));
+    const s = (now - d) * 3 - risk * 20 + (ps.some(g => hasLOS(S.map, mv, g)) ? 6 : 0);
+    if (!best || s > best.s) best = { s, mv };
+  }
+  return best ? { type: 'move', e, dest: best.mv, gain: best.s } : null;
 }
 
 // minGain：移動至少要改善多少才走
