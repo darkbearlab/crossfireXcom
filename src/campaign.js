@@ -166,6 +166,8 @@ export function enemyEstimate(op) {
   const extra = { boss: 2, finale: 2 }[op.kind] || 0;
   return enemyCount(level(op)) + 2 * book + extra + mod('extra') + RULES.SQUAD_EXTRA;
 }
+// 作戰室顯示用：「人類 N＋使魔 M」（使魔加在人類之上）
+export const enemyText = op => { const n = Math.max(4, enemyEstimate(op)); return `人類 ${n}＋使魔 ${Math.round(n * RULES.IMP_RATIO)}`; };
 
 export function ops() {
   if (C.mode === 'endless') {

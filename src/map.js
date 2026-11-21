@@ -278,16 +278,22 @@ function tryGenerate(level, opts) {
     if (!zoneTiles.has(zid)) zoneTiles.set(zid, []);
     zoneTiles.get(zid).push(p);
   }
-  // 從部署區看過去：看得到幾格（seen）、其中沒有掩體擋著的有幾格（open）
+  // 從部署區看過去：seen＝千夏的視野（13 格）看得到的部署格數；open＝10 格內看得到又沒掩體；half＝只有半掩體擋著
   const deployPts = [];
   for (let x = 0; x < DC; x++) for (let z = 0; z < h; z++) if (m.walkable(x, z) && reach.has(k(x, z))) deployPts.push({ x, z });
   const viewCache = new Map();
   const view = p => {
     const kk = k(p.x, p.z);
     if (!viewCache.has(kk)) {
-      let seen = 0, open = 0;
-      for (const d of deployPts) if (hasLOS(m, d, p, 10, true)) { seen++; if (coverAt(m, p, d) === 0) open++; }
-      viewCache.set(kk, { seen, open });
+      let seen = 0, open = 0, half = 0;
+      for (const d of deployPts) {
+        if (!hasLOS(m, d, p, 13, true)) continue;
+        seen++;
+        if (dist(d, p) > 10) continue;
+        const c = coverAt(m, p, d);
+        if (c === 0) open++; else if (c === 1) half++;
+      }
+      viewCache.set(kk, { seen, open, half });
     }
     return viewCache.get(kk);
   };
@@ -308,6 +314,7 @@ function tryGenerate(level, opts) {
     zoneIds.unshift(far);
   }
   const used = new Set();
+  const nearUsed = p => { for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) if (used.has(k(p.x + dx, p.z + dz))) return true; return false; };
   const enemies = [];
   const groups = [...extra, ...enemyGroups(level, opts.bonus || 0)];
   for (let gi = 0; gi < groups.length; gi++) {
@@ -316,11 +323,17 @@ function tryGenerate(level, opts) {
     const flyer = g[0] === 'imp';
     // 打手：躲在部署區看不到的地方（可以在隱蔽區）
     // 崗哨：有掩體，而且從部署區看過去不能沒掩體（不能開場就被側翼）
+    // 使魔：分散，不跟其他敵人相鄰（免得一發榴彈炸好幾隻）
+    // 崗哨：被看得到的話，面向部署區最好是全掩體（狙擊開場不白送）
     const score = g[0] === 'brawler'
-      ? p => -Math.min(view(p).seen, 6) * 3 + (m.isConceal(p.x, p.z) ? 2 : 0) + Math.random() * 3
-      : flyer ? p => coverSides(m, p).length + Math.random() * 3
-      : p => coverSides(m, p).length * 2 - Math.min(view(p).open, 3) * 4 + Math.random() * 3;
-    const cands = (g[0] === 'brawler' ? hideTiles : zoneTiles).get(zid).filter(p => !used.has(k(p.x, p.z)))
+      ? p => (view(p).seen ? -20 - view(p).seen : 0) + (m.isConceal(p.x, p.z) ? 2 : 0) + Math.random() * 3
+      : flyer ? p => (nearUsed(p) ? -30 : 0) + coverSides(m, p).length + Math.random() * 3
+      : p => coverSides(m, p).length * 2 - (view(p).open ? 15 : view(p).half ? 8 : 0) + Math.random() * 3;
+    // 打手：自己的責任區沒地方躲，就去別的責任區躲
+    const pool = g[0] === 'brawler'
+      ? (hideTiles.get(zid).some(p => !used.has(k(p.x, p.z)) && !view(p).seen) ? hideTiles.get(zid) : zoneIds.flatMap(z => hideTiles.get(z) || []))
+      : zoneTiles.get(zid);
+    const cands = pool.filter(p => !used.has(k(p.x, p.z)))
       .map(p => ({ p, s: score(p) }))
       .sort((a, b) => b.s - a.s);
     if (!cands.length) return null;
@@ -328,12 +341,16 @@ function tryGenerate(level, opts) {
     const members = [lead];
     for (const c of cands.slice(1)) {
       if (members.length >= g.length) break;
-      if (dist(c.p, lead) <= 2.3) members.push(c.p);
+      if (flyer ? dist(c.p, lead) <= 4.5 && !nearUsed(c.p) && members.every(q => dist(q, c.p) > 1.5) : dist(c.p, lead) <= 2.3) members.push(c.p);
+    }
+    if (flyer && members.length < g.length) for (const c of cands.slice(1)) { // 擠不下就放寬
+      if (members.length >= g.length) break;
+      if (!members.includes(c.p) && dist(c.p, lead) <= 4.5) members.push(c.p);
     }
     if (members.length < g.length) return null;
     members.forEach((p, i) => {
       used.add(k(p.x, p.z));
-      enemies.push({ x: p.x, z: p.z, type: g[i], zone: zid, group: gi });
+      enemies.push({ x: p.x, z: p.z, type: g[i], zone: g[0] === 'brawler' ? m.zoneAt(p.x, p.z) : zid, group: gi });
     });
   }
 

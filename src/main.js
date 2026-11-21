@@ -897,6 +897,7 @@ const quietSees = (e, p) => S.map.zoneAt(p.x, p.z) === e.zone && quietLOS(S.map,
 function alertEnemies(list, why) {
   const fresh = list.filter(e => e.alive && !e.alerted);
   if (!fresh.length) return false;
+  const firstAlarm = !enemies().some(e => e.alerted && !e.nest && !e.biteCluster) && fresh.some(e => !e.nest);
   // 打手：只要哪裡響起警報，全圖的打手都會醒來衝過來
   const brs = enemies().filter(e => e.brawler && !e.alerted && !fresh.includes(e));
   if (brs.length) UI.log(`${brs.length} 名打手聽到動靜，衝過來了`, 'warn');
@@ -905,6 +906,7 @@ function alertEnemies(list, why) {
     if (e.mesh.visible) floatText(e, '！警戒', 'sup');
     if (e.label) UI.updateLabel(e.label, e);
   }
+  if (firstAlarm) for (const n of enemies().filter(e => e.nest)) hatch(n, true); // 警報一響，巢穴立刻多孵一次
   if (S.condTimer && S.condTimer.count === null) {
     S.condTimer.count = 0;
     UI.log(`警報響了：之後每 ${S.condTimer.every} 個敵方主動權，會有 2 名增援從撤離點那一側趕到`, 'warn');
@@ -1437,7 +1439,9 @@ function facilityConds(gen, level) {
       const t = Math.max(0, Math.min(1, ((p.x - a.x) * vx + (p.z - a.z) * vz) / L));
       return Math.hypot(p.x - a.x - t * vx, p.z - a.z - t * vz);
     };
-    imps.sort((p, q) => off(q) - off(p) + (Math.random() - 0.5));
+    // 部署區（含千夏多 3 格的視野）看得到的不選
+    const seen = p => gen.deployZone.some(d => hasLOS(gen.map, d, p, RULES.SIGHT + 3, true));
+    imps.sort((p, q) => (seen(p) - seen(q)) * 100 + off(q) - off(p) + (Math.random() - 0.5));
     imps[0].type = 'nest';
   }
   return out;
@@ -3131,7 +3135,8 @@ async function impPatrol(e) {
 // 敵方主動權最後：使魔一起飛向少女，離得最遠的先飛（讓牠們盡量同時抵達）
 async function familiarPhase() {
   const nearD = e => { const ps = players(); return ps.length ? Math.min(...ps.map(p => dist(e, p))) : 99; };
-  const fam = enemies().filter(e => e.familiar).sort((a, b) => nearD(b) - nearD(a));
+  const near = pathDistToGirls(null, true); // 實際飛行距離（會繞過全掩體）
+  const fam = enemies().filter(e => e.familiar).sort((a, b) => near(b) - near(a) || nearD(b) - nearD(a));
   let told = false;
   for (const e of fam) {
     if (S.gameOver) return;
@@ -3144,10 +3149,10 @@ async function familiarPhase() {
     let best = null, bs = -Infinity;
     for (const c of flyOptions(e)) {
       const d = Math.min(...ps.map(p => dist(c, p)));
-      const s = d < 1.5 ? 100 - dist(e, c) * 0.1 : -d;
+      const s = d < 1.5 ? 100 - dist(e, c) * 0.1 : -near(c);
       if (s > bs) { bs = s; best = c; }
     }
-    if (!best || bs <= -nearD(e)) continue; // 沒有更近的地方可以飛
+    if (!best || bs <= -near(e)) continue; // 沒有更近的地方可以飛
     if (!told && e.mesh.visible) { told = true; UI.log('使魔成群飛過來了！', 'warn'); }
     if (!(await flyMove(e, best))) continue;
     const t = players().filter(p => dist(e, p) < 1.5).sort((a, b) => dist(e, a) - dist(e, b))[0];
@@ -3218,8 +3223,26 @@ function freeAround(p, n) {
 
 // ================= 打手 =================
 // 到最近少女的「實際路徑」距離（繞牆；斜走不能切牆角）。其他敵人站的格子走得過但代價高，能繞就繞開
-function pathDistToGirls(self = null) {
+// fly：使魔飛行（半掩體飛得過、全掩體擋住、不怕撞到人）
+// 打手（不是 fly）：被 2 名以上少女盯著的格子多算 3，會繞開交叉火網
+let watchCache = { key: '', w: null };
+function watchMap() {
+  const ps = players(), W = S.map.w, H = S.map.h;
+  const key = S.map.w + ':' + ps.map(p => p.x + ',' + p.z).join(';');
+  if (watchCache.key === key) return watchCache.w;
+  const w = new Uint8Array(W * H);
+  for (let z = 0; z < H; z++) for (let x = 0; x < W; x++) {
+    if (!S.map.walkable(x, z)) continue;
+    const c = { x, z };
+    for (const p of ps) if (sees(p, c)) w[z * W + x]++;
+  }
+  watchCache = { key, w };
+  return w;
+}
+function pathDistToGirls(self = null, fly = false) {
   const W = S.map.w, H = S.map.h, D = new Float32Array(W * H).fill(Infinity);
+  const pass = fly ? (x, z) => S.map.inB(x, z) && S.map.get(x, z) !== T.FULL : (x, z) => S.map.walkable(x, z);
+  const watch = fly ? null : watchMap();
   const q = [];
   for (const p of players()) { D[p.z * W + p.x] = 0; q.push(p.z * W + p.x); }
   // 簡單的 Dijkstra（格子不多，用排序佇列就夠）
@@ -3231,9 +3254,11 @@ function pathDistToGirls(self = null) {
     for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
       if (!dx && !dz) continue;
       const nx = cx + dx, nz = cz + dz;
-      if (!S.map.walkable(nx, nz)) continue;
-      if (dx && dz && (!S.map.walkable(cx + dx, cz) || !S.map.walkable(cx, cz + dz))) continue;
-      const nd = D[c] + (dx && dz ? 1.414 : 1) + (occupied(nx, nz, self) && !players().some(p => p.x === nx && p.z === nz) ? 8 : 0);
+      if (!pass(nx, nz)) continue;
+      if (dx && dz && (!pass(cx + dx, cz) || !pass(cx, cz + dz))) continue;
+      const nd = D[c] + (dx && dz ? 1.414 : 1)
+        + (!fly && occupied(nx, nz, self) && !players().some(p => p.x === nx && p.z === nz) ? 8 : 0)
+        + (watch && watch[nz * W + nx] >= 2 ? 3 : 0);
       if (nd < D[nz * W + nx]) { D[nz * W + nx] = nd; q.push(nz * W + nx); }
     }
   }
@@ -3290,13 +3315,17 @@ async function nestTick() {
   for (const n of nests) {
     n.count = (n.count || 0) + 1;
     if (n.count % RULES.NEST_EVERY) continue;
-    const got = freeAround(n, RULES.NEST_SPAWN).map(c => spawnEnemy('imp', c.x, c.z, n.zone, alarm));
-    if (!got.length) continue;
-    if (n.mesh.visible) floatText(n, '孵出使魔', 'ow');
-    UI.log(`${n.name} 孵出了 ${got.length} 隻使魔`, 'warn');
+    hatch(n, alarm);
   }
   updateVisibility();
   refresh();
+}
+function hatch(n, alerted) {
+  const got = freeAround(n, RULES.NEST_SPAWN).map(c => spawnEnemy('imp', c.x, c.z, n.zone, alerted));
+  if (!got.length) return;
+  if (n.mesh.visible) floatText(n, '孵出使魔', 'ow');
+  UI.log(`${n.name} 孵出了 ${got.length} 隻使魔`, 'warn');
+  updateVisibility();
 }
 // 敵方主動權結束時：輪到就標出下一次空投的落點（離最近的少女 3～5 格、少女看得到的空地）
 function airdropPlan() {

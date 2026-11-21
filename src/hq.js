@@ -157,7 +157,7 @@ function render() {
 
   const opsHtml = C.phase === 'done' ? '' : ops.map((o, i) => `
     <button class="op ${i === st.op ? 'on' : ''} ${o.kind}" data-o="${i}">
-      <b>${o.retry || (C.retry && C.mode !== 'story') ? '重打：' : ''}${o.name}</b><small>${opDesc(o)}${o.kind === 'rest' ? '' : ` · 難度 ${Camp.level(o)}（敵人 ${Camp.enemyEstimate(o)}${o.kind === 'manor' ? '，可能有成員在場' : o.kind === 'finale' ? `，增援 ${C.production} 波×3` : ''}）`}</small>
+      <b>${o.retry || (C.retry && C.mode !== 'story') ? '重打：' : ''}${o.name}</b><small>${opDesc(o)}${o.kind === 'rest' ? '' : ` · 難度 ${Camp.level(o)}（${Camp.enemyText(o)}${o.kind === 'manor' ? '，可能有成員在場' : o.kind === 'finale' ? `，增援 ${C.production} 波×3` : ''}）`}</small>
       <small class="opbuff">${opBuffs(o)}</small>
     </button>`).join('');
 

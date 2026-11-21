@@ -261,7 +261,7 @@ async function run(line) {
           `\n成員：` + C.members.map(m => `${FAMILY_BY_ID[m.id].name}${m.alive ? `（擊退 ${m.repels}/2${m.boost ? `，強化 +${m.boost}` : ''}）` : '（已打倒）'}`).join('、') +
           `\n戰利品：${C.loot || 0}（黑市：market）` +
           `\n倉庫：` + (Object.entries(C.stash || {}).filter(([, n]) => n > 0).map(([k, n]) => `${k}=${ITEMS[k].name}×${n}`).join('、') || '空的') + '\n' : '';
-        return (document.querySelector('#overlay #s-ok') ? '（畫面上還有劇情，先 ok 才會回到作戰室）\n' : '') + fam + '作戰：\n' + ops.map((o, i) => `  ${i + 1}. ${o.retry ? '重打：' : ''}${o.name}（${o.kind}）${o.kind === 'rest' ? '不出擊，選了直接 go' : `難度 ${G.Camp.level(o)} 敵人約 ${G.Camp.enemyEstimate(o)}`}`).join('\n') +
+        return (document.querySelector('#overlay #s-ok') ? '（畫面上還有劇情，先 ok 才會回到作戰室）\n' : '') + fam + '作戰：\n' + ops.map((o, i) => `  ${i + 1}. ${o.retry ? '重打：' : ''}${o.name}（${o.kind}）${o.kind === 'rest' ? '不出擊，選了直接 go' : `難度 ${G.Camp.level(o)} ${G.Camp.enemyText(o)}`}`).join('\n') +
           '\n少女：\n' + C.girls.map(g => `  ${GIRL_KEY[g.id]} ${GIRL[g.id].name} 生命 ${g.hp}/${GIRL[g.id].maxHp} 槍法 ${g.gun} 魔法 ${g.magic} 獎章 ${g.medals}` +
             ` 道具[${(g.slots || []).join(',')}]${g.evac ? ` 後送中（還要 ${g.evac} 回合；休整時可出擊的人不到 3 個會提前歸隊，至少 2/3 血）` : ''}${(C.deploy || []).includes(g.id) ? (g.evac ? ' ✓出擊（但後送中，不能出擊）' : ' ✓出擊') : ''}`).join('\n');
       }

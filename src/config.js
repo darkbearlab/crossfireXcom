@@ -73,7 +73,7 @@ export const RULES = {
   RUBBLE_CHANCE: 40,      // 楓的榴彈打在掩體上時，把掩體炸掉一級的機率（%）
   WAVE_SIZE: 3,           // 決戰每波增援人數
   CROW_MAX: 3,            // 稻草人的烏鴉數（全部恢復才會再放出）
-  IMP_RATIO: 2,           // 一般敵人裡，使魔：人類 = IMP_RATIO : 1
+  IMP_RATIO: 1,           // 使魔數量 = 人類 × IMP_RATIO（加在人類之上）
   IMP_MOVE: 6,            // 使魔每次群飛最多飛幾格（可以飛越半掩體）
   SCOUT_CHANCE: 25,       // 偵查：少女行動後，看得到她的使魔每隻搶主動權的機率
   BITE_CHANCE: 25,        // 咬傷：敵方主動權結束時，咬著的使魔每隻的命中率；任何一顆中＝受傷 1 次，然後全部掙脫
@@ -274,7 +274,10 @@ export const enemyCount = level => Math.min(10 + 3 * mapScale(level), 3 + Math.c
 // 每張地圖的敵人編組（同一組會擺在同一個責任區）
 export function enemyGroups(level, bonus = 0) {
   const total = enemyCount(level) + bonus;
-  let n = Math.ceil(total / (1 + RULES.IMP_RATIO)); // 人類（r10 試過把使魔加在上面，太難，回滾）
+  // 人類照原本的數量（至少 4 名一般人類，人偶、稻草人不算）；使魔另外加在上面 = 人類 × IMP_RATIO
+  // （r9：2:1 切分 → 人類太少；r10：加上 2 倍 → 太難；r12：加上 1 倍）
+  let n = Math.max(4, total);
+  const nImps = Math.round(n * RULES.IMP_RATIO);
   const groups = [], imps = [], brawlers = [];
   // 打手：數量少（難度 2 起 1 名，難度 5 起 1～2 名，難度 9 起 2～3 名），各自一組
   if (level >= 2) {
@@ -284,7 +287,7 @@ export function enemyGroups(level, bonus = 0) {
     n -= Math.max(0, nb);
   }
   // 使魔：2～3 隻一群（排在人類編組後面，輪流分到各責任區）
-  for (let f = total - n; f > 0;) { const k = f >= 5 || f === 3 ? 3 : Math.min(2, f); imps.push(Array(k).fill('imp')); f -= k; }
+  for (let f = nImps; f > 0;) { const k = f >= 5 || f === 3 ? 3 : Math.min(2, f); imps.push(Array(k).fill('imp')); f -= k; }
   if (level >= 2 && n >= 5 && Math.random() < 0.6) { groups.push(['officer', 'conscript', 'conscript']); n -= 3; }
   // 大地圖：多幾個成形的編組（不改單兵數值）
   if (level >= MAPGEN.BIG[0]) {
@@ -303,9 +306,9 @@ export function enemyGroups(level, bonus = 0) {
     if (k === 'doll' || k === 'scarecrow') { if (special) k = 'gunman'; else special++; }
     return k;
   };
-  while (n > 0) {
-    if (n >= 2 && Math.random() < 0.3) { groups.push([pick(), pick()]); n -= 2; }
-    else { groups.push([pick()]); n--; }
+  while (n > 0) { // 人偶、稻草人不算在一般人類的人數裡
+    if (n >= 2 && Math.random() < 0.3) { const g = [pick(), pick()]; groups.push(g); n -= g.filter(k => k !== 'doll' && k !== 'scarecrow').length; }
+    else { const k = pick(); groups.push([k]); if (k !== 'doll' && k !== 'scarecrow') n--; }
   }
   return groups.concat(brawlers, imps);
 }
