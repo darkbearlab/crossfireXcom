@@ -63,6 +63,8 @@ function makeGun(type, parent, x, y, z) {
     case 'smg': // 詩織的衝鋒槍：短小、直彈匣
       add(box(0.06, 0.08, 0.24), M(0xe8e0d0), 0, 0, 0.04); add(box(0.04, 0.14, 0.05), GUN_DARK, 0, -0.1, 0.08);
       add(box(0.04, 0.09, 0.05), GUN_DARK, 0, -0.06, -0.04); barrel(0.016, 0.1, 0, 0.01, 0.16); len = 0.26; break;
+    case 'bat': // 打手的木棍
+      add(cyl(0.028, 0.045, 0.6, 6), WOOD, 0, 0.12, 0.1, 0.7, 0, 0); len = 0.1; break;
     case 'tommy': // 黑手黨的衝鋒槍（彈鼓）
       add(box(0.06, 0.08, 0.32), GUN_DARK, 0, 0, 0.06); add(cyl(0.07, 0.07, 0.05, 8), GUN_METAL, 0, -0.08, 0.06, 0, 0, Math.PI / 2);
       add(box(0.05, 0.08, 0.14), WOOD, 0, -0.01, -0.16); barrel(0.018, 0.12, 0, 0.01, 0.22); len = 0.36; break;
@@ -213,6 +215,9 @@ function goonBody(add, kind, color) {
     add(box(0.26, 0.05, 0.05), GLOW(0x9be7ff, 0x3080c0, 1.2), 0, headY + 0.02, 0.14);
     add(cyl(0.16, 0.16, 0.08, 8), M(color), 0, headY + 0.1, 0);
     add(cyl(0.22, 0.26, 0.42, 6), M(color), 0, 0.44, -0.02).scale.z = 0.7;
+  } else if (kind === 'brawler') { // 打手：光頭、墨鏡、背心
+    add(box(0.24, 0.04, 0.04), M(0x101010), 0, headY + 0.02, 0.13);
+    for (const s of [-1, 1]) add(box(0.1, 0.1, 0.12), M(color), 0.27 * s, 0.95, 0); // 粗手臂
   } else if (kind === 'zealot') { // 頭巾、捲袖
     add(cyl(0.15, 0.15, 0.05, 8), GLOW(0xff7a2a, 0xc04000, 0.9), 0, headY + 0.05, 0.0);
     add(box(0.04, 0.2, 0.02), GLOW(0xff7a2a, 0xc04000, 0.9), 0.04, headY - 0.05, -0.15, 0.3);
@@ -337,7 +342,7 @@ export function makeUnitMesh(team, kind, color, gun = 'ar', scale = 1, opt = {})
     const { headY } = goonBody(add, kind, color);
     gx = kind === 'brute' ? 0.3 : kind === 'mg' ? 0.26 : 0.23;
     gy = 0.88;
-    gun = { sniper: 'sn', mg: 'lmg', zealot: 'sg', conscript: 'pistol', officer: 'pistol', brute: 'sg' }[kind] || 'tommy';
+    gun = { sniper: 'sn', mg: 'lmg', zealot: 'sg', conscript: 'pistol', officer: 'pistol', brute: 'sg', brawler: 'bat' }[kind] || 'tommy';
     void headY;
   } else { // 備用：沒有專屬外型的我方單位
     goonBody(add, 'gunman', color);
@@ -456,6 +461,24 @@ export function makeImpMesh() {
   g.userData.imps = [imp];
   return g;
 }
+// 使魔巢穴：一團發光的紫色繭
+export function makeNestMesh() {
+  const g = new THREE.Group();
+  const add = adder(g);
+  const shell = M(0x3a1a58, { emissive: 0x200838, emissiveIntensity: 0.6 }), glow = GLOW(0xc080ff, 0x8030ff, 1.6);
+  add(ball(0.42, 1), shell, 0, 0.36, 0).scale.y = 0.85;
+  for (let i = 0; i < 5; i++) {
+    const a = i / 5 * Math.PI * 2;
+    add(ball(0.17, 0), shell, Math.cos(a) * 0.36, 0.18, Math.sin(a) * 0.36);
+    add(ball(0.05, 0), glow, Math.cos(a) * 0.3, 0.5 + (i % 2) * 0.12, Math.sin(a) * 0.3);
+  }
+  add(ball(0.12, 0), glow, 0, 0.72, 0);
+  g.userData.mats = [shell];
+  g.userData.baseScale = 1;
+  g.userData.muzzle = new THREE.Vector3(0, 0.5, 0);
+  return g;
+}
+
 // 咬在少女身上的使魔團：數量跟著剩下的隻數（userData.birds，沿用烏鴉的顯示）
 export function makeBiteMesh(n = 8) {
   const g = new THREE.Group();

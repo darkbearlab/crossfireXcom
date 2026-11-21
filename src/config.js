@@ -27,7 +27,7 @@ export const RULES = {
   AIRDROP_RANGE: 8,       // 空投距離；落點還要在隊友看得見的格子
   PHASE_GUARDS: 2,        // 頭目每突破一個階段叫來的護衛
   // 敵人啟動檢定：每次主動行動前骰一次，失敗＝亂了陣腳：主動權交回我方，沒行動的敵人各自憑衝動行事
-  ACT_OFFICER: 10,        // 3 格內有軍官 +
+  ACT_OFFICER: 10,        // 3 格內有幹部 +
   ACT_SUPPRESSED: 10,     // 被壓制 -
   ACT_DEATHS: 10,         // 這次主動權內有隊友倒下 -
   ACT_HURT: 10,           // 生命低於一半 -
@@ -77,6 +77,10 @@ export const RULES = {
   IMP_MOVE: 6,            // 使魔每次群飛最多飛幾格（可以飛越半掩體）
   SCOUT_CHANCE: 25,       // 偵查：少女行動後，看得到她的使魔每隻搶主動權的機率
   BITE_CHANCE: 25,        // 咬傷：敵方主動權結束時，咬著的使魔每隻的命中率；任何一顆中＝受傷 1 次，然後全部掙脫
+  NEST_EVERY: 3,          // 使魔巢穴：警報後每幾個敵方主動權孵一次
+  NEST_SPAWN: 2,          // 每次孵幾隻
+  AIRDROP_EVERY: 4,       // 反制「空投增援」：警報後每幾個敵方主動權空投一次（前一個主動權先標落點）
+  AIRDROP_SIZE: 3,        // 每次空投幾隻使魔
   CROW_SPEED: 3,          // 烏鴉每次衝動往前飛幾格（再 1 格內就纏上）
   CROW_REGEN: 4,          // 我方每成功行動幾次，稻草人身上回來 1 隻烏鴉
 
@@ -140,18 +144,27 @@ export const WEAPONS = {
 };
 
 // 敵人：普通武器不追蹤彈藥。impulse = 衝動：主動權易手時，這輪沒行動過的單位會強制做的事。
-// act / q = 啟動值與品質（新兵 45、老手 60、精銳 70、軍官 80）。頭目不檢定，改成生命分 3 段。
+// act / q = 啟動值與品質（新兵 45、老手 60、精銳 70、幹部 80）。頭目不檢定，改成生命分 3 段。
 // maxHp 以「傷」計（一般 1、精銳 2）；dice = 骰數（甜蜜距離 1–3 格再 +1），dieMod = 每顆骰的命中修正（%）。
 // armor：每次攻擊少算 1 下命中。裝甲和多血不並存：有裝甲的只有 1 傷，頭目不穿裝甲。
 export const ENEMY_TYPES = {
   gunman:    { name: '槍手',   act: 60, q: '老手', maxHp: 1, dice: 2, color: 0xc0453a, impulse: 'shoot',
                desc: '衝動：對最近的可見目標開槍' },
-  zealot:    { name: '狂徒',   act: 60, q: '老手', maxHp: 1, dice: 2, dieMod: -5, color: 0xd8752a, impulse: 'charge',
-               desc: '衝動：朝最近的我方衝 3 格' },
-  conscript: { name: '徵召兵', act: 45, q: '新兵', maxHp: 1, dice: 1, color: 0x8a7a5a, impulse: 'flee', scale: 0.9,
-               desc: '衝動：軍官不在時往地圖邊緣逃，逃出即消失' },
-  officer:   { name: '軍官',   act: 80, q: '軍官', maxHp: 2, dice: 2, dieMod: 5, color: 0xd0b040, officer: true,
-               desc: '活著時徵召兵不會逃' },
+  zealot:    { name: '狂徒',   act: 60, q: '老手', maxHp: 1, dice: 2, dieMod: -5, color: 0xd8752a, impulse: 'charge', chargeShoot: true, range: 6,
+               gunX: { sweet: [1, 3], sweetDice: 2, exposedDice: 1, farRange: 4, farPenalty: 10 },
+               desc: '霰彈槍：3 格內 +2 骰、打沒掩體的目標 +1 骰，4 格外每格 -10%，射程 6 格。衝動：朝最近的我方衝 3 格，衝完在射程內就開一槍' },
+  conscript: { name: '小弟',   act: 45, q: '新兵', maxHp: 1, dice: 1, color: 0x8a7a5a, impulse: 'flee', scale: 0.9, fragile: true,
+               desc: '打中就倒（不經過受阻、壓制）。衝動：幹部不在時往地圖邊緣逃，逃出即消失' },
+  officer:   { name: '幹部',   act: 80, q: '幹部', maxHp: 2, dice: 2, dieMod: 5, color: 0xd0b040, officer: true,
+               desc: '活著時小弟不會逃' },
+  // 打手：數量少的近戰。不開槍、不反應射擊、打中就倒。衝鋒：沒被反應射擊攔下就一段一段直線衝下去（沒有距離上限），
+  // 碰到少女就揮一拳（必中，直接受傷 1 次），每個主動權最多打一次。被攔下＝行動失敗
+  brawler:   { name: '打手',   act: 60, q: '老手', maxHp: 1, dice: 0, color: 0x6a4a3a, noGun: true, canReact: false, fragile: true, brawler: true, impulse: 'rush',
+               desc: '近戰。不開槍、不反應射擊、打中就倒。<b>衝鋒</b>：沒被反應射擊攔下就一段一段直線衝下去，沒有距離上限；碰到少女就揮一拳（必中，直接受傷 1 次，每個主動權最多一次）。被攔下就停住，算敵方行動失敗' },
+  // 使魔巢穴：不會動、不開槍。警報後每 NEST_EVERY 個敵方主動權在旁邊孵出 NEST_SPAWN 隻使魔。不算清場
+  nest:      { name: '使魔巢穴', q: '巢穴', maxHp: 3, dice: 0, color: 0x4a2070, scale: 1,
+               noGun: true, canReact: false, unflinching: true, immobile: true, summon: true, nest: true, bigTarget: 15,
+               desc: '不會動、不開槍，3 傷，主動攻擊它每顆骰 +15%。警報響起後，每 3 個敵方主動權在旁邊孵出 2 隻使魔。打掉就不會再孵。不算進清場' },
   sniper:    { name: '狙擊手', act: 70, q: '精銳', maxHp: 1, dice: 2, dieMod: 10, color: 0x5a6a8a, canReact: false, ignoreHalf: true,
                desc: '主動射擊無視半掩體；不會反應射擊' },
   mg:        { name: '機槍手', act: 70, q: '精銳', maxHp: 2, dice: 3, dieMod: -5, color: 0x7a3434, keepFiring: true, cumbersome: true,
@@ -248,7 +261,10 @@ export const COUNTERS = {
   kevlar: { name: '防彈衣', once: true, desc: '槍手有 1 點裝甲' },
   skirmish: { name: '散兵戰術', once: true, desc: '不管難度，敵人都會散開站位、避開反應射擊' },
   countersnipe: { name: '反狙擊', desc: '每張地圖 1 名槍手換成狙擊手；狙擊手優先打千夏和最後開槍的人' },
-  elite: { name: '精銳化', once: true, desc: '徵召兵換成老手（啟動 60%）' },
+  elite: { name: '精銳化', once: true, desc: '小弟換成老手（啟動 60%）' },
+  bfist: { name: '鐵拳', desc: '打手生命 +1（反應射擊打中也只是停住）' },
+  bguard: { name: '護具', once: true, desc: '打手有 1 點裝甲（反應射擊中 1 顆攔不住）' },
+  airdrop: { name: '空投增援', once: true, desc: '警報響起後，每 4 個敵方主動權有一組使魔從天而降在少女附近（難度 10 起夾一名打手）；前一個主動權會先標出落點' },
   member: { name: '成員強化', desc: '一名成員（生效時決定）之後現身與據點戰 +1 骰' },
 };
 
@@ -259,7 +275,14 @@ export const enemyCount = level => Math.min(10 + 3 * mapScale(level), 3 + Math.c
 export function enemyGroups(level, bonus = 0) {
   const total = enemyCount(level) + bonus;
   let n = Math.ceil(total / (1 + RULES.IMP_RATIO)); // 人類
-  const groups = [], imps = [];
+  const groups = [], imps = [], brawlers = [];
+  // 打手：數量少（難度 2 起 1 名，難度 5 起 1～2 名，難度 9 起 2～3 名），各自一組
+  if (level >= 2) {
+    let nb = level >= 9 ? 2 + (Math.random() < 0.4 ? 1 : 0) : level >= 5 ? 1 + (Math.random() < 0.4 ? 1 : 0) : 1;
+    nb = Math.min(nb, n - 1, Math.max(1, Math.round(n / 3))); // 最多約人類的 1/3
+    for (let i = 0; i < nb; i++) brawlers.push(['brawler']);
+    n -= Math.max(0, nb);
+  }
   // 使魔：2～3 隻一群（排在人類編組後面，輪流分到各責任區）
   for (let f = total - n; f > 0;) { const k = f >= 5 || f === 3 ? 3 : Math.min(2, f); imps.push(Array(k).fill('imp')); f -= k; }
   if (level >= 2 && n >= 5 && Math.random() < 0.6) { groups.push(['officer', 'conscript', 'conscript']); n -= 3; }
@@ -284,5 +307,5 @@ export function enemyGroups(level, bonus = 0) {
     if (n >= 2 && Math.random() < 0.3) { groups.push([pick(), pick()]); n -= 2; }
     else { groups.push([pick()]); n--; }
   }
-  return groups.concat(imps);
+  return groups.concat(brawlers, imps);
 }

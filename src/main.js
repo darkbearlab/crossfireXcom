@@ -14,7 +14,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ITEMS, T, RULES, THEMES, ENEMY_TYPES, WEAPONS } from './config.js';
 import { generateMap, ri, GameMap } from './map.js';
 import { hasLOS, quietLOS, coverSides, coverAt, shotOdds, key, dist, clearMove, lineCells, vaultTargets, ORTH } from './grid.js';
-import { makeUnitMesh, makeScarecrowMesh, makeCrowMesh, makeImpMesh, makeBiteMesh, addHalo, heartShape } from './units.js';
+import { makeUnitMesh, makeScarecrowMesh, makeCrowMesh, makeImpMesh, makeBiteMesh, makeNestMesh, addHalo, heartShape } from './units.js';
 import * as UI from './ui.js';
 import * as Camp from './campaign.js';
 import * as HQ from './hq.js';
@@ -398,6 +398,7 @@ function meshFor(u) {
   if (u.kind === 'crows') return makeCrowMesh(u.maxHp);
   if (u.kind === 'imp') return makeImpMesh();
   if (u.kind === 'bites') return makeBiteMesh();
+  if (u.kind === 'nest') return makeNestMesh();
   const m = makeUnitMesh(u.team, u.kind, u.color, u.weapons ? u.weapons[u.wi].id : 'ar', u.scale || 1,
     { hair: u.hair, girl: u.girl, boss: !!u.boss, mother: u.kind === 'b_mother' });
   if (u.transformed) addHalo(m);
@@ -510,7 +511,7 @@ function spawnEnemy(type, x, z, zone, alerted = false) {
   const u = { ...tpl, kind: type, team: 'enemy', hp: tpl.maxHp, stress: 0, pinned: false, tag,
     name: tpl.boss ? tpl.name : tpl.name + tag,
     gun: { dice: tpl.dice, sweetDice: tpl.sweetDice, canReact: tpl.canReact !== false, keepFiring: !!tpl.keepFiring,
-      ignoreHalf: !!tpl.ignoreHalf, ammo: Infinity, mag: Infinity },
+      ignoreHalf: !!tpl.ignoreHalf, ammo: Infinity, mag: Infinity, ...(tpl.gunX || {}) },
     x, z, alive: true, suppressed: false, firedOut: false, alerted, spotted: false, zone, member: memberOf(type),
     // 頭目血條分 3 段（由高到低的分段點）
     cuts: tpl.boss ? [Math.round(tpl.maxHp * 2 / 3), Math.round(tpl.maxHp / 3)] : null, phase: 1,
@@ -518,7 +519,9 @@ function spawnEnemy(type, x, z, zone, alerted = false) {
     execBuff: S.buffs.includes('exec') && !tpl.keepFiring, spareUsed: false,
     // 稻草人：身上的烏鴉數、恢復進度、放出去的烏鴉群
     crows: type === 'scarecrow' ? RULES.CROW_MAX : 0, crowMax: RULES.CROW_MAX, regen: 0, flock: null };
-  // 反制：防彈衣（槍手 1 點裝甲）、精銳化（徵召兵變老手）。增援也一樣
+  // 反制：鐵拳（打手生命 +1）、護具（打手裝甲 1）
+  if (type === 'brawler') { u.maxHp += Camp.mod('bfist'); u.hp = u.maxHp; if (Camp.mod('bguard')) u.armor = 1; }
+  // 反制：防彈衣（槍手 1 點裝甲）、精銳化（小弟變老手）。增援也一樣
   if (Camp.mod('kevlar') && type === 'gunman') u.armor = 1;
   if (Camp.mod('elite') && type === 'conscript') { u.act = 60; u.q = '老手'; }
   spawnUnit(u);
@@ -653,6 +656,8 @@ function startMission() {
   S.curse = new Set(gen.curse);
   S.waves = op.kind === 'finale' ? C.production : 0;
   S.conds = gen.conds || [];
+  S.lvl = Camp.level(op);
+  S.airdrop = Camp.mod('airdrop') ? { count: 0, mark: null, mesh: null } : null;
   S.condTimer = S.conds.includes('timer') ? { every: RULES.FAC_TIMER[Camp.level(op) >= 9 ? 1 : 0], count: null } : null;
   S.opName = op.name;
   S.triple = false;
@@ -783,7 +788,7 @@ function endMission(win, why) {
 // ================= 主動權 =================
 async function giveInitiative(side) {
   if (S.gameOver) return;
-  for (const u of S.units) { u.firedOut = false; u.spareUsed = false; u.shield = false; u.locked = false; u.shotsUsed = 0; u.shotAt = null; u.steady = false; u.scouted = false; }
+  for (const u of S.units) { u.firedOut = false; u.spareUsed = false; u.shield = false; u.locked = false; u.shotsUsed = 0; u.shotAt = null; u.steady = false; u.scouted = false; u.meleeDone = false; }
   S.grab = false;       // 心線：要把主動權搶回我方
   S.forceEnemy = false; // 頭目突破階段：主動權要交給敵方
   S.initDeaths = 0;     // 這次主動權內倒下的敵人數（啟動檢定用）
@@ -809,10 +814,13 @@ async function giveInitiative(side) {
   await reviveDolls();
   refresh();
   await facilityTimer();
+  await nestTick();
+  await airdropLand();
   const anyAlert = enemies().some(e => e.alerted);
   if (anyAlert) { UI.banner('敵方取得主動權', 'enemy'); await wait(0.8); }
   const failed = await enemyInitiative();
   if (!S.gameOver) await biteCheck(); // 交出主動權：咬著的使魔咬傷判定
+  if (!S.gameOver) airdropPlan();
   if (S.gameOver || checkEnd()) return;
   await wait(0.3);
   giveInitiative('player');
@@ -1183,7 +1191,7 @@ async function strike(t, hits, src = null, direct = false) {
   if (t.shield) { floatText(t, '階段護盾', 'miss'); UI.log(`${t.name} 剛突破階段，這個行動內打不動`, 'dim'); return; }
   const floor = segFloor(t);
   let wounds = 0;
-  if (t.unflinching || direct) wounds = hits; // 人偶：不經過三階，每中一顆骰受 1 傷
+  if (t.unflinching || direct || t.fragile) wounds = hits; // 人偶、打手、小弟：不經過三階，每中一顆骰受 1 傷
   else for (let i = 0; i < hits; i++) {
     if (t.stress < RULES.SUP_AT) t.stress++;
     else wounds++;
@@ -1398,12 +1406,14 @@ const COND_TEXT = {
   timer: () => `警報響起後，每 ${S.condTimer ? S.condTimer.every : 4} 個敵方主動權會有 2 名增援從撤離點那一側趕到`,
   plant: () => '裝好炸藥後，撤退路線的兩側會立刻冒出 2 名增援（各 1 名），全圖進入警戒',
   special: () => '這裡有魔女的東西（人偶或稻草人）',
+  nest: () => `這裡有使魔巢穴：警報響起後，每 ${RULES.NEST_EVERY} 個敵方主動權孵出 ${RULES.NEST_SPAWN} 隻使魔，打掉就停`,
 };
 function facilityConds(gen, level) {
   const doll = Camp.mod('doll') > 0; // 反制「魔女的玩偶」：不管難度，設施圖必定有人偶或稻草人
   if (level < 3) return doll ? ['special'] : []; // 難度 1、2 是教學
   const pool = level >= 5 || doll ? ['timer', 'special'] : ['timer'];
   if (gen.mission.type === 'sabotage') pool.push('plant');
+  if (level >= 4 && gen.enemies.some(p => p.type === 'imp')) pool.push('nest');
   const out = [];
   const n = level >= 9 ? 2 : 1;
   if (Camp.mod('doll') && pool.includes('special')) out.push(pool.splice(pool.indexOf('special'), 1)[0]);
@@ -1411,6 +1421,10 @@ function facilityConds(gen, level) {
   if (out.includes('special') && !gen.enemies.some(p => p.type === 'doll' || p.type === 'scarecrow')) {
     const cand = gen.enemies.filter(p => p.type === 'gunman' || p.type === 'zealot');
     if (cand.length) cand[ri(0, cand.length - 1)].type = Math.random() < 0.5 ? 'doll' : 'scarecrow';
+  }
+  if (out.includes('nest')) { // 一隻使魔換成巢穴（留在使魔群的責任區）
+    const imps = gen.enemies.filter(p => p.type === 'imp');
+    imps[ri(0, imps.length - 1)].type = 'nest';
   }
   return out;
 }
@@ -1570,10 +1584,11 @@ async function die(u) {
     refresh();
     return;
   }
-  if (u.familiar) { // 使魔：命中即倒，消散
+  if (u.familiar || u.nest) { // 使魔：命中即倒，消散；巢穴：被摧毀
     u.alive = false;
     if (u.label) { u.label.remove(); u.label = null; }
-    UI.log(`${u.name} 消散了`, 'good');
+    if (u.nest) UI.banner('使魔巢穴被摧毀了！', 'player');
+    UI.log(u.nest ? `${u.name} 被摧毀了，不會再孵出使魔` : `${u.name} 消散了`, 'good');
     const m = u.mesh;
     await tween(0.3, k => { m.scale.setScalar(1 - k * 0.9); m.position.y = -k * 0.3; });
     unitGroup.remove(m);
@@ -1608,8 +1623,8 @@ async function die(u) {
   else { UI.log(`${u.name} 倒下了`, 'good'); S.initDeaths = (S.initDeaths || 0) + 1; }
   if (u.boss) UI.banner(`${u.name} 被打倒了！`, 'player');
   if (u.officer && !enemies().some(e => e.officer)) {
-    UI.log('軍官陣亡！徵召兵士氣崩潰', 'good');
-    UI.banner('軍官陣亡', 'player');
+    UI.log('幹部倒了！小弟們作鳥獸散', 'good');
+    UI.banner('幹部倒了', 'player');
   }
   const m = u.mesh;
   await tween(0.5, k => {
@@ -2310,7 +2325,8 @@ function coverCellFacing(t, s) {
 }
 async function grenade(s, t, w) {
   // 波及：目標周圍 1 格的人各擲一次（楓槍法 1 起不打自己人）
-  const near = S.units.filter(o => o.alive && o !== t && o !== s && !o.flying && dist(o, t) < 1.5 && !(w.noFriendly && o.team === s.team));
+  const near = S.units.filter(o => o.alive && o !== t && o !== s && !o.flying && dist(o, t) < 1.5 && !(w.noFriendly && o.team === s.team)
+    && !(t.biteCluster && o === t.attached)); // 打向被咬的隊友：只打掉使魔，不傷她
   for (const o of near) {
     const od = oddsVs(s, o);
     let r = 0;
@@ -2894,7 +2910,10 @@ function aiChoose(moveCount, acted) {
     const c = aiChooseFor([boss], moveCount, 0) || bossSeek(boss, moveCount);
     if (c) return c;
   }
-  return aiChooseFor(es, moveCount);
+  // 打手：能衝就衝（被壓制、受阻的交給一般 AI 起身）
+  const br = es.find(e => e.brawler && !acted.has(e) && !e.pinned && !e.suppressed && rushPlan(e));
+  if (br) return { type: 'rush', e: br };
+  return aiChooseFor(es.filter(e => !e.brawler || e.suppressed), moveCount);
 }
 
 // 頭目看不到任何少女、又沒有更好的位置時：挑一步縮短和最近少女距離的移動（風險低的優先）。
@@ -3016,12 +3035,14 @@ async function enemyInitiative() {
     } else if (act.type === 'launch') {
       if (act.e.mesh.visible) { focusUnit(act.e); await wait(0.3); }
       ok = launchCrows(act.e);
+    } else if (act.type === 'rush') {
+      ok = await rush(act.e);
     } else {
       moveCount.set(act.e, (moveCount.get(act.e) || 0) + 1);
       if (act.e.mesh.visible) { focusUnit(act.e); await wait(0.3); }
       ok = await performMove(act.e, act.dest);
     }
-    Rec.enemyAct({ rally: '起身', shoot: '射擊', launch: '放烏鴉' }[act.type] || '移動', ok);
+    Rec.enemyAct({ rally: '起身', shoot: '射擊', launch: '放烏鴉', rush: '衝鋒' }[act.type] || '移動', ok);
     for (const e of enemies()) e.shield = false;
     refresh();
     if (checkEnd()) return true;
@@ -3158,6 +3179,15 @@ function releaseBites(p, why = '') {
   c.alive = false;
   if (c.label) { c.label.remove(); c.label = null; }
   unitGroup.remove(c.mesh);
+  const spots = freeAround(p, n);
+  const got = spots.map(s => spawnEnemy('imp', s.x, s.z, S.map.zoneAt(s.x, s.z), true));
+  if (got.length < n && p.alive) biteCluster(p, n - got.length);
+  UI.log(`${why}${got.length} 隻使魔掙脫，落在 ${p.name} 身邊${got.length < n ? `（${n - got.length} 隻沒地方落，還咬著）` : ''}`, 'warn');
+  updateVisibility();
+  refresh();
+}
+// p 周圍由近到遠的 n 個空格（3 圈內）
+function freeAround(p, n) {
   const spots = [];
   for (let r = 1; r <= 3 && spots.length < n; r++) {
     const ring = [];
@@ -3169,12 +3199,134 @@ function releaseBites(p, why = '') {
     ring.sort((a, b) => a.s - b.s);
     spots.push(...ring.slice(0, n - spots.length));
   }
-  const got = spots.map(s => spawnEnemy('imp', s.x, s.z, S.map.zoneAt(s.x, s.z), true));
-  if (got.length < n && p.alive) biteCluster(p, n - got.length);
-  UI.log(`${why}${got.length} 隻使魔掙脫，落在 ${p.name} 身邊${got.length < n ? `（${n - got.length} 隻沒地方落，還咬著）` : ''}`, 'warn');
+  return spots;
+}
+
+// ================= 打手 =================
+// 到最近少女的「實際路徑」距離（繞牆；斜走不能切牆角）。其他敵人站的格子走得過但代價高，能繞就繞開
+function pathDistToGirls(self = null) {
+  const W = S.map.w, H = S.map.h, D = new Float32Array(W * H).fill(Infinity);
+  const q = [];
+  for (const p of players()) { D[p.z * W + p.x] = 0; q.push(p.z * W + p.x); }
+  // 簡單的 Dijkstra（格子不多，用排序佇列就夠）
+  while (q.length) {
+    let bi = 0;
+    for (let i = 1; i < q.length; i++) if (D[q[i]] < D[q[bi]]) bi = i;
+    const c = q[bi]; q[bi] = q[q.length - 1]; q.pop();
+    const cx = c % W, cz = (c - cx) / W;
+    for (let dz = -1; dz <= 1; dz++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dz) continue;
+      const nx = cx + dx, nz = cz + dz;
+      if (!S.map.walkable(nx, nz)) continue;
+      if (dx && dz && (!S.map.walkable(cx + dx, cz) || !S.map.walkable(cx, cz + dz))) continue;
+      const nd = D[c] + (dx && dz ? 1.414 : 1) + (occupied(nx, nz, self) && !players().some(p => p.x === nx && p.z === nz) ? 8 : 0);
+      if (nd < D[nz * W + nx]) { D[nz * W + nx] = nd; q.push(nz * W + nx); }
+    }
+  }
+  return p => D[p.z * W + p.x];
+}
+// 下一段衝鋒的落點：能碰到少女就選最近的貼身格；否則選「實際路徑」離少女最近、而且至少近 1 格的地方。沒有就 null
+function rushStep(e) {
+  const ps = players();
+  if (!ps.length) return null;
+  const near = pathDistToGirls(e);
+  const cur = near(e);
+  let best = null, bs = Infinity;
+  for (const m of moveOptions(e).values()) {
+    const d = ps.some(p => dist(m, p) < 1.5) ? 0 : near(m);
+    const s = !d ? -100 + dist(e, m) * 0.01 : d;
+    if (s < bs) { bs = s; best = m; }
+  }
+  if (!best || (bs >= 0 && bs > cur - 1)) return null;
+  return best;
+}
+const rushPlan = e => e.alive && e.alerted && !e.meleeDone && (players().some(p => dist(e, p) < 1.5) || !!rushStep(e));
+// 衝鋒：一段一段直線衝，沒被攔下就繼續；碰到少女揮一拳（每個主動權一次）。回傳 false＝被反應射擊攔下
+async function rush(e) {
+  for (let seg = 0; seg < 30 && e.alive && !S.gameOver; seg++) {
+    const ps = players();
+    if (!ps.length) return true;
+    const adj = ps.filter(p => dist(e, p) < 1.5).sort((a, b) => dist(e, a) - dist(e, b))[0];
+    if (adj) { if (!e.meleeDone) await brawlerHit(e, adj); return true; }
+    const dest = rushStep(e);
+    if (!dest) return true;
+    if (!seg && e.mesh.visible) { focusUnit(e); UI.log(`${e.name} 衝過來了！`, 'warn'); await wait(0.2); }
+    if (!(await performMove(e, dest))) return false;
+  }
+  return true;
+}
+async function brawlerHit(e, p) {
+  e.meleeDone = true;
+  e.mesh.visible = true;
+  e.mesh.rotation.y = Math.atan2(p.x - e.x, p.z - e.z);
+  const a = e.mesh.position.clone(), b = new THREE.Vector3((e.x + p.x) / 2, 0, (e.z + p.z) / 2);
+  await tween(0.12, k => e.mesh.position.lerpVectors(a, b, k));
+  await tween(0.12, k => e.mesh.position.lerpVectors(b, a, k));
+  floatText(p, '重擊！', 'dmg');
+  UI.log(`${e.name} 衝到 ${p.name} 身邊揮出一棍：必中，直接受傷 1 次`, 'bad');
+  await strike(p, 1, e, true);
+  refresh();
+}
+
+// ================= 使魔巢穴、空投增援 =================
+async function nestTick() {
+  const nests = enemies().filter(e => e.nest);
+  if (!nests.length || !enemies().some(e => e.alerted && !e.nest)) return; // 警報響了才開始孵
+  for (const n of nests) {
+    n.count = (n.count || 0) + 1;
+    if (n.count % RULES.NEST_EVERY) continue;
+    const got = freeAround(n, RULES.NEST_SPAWN).map(c => spawnEnemy('imp', c.x, c.z, n.zone, true));
+    if (!got.length) continue;
+    if (n.mesh.visible) floatText(n, '孵出使魔', 'ow');
+    UI.log(`${n.name} 孵出了 ${got.length} 隻使魔`, 'warn');
+  }
   updateVisibility();
   refresh();
 }
+// 敵方主動權結束時：輪到就標出下一次空投的落點（離最近的少女 3～5 格、少女看得到的空地）
+function airdropPlan() {
+  const A = S.airdrop;
+  if (!A || A.mark || !enemies().some(e => e.alerted)) return;
+  if (++A.count % RULES.AIRDROP_EVERY) return;
+  const ps = players();
+  if (!ps.length) return;
+  const c = [];
+  for (let z = 0; z < S.map.h; z++) for (let x = 0; x < S.map.w; x++) {
+    const p = { x, z };
+    if (!S.map.walkable(x, z) || unitAt(x, z) || iceAt(x, z)) continue;
+    const d = Math.min(...ps.map(q => dist(p, q)));
+    if (d < 3 || d > 5 || !ps.some(q => hasLOS(S.map, q, p))) continue;
+    c.push(p);
+  }
+  if (!c.length) return;
+  const p = c[ri(0, c.length - 1)];
+  A.mark = p;
+  const m = new THREE.Mesh(new THREE.RingGeometry(0.32, 0.46, 24), new THREE.MeshBasicMaterial({ color: 0xff3030, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false }));
+  m.rotation.x = -Math.PI / 2;
+  m.position.set(p.x, 0.05, p.z);
+  unitGroup.add(m);
+  A.mesh = m;
+  UI.log(`⚠ 空投增援：下次敵方主動權開始時，使魔會落在 (${p.x},${p.z})（紅圈）`, 'warn');
+}
+async function airdropLand() {
+  const A = S.airdrop;
+  if (!A || !A.mark) return;
+  const p = A.mark;
+  A.mark = null;
+  if (A.mesh) { unitGroup.remove(A.mesh); A.mesh.geometry.dispose(); A.mesh = null; }
+  const cells = [...(unitAt(p.x, p.z) ? [] : [p]), ...freeAround(p, RULES.AIRDROP_SIZE + 1)];
+  const got = [];
+  if (S.lvl >= 10 && cells.length) { const c = cells.shift(); got.push(spawnEnemy('brawler', c.x, c.z, S.map.zoneAt(c.x, c.z), true)); }
+  for (const c of cells.slice(0, RULES.AIRDROP_SIZE)) got.push(spawnEnemy('imp', c.x, c.z, S.map.zoneAt(c.x, c.z), true));
+  if (!got.length) return;
+  UI.banner('空投增援落地！', 'enemy');
+  UI.log(`空投增援：${got.map(e => e.name).join('、')} 落在 (${p.x},${p.z}) 附近`, 'warn');
+  focusOn(p.x, p.z);
+  updateVisibility();
+  refresh();
+  await wait(0.5);
+}
+
 // 敵方交出主動權時：咬著的使魔每隻丟一顆骰，任何一顆中＝受傷 1 次，然後全部掙脫
 async function biteCheck() {
   for (const p of players()) {
@@ -3223,8 +3375,8 @@ async function impulses(acted, passed = false) {
     if (S.gameOver) return;
     if (S.grab) { S.grab = false; UI.banner('心線：敵方主動權被打斷', 'player'); return true; }
     if (!e.alive || acted.has(e) || e.suppressed) continue;
-    if (e.familiar || e.biteCluster) continue; // 使魔另外群飛
-    if (e.pinned && (e.impulse === 'charge' || e.impulse === 'flee')) continue; // 受阻不能移動
+    if (e.familiar || e.biteCluster || e.nest) continue; // 使魔另外群飛；巢穴自己孵
+    if (e.pinned && (e.impulse === 'charge' || e.impulse === 'flee' || e.impulse === 'rush')) continue; // 受阻不能移動
     if (!e.alerted) { await patrol(e); }
     else if (e.impulse === 'shoot') {
       const t = bossCapped(e) ? null : visibleTargets(e).find(o => bossMayShoot(e, o.unit));
@@ -3242,7 +3394,16 @@ async function impulses(acted, passed = false) {
       const best = opts.reduce((a, b) => near(b) < near(a) ? b : a);
       if (near(best) >= near(e)) continue;
       impulseNote(e, '衝鋒');
-      await performMove(e, best);
+      const moved = await performMove(e, best);
+      // 狂徒：衝完在射程內就開一槍
+      if (moved && e.chargeShoot && e.alive && !e.firedOut) {
+        const t = visibleTargets(e).find(o => o.unit.team === 'player');
+        if (t) await shoot(e, t.unit);
+      }
+    } else if (e.impulse === 'rush') { // 打手：衝動也是衝鋒
+      if (!rushPlan(e)) continue;
+      impulseNote(e, '衝鋒');
+      await rush(e);
     } else if (e.impulse === 'curse') {
       const ps = players().filter(p => hasLOS(S.map, e, p));
       if (!ps.length) continue;
@@ -3575,7 +3736,7 @@ boot();
 requestAnimationFrame(frame);
 window.__game = { S, actions, camera, THREE, scene, zoneMesh, Camp, // 除錯用
   useItem,
-  dbg: { pickTile, strike, melee, dash, giveInitiative, actChance, spawnEnemy, segFloor, playerMove, moveOptions, quietSees, enemies, players, weapon, step: updateTweens, magicOptions, execMagic, pushInfo, execPush,
+  dbg: { pickTile, strike, melee, dash, giveInitiative, rush, rushStep, pathDistToGirls, actChance, spawnEnemy, segFloor, playerMove, moveOptions, quietSees, enemies, players, weapon, step: updateTweens, magicOptions, execMagic, pushInfo, execPush,
     startMission, enterHQ, transform, spawnWave, bossPhase, performMove, die, aiChoose, lockAfterAttack, enemyInitiative, impulses, reviveDolls } };
 // 純文字介面（給代理測試用）：window.TXT
 TextUI.init({ S, actions, Camp, key, coverSides, players, enemies, weapon, visibleTargets, moveOptions, playerMove, selectUnit,
