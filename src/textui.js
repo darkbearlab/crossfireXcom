@@ -342,6 +342,7 @@ async function run(line) {
         break;
       }
       case 'shoot': {
+        if (S.gameOver) return '戰鬥已經結束了';
         const u = girlArg(); const e = needAct(u); if (e) return e;
         if (u !== S.selected) G.selectUnit(u);
         const t = findEnemy(S, args[0]);

@@ -622,7 +622,8 @@ function startMission() {
     gen.fog = S.buffs.includes('perfume') ? pickFog(gen) : [];
     // 桃樂絲的「提線」：每張地圖至少 1 具人偶
     if (S.buffs.includes('puppet') && !gen.enemies.some(p => p.type === 'doll')) {
-      const c = gen.enemies.filter(p => p.type === 'gunman' || p.type === 'zealot');
+      const pref = gen.enemies.filter(p => p.type === 'gunman' || p.type === 'zealot');
+      const c = pref.length ? pref : gen.enemies.filter(p => !ENEMY_TYPES[p.type].boss && !['officer', 'scarecrow', 'crows'].includes(p.type));
       if (c.length) c[ri(0, c.length - 1)].type = 'doll';
     }
     gen.theme = THEMES[ri(0, THEMES.length - 1)];
@@ -1535,6 +1536,7 @@ function setSuppressedPose(u, on) {
 }
 
 async function die(u) {
+  if (!u.alive) return; // 已經倒下（同一批指令的後續射擊）
   if (u.appearance) { // 現身的成員：撤退（擊退 1 次），不算打倒
     u.alive = false;
     u.fled = true;
