@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>方塊模型試作</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #1b1d24; overflow: hidden; font: 13px sans-serif; color: #ccd; }
+    #tip { position: fixed; left: 8px; top: 6px; right: 8px; pointer-events: none; }
+    #tip b { color: #8fd3ff; }
+    #ref { position: fixed; right: 8px; bottom: 8px; width: min(46vw, 420px); border: 1px solid #3a5a78; border-radius: 6px; background: #0008; }
+    #ref img { width: 100%; display: block; border-radius: 6px; }
+    #btns { position: fixed; left: 8px; bottom: 8px; display: flex; gap: 6px; flex-wrap: wrap; }
+    #btns button { padding: 6px 12px; background: #1d3448; color: #dfefff; border: 1px solid #4fd6ff88; border-radius: 5px; }
+  </style>
+  <script type="importmap">
+  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+                 "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+  </script>
+</head>
+<body>
+<div id="tip">方塊模型試作：每個角色三個並排：<b>現在的模型</b>｜<b>手排方塊（32 格高）</b>｜<b>自動切出來的方塊（56 格高）</b>（拖曳旋轉、滾輪縮放）</div>
+<div id="btns"><button id="b-spin">轉動 開</button><button id="b-board">放到地圖上</button></div>
+<div id="ref"><img id="ref-img" src="art/pixel/akane.png" alt="參考像素圖"></div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { GIRLS } from './src/girls.js';
+import { makeUnitMesh } from './src/units.js';
+import { loadVoxelMesh } from './src/voxel.js';
+import { handVoxelMesh } from './src/voxel-models.js';
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x2a2d36);
+const cam = new THREE.PerspectiveCamera(32, innerWidth / innerHeight, 0.1, 100);
+cam.position.set(0, 1.5, 7.4);
+scene.add(new THREE.HemisphereLight(0xdde6ff, 0x3a3040, 1.4));
+const sun = new THREE.DirectionalLight(0xfff0dd, 2.2);
+sun.position.set(3, 6, 4); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -5, right: 5, top: 5, bottom: -5 });
+scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), new THREE.MeshStandardMaterial({ color: 0x3a3f4a }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+// 地圖格線，看在戰場上的比例
+const grid = new THREE.GridHelper(12, 12, 0x556070, 0x404855); grid.position.y = 0.002; scene.add(grid);
+const controls = new OrbitControls(cam, renderer.domElement);
+controls.target.set(0, 0.7, 0);
+
+const shadowAll = o => o.traverse(c => { if (c.isMesh) { c.castShadow = true; } });
+const turn = [];
+const picks = ['akane', 'hikari'];
+for (let i = 0; i < picks.length; i++) {
+  const d = GIRLS.find(g => g.id === picks[i]);
+  const old = makeUnitMesh('player', 'girl', d.color, d.weapons[0], 1, { hair: d.hair, girl: d.id });
+  const x0 = (i - 0.5) * 3.8;
+  old.position.set(x0 - 1.1, 0, 0); shadowAll(old); scene.add(old);
+  const h = new THREE.Box3().setFromObject(old).getSize(new THREE.Vector3()).y;
+  const hand = handVoxelMesh(d.id, h * 0.95);
+  hand.position.set(x0, 0, 0); shadowAll(hand); scene.add(hand);
+  const vox = await loadVoxelMesh(`assets/voxels/${d.id}.json`, h * 1.02);
+  vox.position.set(x0 + 1.1, 0, 0); shadowAll(vox); scene.add(vox);
+  turn.push(old, hand, vox);
+  const tag = document.createElement('div');
+  tag.textContent = d.name;
+  Object.assign(tag.style, { position: 'fixed', color: '#fff', font: 'bold 15px sans-serif', textShadow: '0 1px 3px #000' });
+  tag.dataset.x = x0; document.body.appendChild(tag); tag.className = 'tag';
+}
+// ?angle=0.6：固定轉一個角度（截圖用）；?board：一開始就用地圖視角
+const qs = new URLSearchParams(location.search);
+let spin = !qs.has('angle'), board = false;
+if (qs.has('angle')) for (const m of turn) m.rotation.y = +qs.get('angle');
+document.getElementById('b-spin').onclick = e => { spin = !spin; e.target.textContent = '轉動 ' + (spin ? '開' : '關'); };
+document.getElementById('b-board').onclick = e => {
+  board = !board;
+  e.target.textContent = board ? '近看' : '放到地圖上';
+  cam.position.set(board ? 6 : 0, board ? 7 : 1.5, board ? 8 : 7.4);
+  controls.target.set(0, board ? 0.3 : 0.7, 0);
+};
+const refImg = document.getElementById('ref-img');
+let refI = 0;
+setInterval(() => { refI = (refI + 1) % picks.length; refImg.src = `art/pixel/${picks[refI]}.png`; }, 4000);
+const v = new THREE.Vector3();
+renderer.setAnimationLoop(t => {
+  if (spin) for (const m of turn) m.rotation.y = Math.sin(t / 1600) * 1.4;
+  controls.update();
+  renderer.render(scene, cam);
+  for (const tag of document.querySelectorAll('.tag')) {
+    v.set(+tag.dataset.x, 1.75, 0).project(cam);
+    tag.style.left = ((v.x + 1) / 2 * innerWidth - 20) + 'px';
+    tag.style.top = ((1 - v.y) / 2 * innerHeight) + 'px';
+  }
+});
+if (qs.has('board')) document.getElementById('b-board').click();
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); cam.aspect = innerWidth / innerHeight; cam.updateProjectionMatrix(); });
+</script>
+</body>
+</html>
