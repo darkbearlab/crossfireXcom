@@ -117,7 +117,7 @@ function girlLine(S, u) {
   const w = u.weapons[u.wi];
   const hearts = Math.ceil(Math.max(0, u.hp) / u.heartHp), maxH = Math.ceil(u.maxHp / u.heartHp);
   const mi = G.magicInfo(u);
-  const flags = [u.crowLocked && '被烏鴉纏住（隊友朝她開槍打掉烏鴉，或打中稻草人）', u.crowAimed && `⚠ ${u.crowAimed.name}的烏鴉瞄準她，敵方一行動就會放出${u.crowAimedLast ? '（只剩她能行動，被纏住就輸）' : ''}`, u.locked && '被人偶纏住（這次主動權不能再行動）', u.firedOut && '這次主動權不能再開槍', u.transformed && '變身中', u.raised && '冰上', u.dodge && '閃避×' + u.dodge,
+  const flags = [u.bitten && u.bitten.alive && `被 ${u.bitten.hp} 隻使魔咬住（敵方交出主動權時可能咬傷；隊友朝她開槍打掉 targets 裡的使魔團）`, u.crowLocked && '被烏鴉纏住（隊友朝她開槍打掉烏鴉，或打中稻草人）', u.crowAimed && `⚠ ${u.crowAimed.name}的烏鴉瞄準她，敵方一行動就會放出${u.crowAimedLast ? '（只剩她能行動，被纏住就輸）' : ''}`, u.locked && '被人偶纏住（這次主動權不能再行動）', u.firedOut && '這次主動權不能再開槍', u.transformed && '變身中', u.raised && '冰上', u.dodge && '閃避×' + u.dodge,
     S.selected === u && '◀ 選取中'].filter(Boolean);
   const ri = G.reloadInfo(u);
   return `${gKey(u)} ${u.name} (${u.x},${u.z})  心 ${hearts}/${maxH}（${u.hp}/${u.maxHp}）${u.lineUsed ? ' 心線：已用或沒有' : ` 心線：掉到 ${u.lineHp / u.heartHp} 心時`}  累積 ${pips(u)} ${status(u)}` +

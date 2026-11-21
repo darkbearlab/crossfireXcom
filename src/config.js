@@ -73,6 +73,10 @@ export const RULES = {
   RUBBLE_CHANCE: 40,      // 楓的榴彈打在掩體上時，把掩體炸掉一級的機率（%）
   WAVE_SIZE: 3,           // 決戰每波增援人數
   CROW_MAX: 3,            // 稻草人的烏鴉數（全部恢復才會再放出）
+  IMP_RATIO: 2,           // 一般敵人裡，使魔：人類 = IMP_RATIO : 1
+  IMP_MOVE: 6,            // 使魔每次群飛最多飛幾格（可以飛越半掩體）
+  SCOUT_CHANCE: 25,       // 偵查：少女行動後，看得到她的使魔每隻搶主動權的機率
+  BITE_CHANCE: 25,        // 咬傷：敵方主動權結束時，咬著的使魔每隻的命中率；任何一顆中＝受傷 1 次，然後全部掙脫
   CROW_SPEED: 3,          // 烏鴉每次衝動往前飛幾格（再 1 格內就纏上）
   CROW_REGEN: 4,          // 我方每成功行動幾次，稻草人身上回來 1 隻烏鴉
 
@@ -164,6 +168,13 @@ export const ENEMY_TYPES = {
   scarecrow: { name: '稻草人', q: '精銳', maxHp: 4, dice: 1, color: 0xc8a860, scale: 1.1,
                noGun: true, canReact: false, unflinching: true, immobile: true, bigTarget: 15, impulse: 'launch',
                desc: '不會動、不開槍、不會受阻／壓制，每中一顆骰受 1 傷（主動攻擊它每顆骰 +15%）。不做啟動檢定（沒有感情，不會亂了陣腳）。烏鴉 3 隻都在身上時，敵方一行動就會放出去纏住一名少女（會先標出目標）。<b>打中它至少一顆，烏鴉就傳送回它身上</b>' },
+  // 使魔：魔女召喚的小型飛行球體。命中即倒、不吃受阻壓制、沒有掩體；只會咬人和偵查（搶主動權）。不算清場
+  imp:       { name: '使魔', q: '使魔', maxHp: 1, dice: 0, color: 0x6a3fb0,
+               noGun: true, canReact: false, unflinching: true, summon: true, familiar: true, wings: true,
+               desc: '命中即倒、沒有掩體。敵方主動權時成群飛向少女（可以飛越半掩體），咬住她；咬著的使魔在敵方交出主動權時咬傷她，咬傷後全部掙脫落在她身邊。<b>偵查</b>：少女在牠看得到的地方行動後，每隻 25% 搶走主動權。隊友朝被咬的人開槍，每中一顆打掉一隻。不算進清場' },
+  bites:     { name: '使魔', q: '咬住', maxHp: 1, dice: 0, color: 0x6a3fb0,
+               noGun: true, canReact: false, unflinching: true, immobile: true, flying: true, summon: true, biteCluster: true,
+               desc: '咬在少女身上的使魔。敵方交出主動權時，每隻 25% 咬傷她（任何一隻中就受傷 1 次，然後全部掙脫）。隊友朝她開槍，每中一顆打掉一隻，不會傷到她' },
   crows:     { name: '烏鴉', maxHp: 3, dice: 1, color: 0x1a1a22,
                noGun: true, canReact: false, unflinching: true, immobile: true, flying: true, summon: true, impulse: 'fly',
                desc: '衝動：往目標飛 3 格，碰到就纏住她。在空中沒有掩體，每中一顆打掉一隻；全部打掉後稻草人要慢慢恢復' },
@@ -246,8 +257,11 @@ export const enemyCount = level => Math.min(10 + 3 * mapScale(level), 3 + Math.c
 
 // 每張地圖的敵人編組（同一組會擺在同一個責任區）
 export function enemyGroups(level, bonus = 0) {
-  let n = enemyCount(level) + bonus;
-  const groups = [];
+  const total = enemyCount(level) + bonus;
+  let n = Math.ceil(total / (1 + RULES.IMP_RATIO)); // 人類
+  const groups = [], imps = [];
+  // 使魔：2～3 隻一群（排在人類編組後面，輪流分到各責任區）
+  for (let f = total - n; f > 0;) { const k = f >= 5 || f === 3 ? 3 : Math.min(2, f); imps.push(Array(k).fill('imp')); f -= k; }
   if (level >= 2 && n >= 5 && Math.random() < 0.6) { groups.push(['officer', 'conscript', 'conscript']); n -= 3; }
   // 大地圖：多幾個成形的編組（不改單兵數值）
   if (level >= MAPGEN.BIG[0]) {
@@ -270,5 +284,5 @@ export function enemyGroups(level, bonus = 0) {
     if (n >= 2 && Math.random() < 0.3) { groups.push([pick(), pick()]); n -= 2; }
     else { groups.push([pick()]); n--; }
   }
-  return groups;
+  return groups.concat(imps);
 }

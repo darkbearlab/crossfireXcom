@@ -1,5 +1,6 @@
 // HUD / DOM 介面。
 import * as Rec from './stats.js';
+import { RULES } from './config.js';
 const $ = id => document.getElementById(id);
 let H = {};
 
@@ -77,6 +78,7 @@ export function updateHUD(S) {
     else if (u.alive && u.pinned) st.push('<span class="sup">受阻</span>');
     else if (u.alive && u.steady) st.push('<span>穩住：這次主動權不會被壓制</span>');
     if (u.alive && u.locked) st.push('<span class="sup">被人偶纏住：這次主動權不能再行動</span>');
+    if (u.alive && u.bitten && u.bitten.alive) st.push(`<span class="sup">被 ${u.bitten.hp} 隻使魔咬住：敵方交出主動權時每隻 ${RULES.BITE_CHANCE}% 咬傷她，隊友朝她開槍可以打掉</span>`);
     if (u.alive && u.crowLocked) st.push('<span class="sup">被烏鴉纏住：隊友朝她開槍打掉烏鴉，或打中稻草人</span>');
     if (u.alive && u.crowAimed) st.push(`<span class="sup">⚠ ${u.crowAimed.name}的烏鴉瞄準她：敵方一行動就會放出${u.crowAimedLast ? '（只剩她能行動，被纏住就輸）' : ''}</span>`);
     if (u.alive && u.firedOut) st.push('<span class="dim">不能再開槍</span>');
@@ -212,7 +214,7 @@ export function updateLabel(d, u) {
   const icons = (u.team === 'enemy' && !u.alerted ? '<b class="calm">?</b> ' : '') + (u.marked ? '<b class="execi" title="被千夏標記：一直看得到，打她每顆骰加成">◎</b> ' : '') +
     (u.steady && !u.suppressed ? '<b class="calm" title="穩住：這次主動權不會被壓制">◆</b> ' : '') +
     (u.execBuff && !u.spareUsed && !u.firedOut ? '<b class="execi" title="不留活口">⚔</b> ' : '') +
-    (u.suppressed ? '<b class="supi">▼</b> ' : u.pinned ? '<b class="supi">▽</b> ' : '') + (u.firedOut ? '<b class="outi">✕</b> ' : '') + (u.locked ? '<b class="outi" title="被人偶纏住">⛓</b> ' : '') + (u.crowLocked ? '<b class="outi" title="被烏鴉纏住">🐦</b> ' : '') + (u.crowAimed ? '<b class="outi" title="稻草人的烏鴉瞄準她：敵方一行動就會放出">⚠🐦</b> ' : '') +
+    (u.suppressed ? '<b class="supi">▼</b> ' : u.pinned ? '<b class="supi">▽</b> ' : '') + (u.firedOut ? '<b class="outi">✕</b> ' : '') + (u.locked ? '<b class="outi" title="被人偶纏住">⛓</b> ' : '') + (u.crowLocked ? '<b class="outi" title="被烏鴉纏住">🐦</b> ' : '') + (u.bitten && u.bitten.alive ? `<b class="outi" title="被使魔咬住">🦇${u.bitten.hp}</b> ` : '') + (u.biteCluster ? `<b class="stri" title="咬著的使魔數">×${u.hp}</b> ` : '') + (u.crowAimed ? '<b class="outi" title="稻草人的烏鴉瞄準她：敵方一行動就會放出">⚠🐦</b> ' : '') +
     (u.shotCap ? `<b class="stri" title="這次敵方主動權已開槍／最多開槍（同一人最多 ${2} 槍）">🔫${u.shotsUsed || 0}/${u.shotCap}</b> ` : '') + (u.kind === 'scarecrow' ? `<b class="stri" title="身上的烏鴉">🐦${u.crows}/${u.crowMax}${u.flock ? ' 飛出中' : u.crowAim ? `→${u.crowAim.name}` : u.crows < u.crowMax ? ` 恢復${u.regen}/4` : ''}</b> ` : '') +
     (u.stress ? `<b class="stri">${'•'.repeat(Math.min(2, u.stress))}</b> ` : '');
   const bar = u.heartHp ? heartsHtml(u)

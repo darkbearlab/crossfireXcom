@@ -14,7 +14,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ITEMS, T, RULES, THEMES, ENEMY_TYPES, WEAPONS } from './config.js';
 import { generateMap, ri, GameMap } from './map.js';
 import { hasLOS, quietLOS, coverSides, coverAt, shotOdds, key, dist, clearMove, lineCells, vaultTargets, ORTH } from './grid.js';
-import { makeUnitMesh, makeScarecrowMesh, makeCrowMesh, addHalo, heartShape } from './units.js';
+import { makeUnitMesh, makeScarecrowMesh, makeCrowMesh, makeImpMesh, makeBiteMesh, addHalo, heartShape } from './units.js';
 import * as UI from './ui.js';
 import * as Camp from './campaign.js';
 import * as HQ from './hq.js';
@@ -140,7 +140,7 @@ const unitAt = (x, z) => S.units.find(u => u.alive && !u.flying && u.x === x && 
 const occupied = (x, z, except) => S.units.some(u => u.alive && !u.flying && u !== except && u.x === x && u.z === z);
 const canAct = u => !!u && u.alive && u.team === 'player' && !u.locked && !u.crowLocked && S.side === 'player' && !S.busy && !S.gameOver && S.mode === 'move';
 const canMove = u => canAct(u) && !u.suppressed && !u.pinned;
-const refresh = () => { markCrowAims(); UI.updateHUD(S); };
+const refresh = () => { syncBites(); markCrowAims(); UI.updateHUD(S); };
 const weapon = u => u.team === 'player' ? u.weapons[u.wi] : u.gun;
 const lv = (u, t) => (t === 'gun' ? u.gunLv : u.magicLv) || 0;
 // 射手的條件骰數加減（成長樹、壓制加重）
@@ -164,7 +164,7 @@ const scopeBonus = s => s.scope && s.movedInit !== S.initNo && SCOPED.includes(w
 const markDie = (s, t) => s.team === 'player' && t.marked ? RULES.MARK_BONUS[t.markLv >= 4 ? 1 : 0] : 0;
 const markDice = (s, t) => s.girl === 'chinatsu' && lv(s, 'gun') >= 4 && t.marked ? 1 : 0;
 const oddsVs = (s, t, opts = {}) => shotOdds(S.map, s, s, t, {
-  suppressed: !!t.suppressed, breach: breach(s), weapon: weapon(s), diceBonus: diceBonus(s) + markDice(s, t), dieBonus: (opts.reaction ? 0 : (t.bigTarget || 0) + scopeBonus(s)) + markDie(s, t), air: !!t.flying, raised: !!t.raised, hardy: !!t.hardy, ...opts });
+  suppressed: !!t.suppressed, breach: breach(s), weapon: weapon(s), diceBonus: diceBonus(s) + markDice(s, t), dieBonus: (opts.reaction ? 0 : (t.bigTarget || 0) + scopeBonus(s)) + markDie(s, t), air: !!t.flying || !!t.wings, raised: !!t.raised, hardy: !!t.hardy, ...opts });
 const iceAt = (x, z) => S.ice.find(i => i.x === x && i.z === z);
 const isExit = p => S.mission && S.mission.exits.some(e => e.x === p.x && e.z === p.z);
 const adjObjective = u => {
@@ -396,6 +396,8 @@ function makeFull(th, x, z) {
 function meshFor(u) {
   if (u.kind === 'scarecrow') return makeScarecrowMesh(u.color, u.scale || 1);
   if (u.kind === 'crows') return makeCrowMesh(u.maxHp);
+  if (u.kind === 'imp') return makeImpMesh();
+  if (u.kind === 'bites') return makeBiteMesh();
   const m = makeUnitMesh(u.team, u.kind, u.color, u.weapons ? u.weapons[u.wi].id : 'ar', u.scale || 1,
     { hair: u.hair, girl: u.girl, boss: !!u.boss, mother: u.kind === 'b_mother' });
   if (u.transformed) addHalo(m);
@@ -781,7 +783,7 @@ function endMission(win, why) {
 // ================= 主動權 =================
 async function giveInitiative(side) {
   if (S.gameOver) return;
-  for (const u of S.units) { u.firedOut = false; u.spareUsed = false; u.shield = false; u.locked = false; u.shotsUsed = 0; u.shotAt = null; u.steady = false; }
+  for (const u of S.units) { u.firedOut = false; u.spareUsed = false; u.shield = false; u.locked = false; u.shotsUsed = 0; u.shotAt = null; u.steady = false; u.scouted = false; }
   S.grab = false;       // 心線：要把主動權搶回我方
   S.forceEnemy = false; // 頭目突破階段：主動權要交給敵方
   S.initDeaths = 0;     // 這次主動權內倒下的敵人數（啟動檢定用）
@@ -810,6 +812,7 @@ async function giveInitiative(side) {
   const anyAlert = enemies().some(e => e.alerted);
   if (anyAlert) { UI.banner('敵方取得主動權', 'enemy'); await wait(0.8); }
   const failed = await enemyInitiative();
+  if (!S.gameOver) await biteCheck(); // 交出主動權：咬著的使魔咬傷判定
   if (S.gameOver || checkEnd()) return;
   await wait(0.3);
   giveInitiative('player');
@@ -854,6 +857,7 @@ async function resolvePlayerAction(ok, actor = null) {
     return;
   }
   crowTick();
+  if (await scoutCheck(actor || S.selected)) return; // 使魔偵查：搶走主動權（不算失敗）
   // 人偶／烏鴉：被纏住的少女不能行動；全員都被纏住就交出主動權（不算失敗）
   const free = players().filter(p => !p.locked && !p.crowLocked);
   if (!free.length) {
@@ -869,8 +873,9 @@ async function resolvePlayerAction(ok, actor = null) {
 // 我方永遠算警戒中：用完整視線看敵人。看到敵人不會驚動他。
 function updateVisibility() {
   const ps = players();
+  syncBites();
   for (const e of enemies()) {
-    const vis = !!e.marked || ps.some(p => sees(p, e)); // 被標記的敵人一直看得到
+    const vis = !!e.marked || e.biteCluster || ps.some(p => sees(p, e)); // 被標記的敵人一直看得到
     e.mesh.visible = vis;
     if (vis) e.spotted = true;
   }
@@ -1072,7 +1077,7 @@ async function performMove(u, dest) {
 // ================= 射擊 =================
 function visibleTargets(u) {
   return S.units
-    .filter(e => e.alive && e.team !== u.team && (u.team === 'player' ? sees(u, e) : hasLOS(S.map, u, e)) && (!u.range || dist(u, e) <= u.range + 0.5)) // 人偶：射程短
+    .filter(e => e.alive && e.team !== u.team && !(e.biteCluster && e.attached === u) && (u.team === 'player' ? sees(u, e) : hasLOS(S.map, u, e)) && (!u.range || dist(u, e) <= u.range + 0.5)) // 人偶：射程短
     .map(e => ({ unit: e, odds: oddsVs(u, e) }))
     // 仇恨：變身後的光是敵人的優先目標
     .sort((a, b) => (b.odds.hit + (b.unit.transformed ? 25 : 0)) - (a.odds.hit + (a.unit.transformed ? 25 : 0)));
@@ -1172,12 +1177,13 @@ function segFloor(u) {
 
 // 三階：命中累積。stress 到 PIN_AT 受阻、到 SUP_AT 壓制，之後每下受傷。
 // 少女受傷一次扣一顆心；敵人一次扣 1 傷。一次攻擊最多扣到 segFloor（愛心一顆／頭目一段），溢出作廢。
-async function strike(t, hits, src = null) {
+// direct：不經過受阻、壓制，直接受傷（使魔咬傷）
+async function strike(t, hits, src = null, direct = false) {
   if (!t.alive || hits <= 0) return;
   if (t.shield) { floatText(t, '階段護盾', 'miss'); UI.log(`${t.name} 剛突破階段，這個行動內打不動`, 'dim'); return; }
   const floor = segFloor(t);
   let wounds = 0;
-  if (t.unflinching) wounds = hits; // 人偶：不經過三階，每中一顆骰受 1 傷
+  if (t.unflinching || direct) wounds = hits; // 人偶：不經過三階，每中一顆骰受 1 傷
   else for (let i = 0; i < hits; i++) {
     if (t.stress < RULES.SUP_AT) t.stress++;
     else wounds++;
@@ -1554,6 +1560,26 @@ async function die(u) {
     refresh();
     return;
   }
+  if (u.biteCluster) { // 咬著少女的使魔全被打掉
+    const p = u.attached;
+    u.alive = false;
+    if (u.label) { u.label.remove(); u.label = null; }
+    unitGroup.remove(u.mesh);
+    if (p) { p.bitten = null; if (p.label) UI.updateLabel(p.label, p); }
+    UI.log(`咬著${p ? ' ' + p.name + ' ' : ''}的使魔全被打掉了`, 'good');
+    refresh();
+    return;
+  }
+  if (u.familiar) { // 使魔：命中即倒，消散
+    u.alive = false;
+    if (u.label) { u.label.remove(); u.label = null; }
+    UI.log(`${u.name} 消散了`, 'good');
+    const m = u.mesh;
+    await tween(0.3, k => { m.scale.setScalar(1 - k * 0.9); m.position.y = -k * 0.3; });
+    unitGroup.remove(m);
+    refresh();
+    return;
+  }
   if (u.summon) { // 烏鴉被打散
     const o = u.owner;
     removeFlock(u);
@@ -1569,6 +1595,7 @@ async function die(u) {
     if (p.label) UI.updateLabel(p.label, p);
   }
   if (u.crowLocked) { const f = u.crowLocked, o = f.owner; if (o) o.crows = f.hp; removeFlock(f); }
+  if (u.bitten) releaseBites(u, `${u.name} 倒下，`);
   if (u.kind === 'doll' && S.buffs.includes('puppet') && !u.revived) { u.revivePending = true; UI.log('（桃樂絲的線還連在人偶身上……）', 'warn'); }
   u.alive = false;
   u.hp = 0;
@@ -1779,7 +1806,9 @@ function updateHover() {
   const cr = S.crates.find(c => c.x === t.x && c.z === t.z);
   if (cr) extra.push(cr.type === 'ammo' ? '彈藥箱' : '醫療包');
   const head = (mv.vault ? '翻越' : `移動 ${dist(u, mv).toFixed(1)} 格`) + (extra.length ? `（${extra.join('・')}）` : '') + confirmHint();
-  showTip(`<b>${head}</b>${spotRow(spot)}${riskRows(u, plan)}`);
+  const sc = scouters(t).filter(e => e.mesh.visible).length; // 只算看得到的使魔，不洩漏迷霧
+  const scRow = sc ? `<br><span class="warn">偵查：${sc} 隻使魔看得到這裡，${scoutOdds(sc)}% 搶走主動權</span>` : '';
+  showTip(`<b>${head}</b>${spotRow(spot)}${riskRows(u, plan)}${scRow}`);
 }
 
 function magicHover(u, t) {
@@ -3006,8 +3035,184 @@ async function enemyInitiative() {
   // 僵局：敵方連續 2 次一個行動都沒做就放棄 → 等得不耐煩，2 名增援從少女看不到的地方包抄（每張地圖最多 3 次）
   S.idlePasses = passed && !acted.size ? (S.idlePasses || 0) + 1 : 0;
   if (S.idlePasses >= 2 && (S.stallWaves || 0) < 3) { S.idlePasses = 0; S.stallWaves = (S.stallWaves || 0) + 1; await stallWave(); }
-  await impulses(acted, passed);
+  const grabbed = await impulses(acted, passed);
+  if (!grabbed && !S.gameOver) await familiarPhase(); // 使魔群飛：被攔下的不影響後面的
   return failed;
+}
+
+// ================= 使魔 =================
+// 飛行路線：飛得過半掩體，全掩體（含冰塊）擋住
+function flyClear(a, b) {
+  const dx = b.x - a.x, dz = b.z - a.z, steps = Math.ceil(Math.hypot(dx, dz) * 4);
+  for (let i = 1; i <= steps; i++) {
+    const x = Math.round(a.x + dx * i / steps), z = Math.round(a.z + dz * i / steps);
+    if (!S.map.inB(x, z) || S.map.get(x, z) === T.FULL) return false;
+  }
+  return true;
+}
+function flyOptions(e, range = RULES.IMP_MOVE) {
+  const out = [], r = Math.ceil(range);
+  for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+    const c = { x: e.x + dx, z: e.z + dz };
+    if ((!dx && !dz) || Math.hypot(dx, dz) > range + 0.01) continue;
+    if (!S.map.walkable(c.x, c.z) || occupied(c.x, c.z, e) || iceAt(c.x, c.z)) continue;
+    if (flyClear(e, c)) out.push(c);
+  }
+  return out;
+}
+// 飛過去：途中照樣吃反應射擊。回傳 false＝被打掉了
+async function flyMove(e, dest) {
+  const start = { x: e.x, z: e.z };
+  const cells = lineCells(e, dest);
+  const plan = planReactions(e, cells);
+  const len = dist(start, dest);
+  const fast = !e.mesh.visible;
+  e.mesh.rotation.y = Math.atan2(dest.x - start.x, dest.z - start.z);
+  let curT = 0;
+  const posAt = t => new THREE.Vector3(start.x + (dest.x - start.x) * t, 0, start.z + (dest.z - start.z) * t);
+  for (let i = 0; i < cells.length; i++) {
+    const c = cells[i];
+    const a = posAt(curT), b = posAt(c.t);
+    await tween(Math.max(0.02, (c.t - curT) * len * (fast ? 0.02 : 0.07)), k => e.mesh.position.lerpVectors(a, b, k));
+    curT = c.t;
+    if (S.map.walkable(c.x, c.z)) { e.x = c.x; e.z = c.z; } // 飛越半掩體上方時不算停在那裡
+    updateVisibility();
+    if (await reactAt(e, plan, i)) return false;
+    if (!e.alive) return false;
+  }
+  e.x = dest.x;
+  e.z = dest.z;
+  e.mesh.position.set(dest.x, 0, dest.z);
+  updateVisibility();
+  return e.alive;
+}
+async function impPatrol(e) {
+  if (Math.random() < 0.5) return;
+  const opts = flyOptions(e, 3).filter(c => S.map.zoneAt(c.x, c.z) === e.zone);
+  if (!opts.length) return;
+  await flyMove(e, opts[ri(0, opts.length - 1)]);
+  detect();
+}
+// 敵方主動權最後：使魔一起飛向少女，離得最遠的先飛（讓牠們盡量同時抵達）
+async function familiarPhase() {
+  const nearD = e => { const ps = players(); return ps.length ? Math.min(...ps.map(p => dist(e, p))) : 99; };
+  const fam = enemies().filter(e => e.familiar).sort((a, b) => nearD(b) - nearD(a));
+  let told = false;
+  for (const e of fam) {
+    if (S.gameOver) return;
+    if (!e.alive) continue;
+    if (!e.alerted) { await impPatrol(e); continue; }
+    const ps = players();
+    if (!ps.length) return;
+    const adj = ps.filter(p => dist(e, p) < 1.5).sort((a, b) => dist(e, a) - dist(e, b))[0];
+    if (adj) { bite(e, adj); continue; }
+    let best = null, bs = -Infinity;
+    for (const c of flyOptions(e)) {
+      const d = Math.min(...ps.map(p => dist(c, p)));
+      const s = d < 1.5 ? 100 - dist(e, c) * 0.1 : -d;
+      if (s > bs) { bs = s; best = c; }
+    }
+    if (!best || bs <= -nearD(e)) continue; // 沒有更近的地方可以飛
+    if (!told && e.mesh.visible) { told = true; UI.log('使魔成群飛過來了！', 'warn'); }
+    if (!(await flyMove(e, best))) continue;
+    const t = players().filter(p => dist(e, p) < 1.5).sort((a, b) => dist(e, a) - dist(e, b))[0];
+    if (t) bite(e, t);
+  }
+  refresh();
+}
+// 咬住：這隻使魔併進少女身上的使魔團
+function biteCluster(p, n) {
+  const c = spawnEnemy('bites', p.x, p.z, S.map.zoneAt(p.x, p.z), true);
+  c.attached = p;
+  c.hp = n;
+  c.maxHp = n;
+  p.bitten = c;
+  updateBirds(c);
+  if (c.label) UI.updateLabel(c.label, c);
+  return c;
+}
+function bite(e, p) {
+  e.alive = false;
+  e.absorbed = true;
+  if (e.label) { e.label.remove(); e.label = null; }
+  unitGroup.remove(e.mesh);
+  const c = p.bitten && p.bitten.alive ? p.bitten : null;
+  if (c) { c.hp++; c.maxHp = Math.max(c.maxHp, c.hp); updateBirds(c); if (c.label) UI.updateLabel(c.label, c); }
+  else biteCluster(p, 1);
+  floatText(p, '被使魔咬住！', 'dmg');
+  UI.log(`${p.name} 被使魔咬住了（${p.bitten.hp} 隻）：敵方交出主動權時可能咬傷她，隊友朝她開槍可以打掉`, 'bad');
+  if (p.label) UI.updateLabel(p.label, p);
+  syncBites();
+}
+function syncBites() {
+  if (!S.units) return;
+  for (const c of S.units) if (c.alive && c.biteCluster && c.attached) { c.x = c.attached.x; c.z = c.attached.z; }
+}
+// 掙脫：使魔落在她身邊的空格（由近到遠找），沒地方落的繼續咬著
+function releaseBites(p, why = '') {
+  const c = p.bitten;
+  p.bitten = null;
+  if (p.label) UI.updateLabel(p.label, p);
+  if (!c || !c.alive) return;
+  const n = c.hp;
+  c.alive = false;
+  if (c.label) { c.label.remove(); c.label = null; }
+  unitGroup.remove(c.mesh);
+  const spots = [];
+  for (let r = 1; r <= 3 && spots.length < n; r++) {
+    const ring = [];
+    for (let dz = -r; dz <= r; dz++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue;
+      const x = p.x + dx, z = p.z + dz;
+      if (S.map.walkable(x, z) && !unitAt(x, z) && !iceAt(x, z)) ring.push({ x, z, s: Math.random() });
+    }
+    ring.sort((a, b) => a.s - b.s);
+    spots.push(...ring.slice(0, n - spots.length));
+  }
+  const got = spots.map(s => spawnEnemy('imp', s.x, s.z, S.map.zoneAt(s.x, s.z), true));
+  if (got.length < n && p.alive) biteCluster(p, n - got.length);
+  UI.log(`${why}${got.length} 隻使魔掙脫，落在 ${p.name} 身邊${got.length < n ? `（${n - got.length} 隻沒地方落，還咬著）` : ''}`, 'warn');
+  updateVisibility();
+  refresh();
+}
+// 敵方交出主動權時：咬著的使魔每隻丟一顆骰，任何一顆中＝受傷 1 次，然後全部掙脫
+async function biteCheck() {
+  for (const p of players()) {
+    const c = p.bitten;
+    if (!c || !c.alive || S.gameOver) continue;
+    let hits = 0;
+    for (let i = 0; i < c.hp; i++) if (Math.random() * 100 < RULES.BITE_CHANCE) hits++;
+    if (!hits) { UI.log(`咬著 ${p.name} 的 ${c.hp} 隻使魔這次沒咬傷她`, 'dim'); continue; }
+    focusUnit(p);
+    floatText(p, '咬傷！', 'dmg');
+    UI.log(`使魔咬傷了 ${p.name}！（${c.hp} 隻裡 ${hits} 隻咬中）`, 'bad');
+    await strike(p, 1, null, true);
+    if (p.alive) releaseBites(p, '咬傷後，');
+    if (checkEnd()) return;
+  }
+  refresh();
+}
+// 偵查：看得到 at 這一格的使魔（咬著人的不算，每個主動權每隻一次）
+function scouters(at) {
+  return enemies().filter(e => e.familiar && !e.scouted && (e.alerted ? hasLOS(S.map, e, at) : quietSees(e, at)));
+}
+const scoutOdds = n => Math.round((1 - Math.pow(1 - RULES.SCOUT_CHANCE / 100, n)) * 100);
+// 少女的行動成功結算完：看得到她的使魔丟骰，中了就搶走主動權（不算失敗）
+async function scoutCheck(p) {
+  if (!p || !p.alive || p.team !== 'player' || S.gameOver) return false;
+  const es = scouters(p);
+  if (!es.length) return false;
+  let who = null;
+  for (const e of es) { e.scouted = true; if (!who && Math.random() * 100 < RULES.SCOUT_CHANCE) who = e; }
+  if (!who) { UI.log(`${es.length} 隻使魔盯著 ${p.name}，這次沒被偵查到`, 'dim'); return false; }
+  who.mesh.visible = true;
+  floatText(who, '偵查！', 'crit');
+  UI.banner('被使魔偵查到了！', 'enemy');
+  UI.log(`${who.name} 偵查到 ${p.name} 的行動：主動權被敵方搶走（不算行動失敗）`, 'warn');
+  alertEnemies(enemies().filter(e => e.zone === who.zone), 'scout');
+  await wait(0.5);
+  giveInitiative('enemy');
+  return true;
 }
 
 const edgeDist = p => Math.min(p.x, p.z, S.map.w - 1 - p.x, S.map.h - 1 - p.z);
@@ -3016,8 +3221,9 @@ async function impulses(acted, passed = false) {
   const officerAlive = enemies().some(e => e.officer);
   for (const e of enemies()) {
     if (S.gameOver) return;
-    if (S.grab) { S.grab = false; UI.banner('心線：敵方主動權被打斷', 'player'); return; }
+    if (S.grab) { S.grab = false; UI.banner('心線：敵方主動權被打斷', 'player'); return true; }
     if (!e.alive || acted.has(e) || e.suppressed) continue;
+    if (e.familiar || e.biteCluster) continue; // 使魔另外群飛
     if (e.pinned && (e.impulse === 'charge' || e.impulse === 'flee')) continue; // 受阻不能移動
     if (!e.alerted) { await patrol(e); }
     else if (e.impulse === 'shoot') {
@@ -3347,6 +3553,12 @@ function frame(now) {
     S.objMesh.userData.screen.emissive.setHex(on ? 0xff2020 : 0x330000);
   }
 
+  if (S.units) for (const u of S.units) {
+    const imps = u.alive && u.mesh.userData.imps;
+    if (!imps) continue;
+    if (u.biteCluster && u.attached) { u.mesh.position.x = u.attached.mesh.position.x; u.mesh.position.z = u.attached.mesh.position.z; u.mesh.rotation.y += dt * 2.5; }
+    imps.forEach((m, i) => { const f = Math.sin(time * 22 + i * 1.7) * 0.5; m.userData.wings[0].rotation.z = 0.45 + f; m.userData.wings[1].rotation.z = -0.45 - f; });
+  }
   updateLabels(dt);
   renderer.render(scene, camera);
   requestAnimationFrame(frame);

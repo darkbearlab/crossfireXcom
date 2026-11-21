@@ -431,6 +431,52 @@ export function makeCrowMesh(n = 3) {
   return g;
 }
 
+// 使魔：紫色小球、一隻發光的眼睛、一對蝙蝠翅膀，飄在半空
+function makeImp() {
+  const g = new THREE.Group();
+  const add = adder(g);
+  const body = M(0xa060ff, { emissive: 0x3a1070, emissiveIntensity: 0.6 }), wing = M(0x3a2058), eye = GLOW(0xffe070, 0xffb020, 2.2);
+  add(ball(0.22, 1), body, 0, 0, 0);
+  add(ball(0.075, 0), eye, 0, 0.04, 0.19);
+  add(cone(0.07, 0.14, 4), body, 0, -0.24, 0, Math.PI, 0, 0); // 小尾巴
+  const wl = add(box(0.36, 0.025, 0.2), wing, -0.28, 0.07, -0.02, 0, 0, 0.45);
+  const wr = add(box(0.36, 0.025, 0.2), wing, 0.28, 0.07, -0.02, 0, 0, -0.45);
+  g.userData.wings = [wl, wr];
+  g.userData.bodyMat = body;
+  return g;
+}
+export function makeImpMesh() {
+  const g = new THREE.Group();
+  const imp = makeImp();
+  imp.position.y = 0.55;
+  g.add(imp);
+  g.userData.mats = [imp.userData.bodyMat];
+  g.userData.baseScale = 1;
+  g.userData.muzzle = new THREE.Vector3(0, 0.55, 0.15);
+  g.userData.imps = [imp];
+  return g;
+}
+// 咬在少女身上的使魔團：數量跟著剩下的隻數（userData.birds，沿用烏鴉的顯示）
+export function makeBiteMesh(n = 8) {
+  const g = new THREE.Group();
+  const birds = [];
+  for (let i = 0; i < n; i++) {
+    const b = makeImp();
+    const a = i / n * Math.PI * 2 * 1.6;
+    b.position.set(Math.cos(a) * 0.3, 0.55 + 0.11 * (i % 4), Math.sin(a) * 0.3);
+    b.scale.setScalar(0.75);
+    b.rotation.y = -a;
+    g.add(b);
+    birds.push(b);
+  }
+  g.userData.birds = birds;
+  g.userData.imps = birds;
+  g.userData.mats = birds.map(b => b.userData.bodyMat);
+  g.userData.baseScale = 1;
+  g.userData.muzzle = new THREE.Vector3(0, 0.7, 0);
+  return g;
+}
+
 // 光變身後的光環＋翅膀
 export function addHalo(mesh) {
   const m = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.025, 4, 12),
