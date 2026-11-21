@@ -516,6 +516,9 @@ function spawnEnemy(type, x, z, zone, alerted = false) {
     execBuff: S.buffs.includes('exec') && !tpl.keepFiring, spareUsed: false,
     // 稻草人：身上的烏鴉數、恢復進度、放出去的烏鴉群
     crows: type === 'scarecrow' ? RULES.CROW_MAX : 0, crowMax: RULES.CROW_MAX, regen: 0, flock: null };
+  // 反制：防彈衣（槍手 1 點裝甲）、精銳化（徵召兵變老手）。增援也一樣
+  if (Camp.mod('kevlar') && type === 'gunman') u.armor = 1;
+  if (Camp.mod('elite') && type === 'conscript') { u.act = 60; u.q = '老手'; }
   spawnUnit(u);
   return u;
 }
@@ -671,10 +674,7 @@ function startMission() {
   for (const e of enemies()) if (e.boss) tuneBoss(e, op);
   // 敵人變聰明：難度 SMART_LEVEL 起（或反制「散兵戰術」）
   S.smart = Camp.level(op) >= RULES.SMART_LEVEL || Camp.mod('skirmish') > 0;
-  for (const e of enemies()) {
-    if (Camp.mod('kevlar') && e.kind === 'gunman') e.armor = 1;
-    if (Camp.mod('elite') && e.kind === 'conscript') { e.act = 60; e.q = '老手'; }
-  }
+  // 反制「防彈衣」「精銳化」在 spawnEnemy 套用（增援也算）
 
   const p0 = gen.playerSpawns[0];
   controls.target.set(p0.x + 3, 0, p0.z);
