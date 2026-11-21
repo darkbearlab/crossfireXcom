@@ -29,6 +29,7 @@ const HELP = `指令（座標是 x z；角色用代號 A 朱音 / H 光 / Y 雪�
   new | endless       開新戰役 / 無盡模式（會覆蓋這個網站的存檔）
   continue            讀取存檔
   ok                  按下畫面上的主要按鈕（劇情、結算畫面）
+  scene [vn|battle|radio|all]  播放劇情演出預覽
   hq                  作戰室：列出作戰與少女
   op N                選第 N 個作戰（從 1 開始）
   squad A H Y         選出擊的人（3 人）
@@ -407,6 +408,7 @@ async function run(line) {
       }
       case 'log': return logBuf.slice(-(+args[0] || 20)).join('\n');
       case 'stats': return Rec.currentText().split('---- 完整紀錄')[0];
+      case 'scene': G.Scene.demo(args[0] || 'all', {}); return '播放劇情演出預覽：' + (args[0] || 'all') + '（vn 文字冒險 / battle 戰鬥畫面 / radio 無線電）';
       case 'fast': fastSet = true; G.setInstant(args[0] !== 'off'); return '快速模式：' + (args[0] !== 'off' ? '開' : '關');
       default: return `不認得的指令：${cmd}\n` + HELP;
     }

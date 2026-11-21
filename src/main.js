@@ -20,6 +20,7 @@ import * as Camp from './campaign.js';
 import * as HQ from './hq.js';
 import * as Rec from './stats.js';
 import * as TextUI from './textui.js';
+import * as Scene from './scene.js';
 import { GIRL, FAMILY, FAMILY_BY_ID, STORY } from './girls.js';
 
 // ================= 場景 =================
@@ -708,6 +709,56 @@ function startMission() {
   UI.banner(S.mission.type === 'hunt' ? `任務：打倒${S.mission.bossName}` : S.mission.type === 'extract' ? '任務：突破撤離' : '任務：破壞終端', 'player');
   UI.log('部署：點角色再點綠色格子擺位，按「開始行動」', 'sys');
   selectUnit(players()[0]);
+  missionTalk();
+}
+
+// ================= 劇情演出（台詞） =================
+// 說話時：記到戰鬥紀錄；戰鬥演出時鏡頭轉向說話的人
+const sayHook = { onLine: (st, sp) => {
+  UI.log(`${st.name || sp.name}：「${st.text}」`, 'sys');
+  const u = S.units && S.units.find(o => o.alive && o.mesh && (o.girl === st.who || o.kind === st.who || o.member === st.who));
+  if (u && u.mesh.visible !== false) focusUnit(u);
+} };
+const GIRL_TALK = {
+  start: {
+    akane: ['好，上吧！動作快就不會被發現！', '我打頭陣，大家跟上！'],
+    hikari: ['大家小心，我們一個一個慢慢解決。', '不管對手是誰，我們一定會贏！'],
+    yukino: ['……風向不錯，腳步聲傳不過去。', '保持距離，我來掩護。'],
+    momo: ['哼，這種地方三兩下就搞定了啦！', '誰先被發現誰請吃可麗餅！'],
+    chinatsu: ['崗哨的位置記下來了，照計畫走。', '先找高處，我負責看。'],
+    kaede: ['哈！找到要炸的東西就交給我！', '牆擋路的話，炸開就好！'],
+    shiori: ['大家……要平安回來喔。', '我會跟在後面，受傷了就叫我。'],
+  },
+  spotted: {
+    akane: ['被發現了！既然這樣就正面衝！'], hikari: ['被發現了！大家找掩體！'], yukino: ['……被看到了。壓低身體。'],
+    momo: ['可惡，被發現了啦！'], chinatsu: ['暴露了。改成速戰速決。'], kaede: ['好啊，熱鬧起來了！'], shiori: ['哇、被、被看到了！'],
+  },
+  brawler: {
+    akane: ['有人拿著球棒衝過來了！'], hikari: ['近戰的傢伙衝過來了，先攔住他！'], yukino: ['……有人在跑過來。不要讓他靠近。'],
+    momo: ['拿球棒的笨蛋衝過來了！'], chinatsu: ['打手出動了。反應射擊準備。'], kaede: ['來得好，正面接他！'], shiori: ['有、有人衝過來了！'],
+  },
+};
+const pickLine = (kind, u) => { const ls = GIRL_TALK[kind][u.girl] || ['……']; return ls[ri(0, ls.length - 1)]; };
+function girlRadio(kind) {
+  const ps = players();
+  if (!ps.length) return;
+  const u = ps[ri(0, ps.length - 1)];
+  Scene.radio([{ who: u.girl, text: pickLine(kind, u) }], sayHook);
+}
+// 任務開始：家族成員在場就演一段（戰鬥畫面當背景），不然用無線電講一句
+function missionTalk() {
+  const boss = enemies().find(e => e.boss && e.member && (e.appearance || S.mission.type === 'hunt'));
+  if (boss) {
+    const m = FAMILY_BY_ID[boss.member];
+    const g = players()[0];
+    const reply = { akane: '少廢話，接招吧！', hikari: '我們不會讓妳得逞的！', yukino: '……妳的話，太多了。', momo: '吵死了，看我把妳打飛！',
+      chinatsu: '目標確認。開始行動。', kaede: '正好，我早就想跟妳打一場了！', shiori: '請、請妳收手吧！' }[g.girl] || '上吧！';
+    S.busy = true;
+    Scene.battle([{ who: boss.member, name: `${m.title}・${m.name}`, text: m.line.replace(/^「|」$/g, '') }, { who: g.girl, text: reply }], sayHook)
+      .then(() => { S.busy = false; if (S.selected) focusUnit(S.selected); });
+    return;
+  }
+  girlRadio('start');
 }
 
 function startBattle() {
@@ -900,7 +951,7 @@ function alertEnemies(list, why) {
   const firstAlarm = !enemies().some(e => e.alerted && !e.nest && !e.biteCluster) && fresh.some(e => !e.nest);
   // 打手：只要哪裡響起警報，全圖的打手都會醒來衝過來
   const brs = enemies().filter(e => e.brawler && !e.alerted && !fresh.includes(e));
-  if (brs.length) UI.log(`${brs.length} 名打手聽到動靜，衝過來了`, 'warn');
+  if (brs.length) { UI.log(`${brs.length} 名打手聽到動靜，衝過來了`, 'warn'); girlRadio('brawler'); }
   for (const e of fresh.concat(brs)) {
     e.alerted = true;
     if (e.mesh.visible) floatText(e, '！警戒', 'sup');
@@ -912,6 +963,7 @@ function alertEnemies(list, why) {
     UI.log(`警報響了：之後每 ${S.condTimer.every} 個敵方主動權，會有 2 名增援從撤離點那一側趕到`, 'warn');
   }
   if (why === 'spot') {
+    girlRadio('spotted');
     UI.banner('被發現了！', 'enemy');
     UI.log('被發現了！敵人進入警戒', 'warn');
   } else if (why === 'noise') {
@@ -3774,7 +3826,7 @@ const continueGame = () => { Camp.load(); enterHQ(); };
 const newGame = (opts = {}) => { Camp.newStory(opts); HQ.showStory('序章', STORY.intro, '前往作戰室 ▶', () => enterHQ()); };
 const newEndless = () => { Camp.newEndless(); enterHQ(); };
 function boot() {
-  HQ.showTitle({ onContinue: continueGame, onNew: () => HQ.showRoster(newGame), onEndless: newEndless });
+  HQ.showTitle({ onContinue: continueGame, onNew: () => HQ.showRoster(newGame), onEndless: newEndless, onScene: () => Scene.demo('all', sayHook) });
 }
 boot();
 requestAnimationFrame(frame);
@@ -3785,4 +3837,4 @@ window.__game = { S, actions, camera, THREE, scene, zoneMesh, Camp, // 除錯用
 // 純文字介面（給代理測試用）：window.TXT
 TextUI.init({ S, actions, Camp, key, coverSides, players, enemies, weapon, visibleTargets, moveOptions, playerMove, selectUnit,
   enterTargetMode, cancelTarget, fire, magicOptions, execMagic, magicInfo, canAct, startBattle, deployTo, actChance,
-  planReactions, pathCells, moveRisk, reloadInfo, canTriple, canPlant, newGame, newEndless, continueGame, useItem, flashTargets, enterHQ, refreshHQ: () => HQ.refresh(), setInstant: on => { instant = on; } });
+  planReactions, pathCells, moveRisk, reloadInfo, canTriple, canPlant, newGame, newEndless, continueGame, useItem, flashTargets, enterHQ, refreshHQ: () => HQ.refresh(), setInstant: on => { instant = on; Scene.setInstant(on); }, Scene });

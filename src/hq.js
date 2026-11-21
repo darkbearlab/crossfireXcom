@@ -16,7 +16,7 @@ function open(html, cls = '') {
   return o;
 }
 
-export function showTitle({ onContinue, onNew, onEndless }) {
+export function showTitle({ onContinue, onNew, onEndless, onScene }) {
   const meta = Camp.loadMeta();
   const has = Camp.hasSave();
   const o = open(`
@@ -26,7 +26,9 @@ export function showTitle({ onContinue, onNew, onEndless }) {
       ${has ? '<button id="t-cont">繼續</button>' : ''}
       <button id="t-new">${has ? '重新開始戰役' : '開始戰役'}</button>
       ${meta.endless ? `<button id="t-end">無盡模式${meta.best ? `（最佳 ${meta.best}）` : ''}</button>` : ''}
+      ${onScene ? '<button id="t-scene" class="dim">劇情演出預覽</button>' : ''}
     </div>`, 'title');
+  if (onScene) o.querySelector('#t-scene').onclick = onScene;
   if (has) o.querySelector('#t-cont').onclick = onContinue;
   o.querySelector('#t-new').onclick = () => {
     if (has && !confirm('目前的進度會被覆蓋，確定重新開始？')) return;
