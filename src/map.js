@@ -1,6 +1,6 @@
 // 小地圖程序生成：責任區、建築、掩體、隱蔽區、散佈的敵人崗哨、任務目標、補給箱。
 import { T, MAPGEN, enemyGroups, mapScale } from './config.js';
-import { coverSides, dist } from './grid.js';
+import { coverSides, coverAt, hasLOS, dist } from './grid.js';
 
 export class GameMap {
   constructor(w, h) {
@@ -267,14 +267,30 @@ function tryGenerate(level, opts) {
   }
 
   // ---- 敵人：散佈在各責任區的崗哨 ----
-  const zoneTiles = new Map();
+  const zoneTiles = new Map(), hideTiles = new Map(); // hideTiles 含隱蔽區（給打手躲）
   for (const p of reachList) {
     const zid = m.zoneAt(p.x, p.z);
-    if (zid === 0 || m.isConceal(p.x, p.z)) continue;
+    if (zid === 0) continue;
     if (dist(p, spawnC) < MAPGEN.MIN_ENEMY_DIST + big) continue;
+    if (!hideTiles.has(zid)) hideTiles.set(zid, []);
+    hideTiles.get(zid).push(p);
+    if (m.isConceal(p.x, p.z)) continue;
     if (!zoneTiles.has(zid)) zoneTiles.set(zid, []);
     zoneTiles.get(zid).push(p);
   }
+  // 從部署區看過去：看得到幾格（seen）、其中沒有掩體擋著的有幾格（open）
+  const deployPts = [];
+  for (let x = 0; x < DC; x++) for (let z = 0; z < h; z++) if (m.walkable(x, z) && reach.has(k(x, z))) deployPts.push({ x, z });
+  const viewCache = new Map();
+  const view = p => {
+    const kk = k(p.x, p.z);
+    if (!viewCache.has(kk)) {
+      let seen = 0, open = 0;
+      for (const d of deployPts) if (hasLOS(m, d, p, 10, true)) { seen++; if (coverAt(m, p, d) === 0) open++; }
+      viewCache.set(kk, { seen, open });
+    }
+    return viewCache.get(kk);
+  };
   const zoneIds = shuffle([...zoneTiles.keys()].filter(z => zoneTiles.get(z).length >= 4));
   if (zoneIds.length < 3) return null;
   if (objective) {
@@ -297,8 +313,15 @@ function tryGenerate(level, opts) {
   for (let gi = 0; gi < groups.length; gi++) {
     const g = groups[gi];
     const zid = zoneIds[gi % zoneIds.length];
-    const cands = zoneTiles.get(zid).filter(p => !used.has(k(p.x, p.z)))
-      .map(p => ({ p, s: coverSides(m, p).length * 2 + Math.random() * 3 }))
+    const flyer = g[0] === 'imp';
+    // 打手：躲在部署區看不到的地方（可以在隱蔽區）
+    // 崗哨：有掩體，而且從部署區看過去不能沒掩體（不能開場就被側翼）
+    const score = g[0] === 'brawler'
+      ? p => -Math.min(view(p).seen, 6) * 3 + (m.isConceal(p.x, p.z) ? 2 : 0) + Math.random() * 3
+      : flyer ? p => coverSides(m, p).length + Math.random() * 3
+      : p => coverSides(m, p).length * 2 - Math.min(view(p).open, 3) * 4 + Math.random() * 3;
+    const cands = (g[0] === 'brawler' ? hideTiles : zoneTiles).get(zid).filter(p => !used.has(k(p.x, p.z)))
+      .map(p => ({ p, s: score(p) }))
       .sort((a, b) => b.s - a.s);
     if (!cands.length) return null;
     const lead = cands[0].p;

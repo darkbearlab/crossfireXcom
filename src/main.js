@@ -843,6 +843,7 @@ async function resolvePlayerAction(ok, actor = null) {
     return;
   }
   let saved = '';
+  const realOk = ok; // 心線、變身救回來的失敗不觸發偵查
   if (!ok && S.grab) {
     S.grab = false;
     UI.log('心線：這次行動不算失敗，主動權留在我方', 'good');
@@ -865,7 +866,7 @@ async function resolvePlayerAction(ok, actor = null) {
     return;
   }
   crowTick();
-  if (await scoutCheck(actor || S.selected)) return; // 使魔偵查：搶走主動權（不算失敗）
+  if (realOk && await scoutCheck(actor || S.selected)) return; // 使魔偵查：搶走主動權（不算失敗）
   // 人偶／烏鴉：被纏住的少女不能行動；全員都被纏住就交出主動權（不算失敗）
   const free = players().filter(p => !p.locked && !p.crowLocked);
   if (!free.length) {
@@ -896,7 +897,10 @@ const quietSees = (e, p) => S.map.zoneAt(p.x, p.z) === e.zone && quietLOS(S.map,
 function alertEnemies(list, why) {
   const fresh = list.filter(e => e.alive && !e.alerted);
   if (!fresh.length) return false;
-  for (const e of fresh) {
+  // 打手：只要哪裡響起警報，全圖的打手都會醒來衝過來
+  const brs = enemies().filter(e => e.brawler && !e.alerted && !fresh.includes(e));
+  if (brs.length) UI.log(`${brs.length} 名打手聽到動靜，衝過來了`, 'warn');
+  for (const e of fresh.concat(brs)) {
     e.alerted = true;
     if (e.mesh.visible) floatText(e, '！警戒', 'sup');
     if (e.label) UI.updateLabel(e.label, e);
@@ -1406,7 +1410,7 @@ const COND_TEXT = {
   timer: () => `警報響起後，每 ${S.condTimer ? S.condTimer.every : 4} 個敵方主動權會有 2 名增援從撤離點那一側趕到`,
   plant: () => '裝好炸藥後，撤退路線的兩側會立刻冒出 2 名增援（各 1 名），全圖進入警戒',
   special: () => '這裡有魔女的東西（人偶或稻草人）',
-  nest: () => `這裡有使魔巢穴：警報響起後，每 ${RULES.NEST_EVERY} 個敵方主動權孵出 ${RULES.NEST_SPAWN} 隻使魔，打掉就停`,
+  nest: () => `這裡有使魔巢穴：從一開始就每 ${RULES.NEST_EVERY} 個敵方主動權孵出 ${RULES.NEST_SPAWN} 隻使魔，打掉就停`,
 };
 function facilityConds(gen, level) {
   const doll = Camp.mod('doll') > 0; // 反制「魔女的玩偶」：不管難度，設施圖必定有人偶或稻草人
@@ -1423,8 +1427,18 @@ function facilityConds(gen, level) {
     if (cand.length) cand[ri(0, cand.length - 1)].type = Math.random() < 0.5 ? 'doll' : 'scarecrow';
   }
   if (out.includes('nest')) { // 一隻使魔換成巢穴（留在使魔群的責任區）
+    // 放在離「部署區 → 目標」路線最遠的那隻使魔：要特地繞路去拆
     const imps = gen.enemies.filter(p => p.type === 'imp');
-    imps[ri(0, imps.length - 1)].type = 'nest';
+    const ex = gen.mission.exits || [];
+    const goal = gen.mission.objective || (ex.length ? ex[Math.floor(ex.length / 2)] : { x: gen.map.w - 1, z: gen.map.h / 2 });
+    const a = gen.deployZone.length ? gen.deployZone[Math.floor(gen.deployZone.length / 2)] : { x: 1, z: gen.map.h / 2 };
+    const off = p => { // 點到線段 a→goal 的距離
+      const vx = goal.x - a.x, vz = goal.z - a.z, L = vx * vx + vz * vz || 1;
+      const t = Math.max(0, Math.min(1, ((p.x - a.x) * vx + (p.z - a.z) * vz) / L));
+      return Math.hypot(p.x - a.x - t * vx, p.z - a.z - t * vz);
+    };
+    imps.sort((p, q) => off(q) - off(p) + (Math.random() - 0.5));
+    imps[0].type = 'nest';
   }
   return out;
 }
@@ -3271,11 +3285,12 @@ async function brawlerHit(e, p) {
 // ================= 使魔巢穴、空投增援 =================
 async function nestTick() {
   const nests = enemies().filter(e => e.nest);
-  if (!nests.length || !enemies().some(e => e.alerted && !e.nest)) return; // 警報響了才開始孵
+  if (!nests.length) return; // 一開始就在孵；警報響前孵出的使魔先在責任區巡邏
+  const alarm = enemies().some(e => e.alerted && !e.nest);
   for (const n of nests) {
     n.count = (n.count || 0) + 1;
     if (n.count % RULES.NEST_EVERY) continue;
-    const got = freeAround(n, RULES.NEST_SPAWN).map(c => spawnEnemy('imp', c.x, c.z, n.zone, true));
+    const got = freeAround(n, RULES.NEST_SPAWN).map(c => spawnEnemy('imp', c.x, c.z, n.zone, alarm));
     if (!got.length) continue;
     if (n.mesh.visible) floatText(n, '孵出使魔', 'ow');
     UI.log(`${n.name} 孵出了 ${got.length} 隻使魔`, 'warn');
