@@ -90,7 +90,10 @@ export const MAPGEN = {
   DEPLOY_COLS: 3,         // 部署區寬度（從左邊算起）；這幾欄不屬於任何敵人的責任區
   DEPLOY_ROWS: 7,         // 部署區高度
   MIN_ENEMY_DIST: 7,      // 敵人崗哨離部署區至少幾格
+  // 後期靠「規模」加壓，不改單兵數值：難度到 BIG[i] 起，地圖寬 +4、高 +2，建築、隱蔽區跟著變多
+  BIG: [8, 12],
 };
+export const mapScale = level => MAPGEN.BIG.filter(l => level >= l).length; // 0、1、2
 
 export const THEMES = [
   { name: '城市廢墟', floor: 0x3d434a, floorAlt: 0x363b41, half: 0x9a7440, full: 0x737a83, fullStyle: 'wall', halfStyle: 'crate', sky: 0x1a1f25, conceal: 0x6b6258, concealName: '瓦礫陰影' },
@@ -235,14 +238,19 @@ export const COUNTERS = {
   member: { name: '成員強化', desc: '一名成員（生效時決定）之後現身與據點戰 +1 骰' },
 };
 
-// 難度 → 一般敵人數量：難度 1 = 4 人，之後大約每升 2 級多 1 人，最多 10 人
-export const enemyCount = level => Math.min(10, 3 + Math.ceil(level * 0.6));
+// 難度 → 一般敵人數量：難度 1 = 4 人，之後大約每升 2 級多 1 人；地圖每大一級再 +2，上限也變高（10 → 13 → 16）
+export const enemyCount = level => Math.min(10 + 3 * mapScale(level), 3 + Math.ceil(level * 0.6) + 2 * mapScale(level));
 
 // 每張地圖的敵人編組（同一組會擺在同一個責任區）
 export function enemyGroups(level, bonus = 0) {
   let n = enemyCount(level) + bonus;
   const groups = [];
   if (level >= 2 && n >= 5 && Math.random() < 0.6) { groups.push(['officer', 'conscript', 'conscript']); n -= 3; }
+  // 大地圖：多幾個成形的編組（不改單兵數值）
+  if (level >= MAPGEN.BIG[0]) {
+    const squads = [['officer', 'gunman', 'gunman'], ['mg', 'sniper'], ['brute', 'gunman'], ['zealot', 'zealot', 'gunman']];
+    for (let i = 0; i < mapScale(level) && n >= 4; i++) { const g = squads[Math.floor(Math.random() * squads.length)]; groups.push(g); n -= g.length; }
+  }
   const pool = ['gunman', 'gunman', 'zealot'];
   if (level >= 3) pool.push('mg', 'sniper');
   if (level >= 4) pool.push('brute');

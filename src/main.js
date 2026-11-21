@@ -63,7 +63,7 @@ const overlay = new THREE.Group();   // 常駐的提示物件
 scene.add(world, unitGroup, overlay);
 
 // 可移動範圍
-const MAX_TILES = 400;
+const MAX_TILES = 900;
 const rangeGeo = new THREE.PlaneGeometry(0.9, 0.9).rotateX(-Math.PI / 2);
 const rangeMesh = new THREE.InstancedMesh(rangeGeo, new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.28, depthWrite: false }), MAX_TILES);
 rangeMesh.setColorAt(0, new THREE.Color());
@@ -105,7 +105,7 @@ const reactLineMat = new THREE.LineDashedMaterial({ color: 0xff5a4a, dashSize: 0
 
 // 責任區 / 撤離點底色
 const zoneMesh = new THREE.InstancedMesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
-  new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.3, depthWrite: false }), 600);
+  new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.3, depthWrite: false }), 900);
 zoneMesh.setColorAt(0, new THREE.Color());
 zoneMesh.frustumCulled = false;
 zoneMesh.count = 0;
@@ -640,6 +640,8 @@ function startMission() {
   S.map.fog.fill(0);
   for (const k of gen.fog || []) { const [x, z] = k.split(',').map(Number); S.map.setFog(x, z, 1); }
   S.lastShooter = null;
+  S.idlePasses = 0;
+  S.stallWaves = 0;
   S.mission = gen.mission;
   S.crates = gen.crates;
   S.theme = gen.theme;
@@ -924,7 +926,7 @@ function drawZones() {
   const m4 = new THREE.Matrix4();
   let n = 0;
   for (let z = 0; z < S.map.h; z++) for (let x = 0; x < S.map.w; x++) {
-    if (!S.map.walkable(x, z) || n >= 600) continue;
+    if (!S.map.walkable(x, z) || n >= 900) continue;
     const isEx = ex.has(key(x, z));
     if (!isEx && !zs.has(S.map.zoneAt(x, z))) continue;
     m4.makeTranslation(x, 0.008, z);
@@ -1255,7 +1257,9 @@ async function bossPhase(b) {
 
   // 1. 頭目重新部署
   const bossCands = (S.mission.bossSpots || []).filter(free);
-  const pool = bossCands.length ? bossCands : allFloor.filter(p => ps.every(g => dist(g, p) >= 5));
+  const far = allFloor.filter(p => ps.every(g => dist(g, p) >= 5));
+  const covered = far.filter(p => coverSides(S.map, p).length && ps.every(g => !hasLOS(S.map, g, p) || coverAt(S.map, p, g) > 0));
+  const pool = bossCands.length ? bossCands : covered.length ? covered : far; // 不停在暴露的格子
   const spot = pool.map(p => ({ p, s: safety(p) * 10 + coverSides(S.map, p).length * 3 + Math.min(...ps.map(g => dist(g, p))) + Math.random() * 2 }))
     .sort((a, c) => c.s - a.s)[0];
   if (spot) {
@@ -2842,6 +2846,7 @@ function evalTile(e, pos, ps) {
   }
   s += bestHit * 0.5 + (flank ? 15 : 0);
   if (e.boss && !bestHit) s -= 40 + nearest * 3; // 頭目：躲著不動不是她的作風，沒有射擊角度就往少女靠近去找
+  if (e.boss) for (const p of ps) if (hasLOS(S.map, pos, p) && coverAt(S.map, pos, p) === 0) s -= 30; // 頭目不站在被看得到又沒掩體的地方
   if (e.kind === 'zealot' || e.kind === 'doll') s -= nearest * 4; // 狂徒、人偶：越近越好
   else if (e.kind === 'sniper') { if (nearest < 5) s -= (5 - nearest) * 6; }
   else if (nearest > 8) s -= (nearest - 8) * 5;
@@ -2933,6 +2938,22 @@ function aiChooseFor(es, moveCount, minGain = RULES.AI_MOVE_GAIN) {
   return null;
 }
 
+async function stallWave() {
+  const ps = players();
+  if (!ps.length) return;
+  const anchor = enemies().find(e => e.boss) || enemies()[0] || { x: S.map.w - 1, z: Math.floor(S.map.h / 2) };
+  const floor = [];
+  for (let z = 0; z < S.map.h; z++) for (let x = 0; x < S.map.w; x++) if (S.map.walkable(x, z) && !unitAt(x, z) && !iceAt(x, z)) floor.push({ x, z });
+  const spots = reinforceSpots(anchor, ps, floor, { kinds: ['gunman', 'gunman'], where: 'ambush' });
+  const got = spots.map(p => spawnEnemy('gunman', p.x, p.z, S.map.zoneAt(p.x, p.z), true));
+  if (!got.length) return;
+  UI.banner('敵方等得不耐煩了！', 'enemy');
+  UI.log(`雙方僵持不下：增援 ${got.map(e => `${e.name}(${e.x},${e.z})`).join('、')} 從看不到的地方包抄過來`, 'warn');
+  updateVisibility();
+  refresh();
+  await wait(0.5);
+}
+
 // 回傳 true = 因行動失敗而交出主動權
 async function enemyInitiative() {
   const moveCount = new Map();
@@ -2982,6 +3003,9 @@ async function enemyInitiative() {
   // 放棄（沒有想做的事）時，沒有衝動的敵人也會對最好的目標開一槍，不讓我方的失手白白沒有代價
   const passed = !failed && !S.gameOver && enemies().some(e => e.alerted);
   if (passed) UI.log('敵方放棄主動權，沒行動的敵人結算衝動', 'dim');
+  // 僵局：敵方連續 2 次一個行動都沒做就放棄 → 等得不耐煩，2 名增援從少女看不到的地方包抄（每張地圖最多 3 次）
+  S.idlePasses = passed && !acted.size ? (S.idlePasses || 0) + 1 : 0;
+  if (S.idlePasses >= 2 && (S.stallWaves || 0) < 3) { S.idlePasses = 0; S.stallWaves = (S.stallWaves || 0) + 1; await stallWave(); }
   await impulses(acted, passed);
   return failed;
 }
@@ -3031,6 +3055,8 @@ async function impulses(acted, passed = false) {
       const hit = players().filter(q => dist(q, p) < 1.5);
       for (const q of hit) suppress(q, '毒霧！');
       UI.log(`${e.name} 朝 ${p.name} 丟出毒霧：${hit.map(q => q.name).join('、')} 被壓制`, 'bad');
+      const t = !e.firedOut && !bossCapped(e) ? visibleTargets(e).find(o => bossMayShoot(e, o.unit)) : null;
+      if (t) { countBossShot(e, t.unit); await shoot(e, t.unit); } // 趁她們抬不起頭補一槍
     } else if (e.impulse === 'hunt') { // 艾琳娜：追最後一個開槍的少女，衝 4 格後開一槍
       const ps = players();
       if (!ps.length) return;

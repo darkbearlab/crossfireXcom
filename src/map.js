@@ -1,5 +1,5 @@
 // 小地圖程序生成：責任區、建築、掩體、隱蔽區、散佈的敵人崗哨、任務目標、補給箱。
-import { T, MAPGEN, enemyGroups } from './config.js';
+import { T, MAPGEN, enemyGroups, mapScale } from './config.js';
 import { coverSides, dist } from './grid.js';
 
 export class GameMap {
@@ -74,12 +74,13 @@ export function generateMap(level, opts = {}) {
 }
 
 function tryGenerate(level, opts) {
-  const w = ri(16, 19), h = ri(12, 15);
+  const big = mapScale(level); // 後期地圖變大
+  const w = ri(16, 19) + big * 4, h = ri(12, 15) + big * 2;
   const m = new GameMap(w, h);
   const DC = MAPGEN.DEPLOY_COLS;
 
   // ---- 責任區：部署帶以外切成 cols × rows 塊，邊界抖動 ----
-  const cols = w >= 18 ? 3 : 2, rows = 2;
+  const cols = w >= 22 ? 4 : w >= 18 ? 3 : 2, rows = h >= 16 ? 3 : 2;
   const colB = [], rowB = [];
   for (let c = 1; c < cols; c++) colB.push(wobbly(h, DC + Math.round((w - DC) * c / cols)));
   for (let r = 1; r < rows; r++) rowB.push(wobbly(w, Math.round(h * r / rows)));
@@ -91,7 +92,7 @@ function tryGenerate(level, opts) {
   }
 
   // ---- 建築：外牆是全掩體，有門；有些是廢墟，破牆變半掩體。室內是自己的責任區 ----
-  const nb = ri(2, 3);
+  const nb = ri(2, 3) + big;
   for (let b = 0; b < nb; b++) {
     const bw = ri(3, 5), bh = ri(3, 5);
     const x0 = ri(DC + 2, w - bw - 1), z0 = ri(0, h - bh);
@@ -116,7 +117,7 @@ function tryGenerate(level, opts) {
   }
 
   // ---- 柱子 / 樹 ----
-  const np = ri(3, 6);
+  const np = ri(3, 6) + big * 2;
   for (let i = 0; i < np; i++) {
     const x = ri(DC, w - 2), z = ri(0, h - 1);
     if (m.get(x, z) === T.FLOOR) m.set(x, z, T.FULL);
@@ -135,7 +136,7 @@ function tryGenerate(level, opts) {
   }
 
   // ---- 隱蔽區：幾團隨機漫步的區塊 ----
-  const nc = ri(4, 6);
+  const nc = ri(4, 6) + big * 2;
   for (let i = 0; i < nc; i++) {
     let x = ri(DC, w - 2), z = ri(0, h - 1);
     const len = ri(5, 9);
@@ -189,7 +190,7 @@ function tryGenerate(level, opts) {
   for (const p of reachList) {
     const zid = m.zoneAt(p.x, p.z);
     if (zid === 0 || m.isConceal(p.x, p.z)) continue;
-    if (dist(p, spawnC) < MAPGEN.MIN_ENEMY_DIST) continue;
+    if (dist(p, spawnC) < MAPGEN.MIN_ENEMY_DIST + big) continue;
     if (!zoneTiles.has(zid)) zoneTiles.set(zid, []);
     zoneTiles.get(zid).push(p);
   }
