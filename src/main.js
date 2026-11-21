@@ -451,6 +451,7 @@ function outfit(d, gs) {
     if (g >= 3) p.closeDice = 0;
     if (g >= 5) p.canReact = true;
   } else if (d.id === 'kaede') {
+    ws[1].sidearm = true; ws[1].reserve = Infinity; // 霰彈槍是她的副武器：快速切換、無限備彈
     if (g >= 1) p.noFriendly = true;
     if (g >= 2) { p.mag += 1; p.ammo = p.mag; p.reserve += 3; }
     if (g >= 3) p.pierce = 2;
@@ -593,7 +594,7 @@ function startMission() {
   clearUnits();
   S.ice = [];
   S.buffs = Camp.activeBuffs(op);
-  S.quietSight = (S.buffs.includes('eye') ? 7 : RULES.QUIET_SIGHT) + 2 * Camp.mod('sight'); // 反制「千里眼」
+  S.quietSight = (S.buffs.includes('eye') ? 7 : RULES.QUIET_SIGHT) + 2 * Camp.mod('sight'); // 反制「監視網」
   S.actBonus = 5 * Camp.mod('drill'); // 反制「操練」
   const opKey = op.kind + ':' + op.name;
   let gen;
@@ -1118,11 +1119,12 @@ async function shoot(s, t, { reaction = false, forceMiss = false, triple = false
   const guard = reaction && eff > 0 && s.team === 'enemy' && t.team === 'player'
     ? players().find(p => p.girl === 'shiori' && p !== t && dist(p, t) < 1.5 && !p.suppressed) : null;
   let guarded = false;
-  if (guard && Math.random() * 100 < RULES.GUARD_CHANCE) { eff--; rolled--; guarded = true; }
+  if (guard && Math.random() * 100 < RULES.GUARD_CHANCE) { eff--; guarded = true; }
   Rec.shot(s.team, reaction, forceMiss ? 0 : (triple ? Math.round((1 - Math.pow(1 - odds.die / 100, n)) * 100) : odds.hit), eff > 0);
   const tag = `${s.name}${reaction ? '（反應）' : triple ? '（三管齊發）' : ''} → ${t.name}（${forceMiss ? '必定落空' : `${n} 骰×${odds.die}%`}）`;
   if (hit) {
-    UI.log(`${tag} 中 ${rolled}${eff < rolled ? (eff ? `（裝甲擋掉 ${rolled - eff}）` : '（全被裝甲擋掉，沒有效果）') : ''}`,
+    const blocked = rolled - eff - (guarded ? 1 : 0); // 裝甲擋掉的（詩織擋下的那一下另外記）
+    UI.log(`${tag} 中 ${rolled}${blocked > 0 ? (eff || guarded ? `（裝甲擋掉 ${blocked}）` : '（全被裝甲擋掉，沒有效果）') : ''}${guarded ? `（${guard.name}擋下 1）` : ''}`,
       eff ? (s.team === 'player' ? 'good' : 'bad') : (s.team === 'player' ? 'warn' : 'dim'));
     if (!eff && !guarded) floatText(t, '裝甲', 'miss');
     if (guarded) {
@@ -1379,8 +1381,9 @@ const COND_TEXT = {
   special: () => '這裡有魔女的東西（人偶或稻草人）',
 };
 function facilityConds(gen, level) {
-  if (level < 3) return []; // 難度 1、2 是教學
-  const pool = level >= 5 ? ['timer', 'special'] : ['timer'];
+  const doll = Camp.mod('doll') > 0; // 反制「魔女的玩偶」：不管難度，設施圖必定有人偶或稻草人
+  if (level < 3) return doll ? ['special'] : []; // 難度 1、2 是教學
+  const pool = level >= 5 || doll ? ['timer', 'special'] : ['timer'];
   if (gen.mission.type === 'sabotage') pool.push('plant');
   const out = [];
   const n = level >= 9 ? 2 : 1;

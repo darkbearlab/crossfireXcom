@@ -215,11 +215,11 @@ export const ROSTER = {
 
 // ---------- 戰役 v2：家族的反制（像黑地事件）。生效一張，家族威脅 +1 ----------
 export const COUNTERS = {
-  sight: { name: '千里眼', desc: '未警戒敵人的視野 +2' },
+  sight: { name: '監視網', desc: '未警戒敵人的視野 +2' },
   extra: { name: '擴編', desc: '每張地圖敵人 +1' },
   armor: { name: '重裝化', desc: '每張地圖有 1 名槍手換成重裝兵' },
-  doll: { name: '魔女的玩偶', desc: '設施圖必定有人偶或稻草人' },
-  supply: { name: '封鎖補給', desc: '地圖上的補給箱減半' },
+  doll: { name: '魔女的玩偶', once: true, desc: '設施圖必定有人偶或稻草人' },
+  supply: { name: '封鎖補給', once: true, desc: '地圖上的補給箱減半' },
   drill: { name: '操練', desc: '敵人的啟動率 +5%' },
   production: { name: '補給線', desc: '莊園增援產能 +1' },
   member: { name: '成員強化', desc: '一名成員（生效時決定）之後現身與據點戰 +1 骰' },

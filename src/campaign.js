@@ -71,7 +71,7 @@ export const mod = k => (C && C.mods && C.mods[k]) || 0;
 function fillCards() {
   while (C.cards.length < RULES.CARDS) {
     const used = C.cards.map(c => c.id);
-    const pool = Object.keys(COUNTERS).filter(k => !used.includes(k));
+    const pool = Object.keys(COUNTERS).filter(k => !used.includes(k) && !(COUNTERS[k].once && mod(k))); // 疊兩次沒意義的不會再抽到
     // 一回合最多生效一張：倒數撞到別張就延後
     let left = rnd(RULES.CARD_TURNS[0], RULES.CARD_TURNS[1]);
     while (C.cards.some(c => Math.abs(c.left - left) < RULES.CARD_CLASH)) left += RULES.CARD_CLASH;

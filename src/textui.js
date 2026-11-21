@@ -146,7 +146,7 @@ function targetsText(S, u) {
   if (u.firedOut) return '  （這次主動權不能再開槍）';
   return ts.map(t => {
     const o = t.odds;
-    const arm = u.apNext ? 0 : (t.unit.armor || 0); const ef = arm ? UI.effHit(o, arm) : 0;
+    const arm = u.apNext ? 0 : Math.max(0, (t.unit.armor || 0) - (u.weapons[u.wi].pierce || 0)); const ef = arm ? UI.effHit(o, arm) : 0;
     const armor = arm ? `，裝甲 ${arm}：實際生效 ${ef}%${ef ? '' : '（不可能有效，開不了）'}` : '';
     const lock = t.unit.lockOnHit ? '，⛓沒打倒的話這次主動權不能再行動' : '';
     return `  ${eKey(S, t.unit)} ${t.unit.name}：${o.dice} 骰 × ${o.die}% → 至少中一顆 ${o.hit}%，平均中 ${(o.dice * o.die / 100).toFixed(1)}${armor}${lock}` +
