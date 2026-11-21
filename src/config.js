@@ -28,7 +28,7 @@ export const RULES = {
   PHASE_GUARDS: 2,        // 頭目每突破一個階段叫來的護衛
   // 敵人啟動檢定：每次主動行動前骰一次，失敗＝亂了陣腳：主動權交回我方，沒行動的敵人各自憑衝動行事
   ACT_OFFICER: 10,        // 3 格內有軍官 +
-  ACT_SUPPRESSED: 15,     // 被壓制 -
+  ACT_SUPPRESSED: 10,     // 被壓制 -
   ACT_DEATHS: 10,         // 這次主動權內有隊友倒下 -
   ACT_HURT: 10,           // 生命低於一半 -
   // 任務之間：彈藥補滿；沒上場的人每張地圖回 BENCH_HEAL；上場且沒倒下的人打贏時回 FIELD_HEAL
@@ -51,7 +51,13 @@ export const RULES = {
   CARD_TURNS: [6, 9],     // 反制的倒數（回合）
   CARD_CLASH: 2,          // 反制之間至少隔幾回合生效；新反制的倒數離別張太近就延後這麼多回合
   REPELS: 2,              // 擊退成員幾次，解鎖她的據點
-  APPEAR: [0.25, 0.1, 0.75], // 成員在自己設施現身的機率：基本、每回合沒現身 +、上限
+  APPEAR: [0.35, 0.15, 0.75], // 成員在自己設施現身的機率：基本、每回合沒現身 +、上限（現身後回到基本）
+  EXPAND_EVERY: 6,        // 家族擴張：每幾個回合家族威脅自動 +1（擋掉所有反制也一樣）
+  APPEAR_HP: 3,           // 現身的成員：1 段生命，這麼多傷
+  SMART_LEVEL: 6,         // 難度到這裡起，一般敵人避開反應射擊、散開站位、集中打千夏和最後開槍的人
+  BOSS_RISK_MAX: 0.3,     // 頭目不走「被反應射擊打中機率」高於這個的路線
+  SMART_RISK_MAX: 0.5,    // 聰明的一般敵人不走這麼危險的路線
+  AI_RISK_SMART: 90,      // 聰明的一般敵人：路線風險的權重（原本 AI_RISK）
   MANOR_AT: 3,            // 打倒幾名成員後退守莊園（家族 4 人時；人數更多時改成「剩 3 人時」，見 campaign.manorAt）
   MELEE_WOUNDS: 1,        // 朱音近戰：必中，不經過三階直接受傷這麼多次並壓制（無視裝甲）
   ICE_HP: 3,              // 冰塊被打幾下會碎
@@ -59,7 +65,7 @@ export const RULES = {
   CURSE_TILES: 6,         // 詛咒地 buff 的詛咒格數量
   FOG_PATCHES: 3,         // 迷香 buff 的迷霧片數（每片 4～6 格）
   SQUAD: 3,               // 每場出擊人數
-  SQUAD_EXTRA: 1,         // 出擊 3 人時，每張地圖敵人多幾名（原本的敵人數是照 2 人調的）
+  SQUAD_EXTRA: 2,         // 出擊 3 人時，每張地圖敵人多幾名（原本的敵人數是照 2 人調的）
   MARK_BONUS: [10, 15],   // 千夏的標記：隊友打被標記的敵人每顆骰 +%（魔法 4 起用第二個）
   BLAST_RANGE: [6, 9],    // 楓的爆破距離（魔法 2 起用第二個）
   BLESS_RANGE: [3, 5],    // 詩織的祝福距離（魔法 1 起用第二個）
@@ -155,27 +161,27 @@ export const ENEMY_TYPES = {
   crows:     { name: '烏鴉', maxHp: 3, dice: 1, color: 0x1a1a22,
                noGun: true, canReact: false, unflinching: true, immobile: true, flying: true, summon: true, impulse: 'fly',
                desc: '衝動：往目標飛 3 格，碰到就纏住她。在空中沒有掩體，每中一顆打掉一隻；全部打掉後稻草人要慢慢恢復' },
-  // 家族成員（boss）：生命分 3 段，每段 2 傷
+  // 家族成員（boss）：生命分 3 段，每段 3 傷（在設施現身時只有 1 段 RULES.APPEAR_HP 傷）
   // reinforce：突破階段時叫來的增援。where：watch＝遠處看得到少女的掩體後；ambush＝少女看不到、離少女 4～6 格；guard＝她身邊
-  b_eye:     { name: '薇歐拉', maxHp: 6, dice: 3, dieMod: 10, color: 0x5b3f8f, boss: true, impulse: 'shoot', ignoreHalf: true,
+  b_eye:     { name: '薇歐拉', maxHp: 9, dice: 3, dieMod: 10, color: 0x5b3f8f, boss: true, impulse: 'shoot', ignoreHalf: true,
                reinforce: { kinds: ['sniper', 'gunman'], where: 'watch' },
                desc: '眼線：主動射擊無視半掩體。突破階段時，狙擊手和槍手出現在遠處（離少女 8 格以上）看得到少女的掩體後。打倒她「千里眼」就失效' },
-  b_exec:    { name: '蕾貝卡', maxHp: 6, dice: 3, color: 0x3b2a4a, boss: true, impulse: 'charge', keepFiring: true,
+  b_exec:    { name: '蕾貝卡', maxHp: 9, dice: 3, color: 0x3b2a4a, boss: true, impulse: 'charge', keepFiring: true,
                reinforce: { kinds: ['zealot', 'zealot'], where: 'ambush' },
                desc: '執行人：反應射擊打空不停火。突破階段時，2 名狂徒從少女看不到的地方（離少女 4～6 格）包抄。打倒她「不留活口」就失效' },
-  b_book:    { name: '莫妮卡', maxHp: 6, dice: 3, color: 0x2f4a3a, boss: true, impulse: 'shoot',
+  b_book:    { name: '莫妮卡', maxHp: 9, dice: 3, color: 0x2f4a3a, boss: true, impulse: 'shoot',
                reinforce: { kinds: ['gunman', 'gunman', 'gunman'], where: 'guard' },
                desc: '帳房。突破階段時，3 名槍手圍到她身邊。打倒她「人手充足」就失效' },
-  b_sis:     { name: '莉莉絲', maxHp: 6, dice: 3, color: 0x7a2a6a, boss: true, impulse: 'curse',
+  b_sis:     { name: '莉莉絲', maxHp: 9, dice: 3, color: 0x7a2a6a, boss: true, impulse: 'curse',
                reinforce: { kinds: [], curse: 2 },
                desc: '魔女姊姊。衝動：把詛咒下在最近的我方腳下。突破階段時，在最近的 2 名少女腳下下詛咒（被壓制）。打倒她「詛咒地」就失效' },
-  b_perfume: { name: '卡蜜拉', maxHp: 6, dice: 3, color: 0x6a4a8a, boss: true, impulse: 'gas',
+  b_perfume: { name: '卡蜜拉', maxHp: 9, dice: 3, color: 0x6a4a8a, boss: true, impulse: 'gas',
                reinforce: { kinds: ['gunman', 'gunman'], where: 'fog' },
                desc: '調香師。衝動：朝看得到的少女丟毒霧，她和周圍 1 格的少女進入壓制。突破階段時，2 名槍手從少女看不到的迷霧裡出現。打倒她「迷香」就失效' },
-  b_hound:   { name: '艾琳娜', maxHp: 6, dice: 3, color: 0x7a5a2a, boss: true, impulse: 'hunt', keepFiring: false,
+  b_hound:   { name: '艾琳娜', maxHp: 9, dice: 3, color: 0x7a5a2a, boss: true, impulse: 'hunt', keepFiring: false,
                reinforce: { kinds: ['zealot', 'zealot'], where: 'rear' },
                desc: '獵犬。衝動：朝最後一個開槍的少女衝 4 格，然後朝她開一槍。突破階段時，2 名狂徒從少女的部署區那一側出現（斷後路）。打倒她「追獵」就失效' },
-  b_puppet:  { name: '桃樂絲', maxHp: 6, dice: 3, color: 0xa04060, boss: true, impulse: 'shoot', escort: ['doll', 'doll'],
+  b_puppet:  { name: '桃樂絲', maxHp: 9, dice: 3, color: 0xa04060, boss: true, impulse: 'shoot', escort: ['doll', 'doll'],
                reinforce: { kinds: ['doll', 'doll'], where: 'guard' },
                desc: '人偶師。據點裡身邊有 2 具人偶。突破階段時，再叫來 2 具人偶守在身邊。打倒她「提線」就失效' },
   b_mother:  { name: '瑪格麗特', maxHp: 9, dice: 3, dieMod: 5, color: 0x1e1428, boss: true, impulse: 'shoot', keepFiring: true,
@@ -222,6 +228,10 @@ export const COUNTERS = {
   supply: { name: '封鎖補給', once: true, desc: '地圖上的補給箱減半' },
   drill: { name: '操練', desc: '敵人的啟動率 +5%' },
   production: { name: '補給線', desc: '莊園增援產能 +1' },
+  kevlar: { name: '防彈衣', once: true, desc: '槍手有 1 點裝甲' },
+  skirmish: { name: '散兵戰術', once: true, desc: '不管難度，敵人都會散開站位、避開反應射擊' },
+  countersnipe: { name: '反狙擊', desc: '每張地圖 1 名槍手換成狙擊手；狙擊手優先打千夏和最後開槍的人' },
+  elite: { name: '精銳化', once: true, desc: '徵召兵換成老手（啟動 60%）' },
   member: { name: '成員強化', desc: '一名成員（生效時決定）之後現身與據點戰 +1 骰' },
 };
 

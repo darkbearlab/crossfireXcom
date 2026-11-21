@@ -98,7 +98,7 @@ function opDesc(op) {
   if (op.kind === 'facility') return story ? '家族的設施（不知道是誰的；她可能親自現身）。打贏得到情報：翻開一張蓋著的反制' : (op.member ? `${FAMILY_BY_ID[op.member].title}・${FAMILY_BY_ID[op.member].name} 的設施` : '隨機設施');
   if (op.kind === 'boss') return `她的據點：三段生命的頭目戰。打倒她，拔掉「${FAMILY_BY_ID[op.member].buff}」`;
   if (op.kind === 'manor') return '削弱增援產能；也許會有成員在場';
-  if (op.kind === 'stop') return `打贏就取消這張反制：${COUNTERS[op.card].desc}`;
+  if (op.kind === 'stop') return `打贏就取消這張反制：${COUNTERS[op.card].desc}（家族嚴加看守：難度 +2）`;
   if (op.kind === 'growth') return `打贏拿到：${op.reward.map(k => ITEMS[k].name).join('、')}`;
   if (op.kind === 'rest') return `不出擊。全員回 1 顆心、後送倒數 -1；可出擊的人不足 ${RULES.SQUAD} 名時最快回來的人提前歸隊。家族的反制照樣推進`;
   const left = story ? Camp.C.members.filter(m => m.alive).map(m => FAMILY_BY_ID[m.id].name) : [];

@@ -615,7 +615,7 @@ function startMission() {
       const alive = C.members.filter(m => m.alive);
       if (alive.length && Math.random() < 0.5) extra.push([FAMILY_BY_ID[alive[ri(0, alive.length - 1)].id].boss]);
     } else if (op.kind === 'facility' && story && op.member && Math.random() < Camp.appearChance(op.member)) {
-      extra.push([FAMILY_BY_ID[op.member].boss]); // 成員親自現身（天選者）
+      extra.push([FAMILY_BY_ID[op.member].boss, 'gunman']); // 成員親自現身（天選者），帶 1 名護衛
     }
     gen = generateMap(Camp.level(op), { type, extra, bonus: 2 * S.buffs.filter(b => b === 'book').length + Camp.mod('extra') + RULES.SQUAD_EXTRA });
     gen.curse = S.buffs.includes('sis') ? pickCurse(gen) : [];
@@ -629,6 +629,7 @@ function startMission() {
     gen.conds = ['facility', 'stop', 'growth'].includes(op.kind) ? facilityConds(gen, Camp.level(op)) : [];
     // 反制「重裝化」：每層把 1 名槍手換成重裝兵；「封鎖補給」：補給箱減半
     for (let i = 0; i < Camp.mod('armor'); i++) { const g = gen.enemies.find(p => p.type === 'gunman'); if (g) g.type = 'brute'; }
+    for (let i = 0; i < Camp.mod('countersnipe'); i++) { const g = gen.enemies.find(p => p.type === 'gunman'); if (g) g.type = 'sniper'; }
     if (Camp.mod('supply')) gen.crates = gen.crates.filter((_, i) => i % 2 === 0);
     C.retryGen = packGen(gen); // 輸了要重打同一張：存進存檔，重新載入也不會換圖
     C.retryOp = opKey;
@@ -665,6 +666,12 @@ function startMission() {
   }
   S.appeared = [];
   for (const e of enemies()) if (e.boss) tuneBoss(e, op);
+  // 敵人變聰明：難度 SMART_LEVEL 起（或反制「散兵戰術」）
+  S.smart = Camp.level(op) >= RULES.SMART_LEVEL || Camp.mod('skirmish') > 0;
+  for (const e of enemies()) {
+    if (Camp.mod('kevlar') && e.kind === 'gunman') e.armor = 1;
+    if (Camp.mod('elite') && e.kind === 'conscript') { e.act = 60; e.q = '老手'; }
+  }
 
   const p0 = gen.playerSpawns[0];
   controls.target.set(p0.x + 3, 0, p0.z);
@@ -1330,8 +1337,9 @@ function tuneBoss(e, op) {
   if (e.member && op.kind === 'facility') {
     // 現身戰：只有 1 段生命，打掉就撤退（擊退）
     e.appearance = true;
-    e.maxHp = 2;
-    e.hp = 2;
+    e.alerted = true; // 她是來找妳們的
+    e.maxHp = RULES.APPEAR_HP;
+    e.hp = RULES.APPEAR_HP;
     e.cuts = null;
     e.shotCap = 2;
     S.appeared.push(e.member);
@@ -2836,6 +2844,7 @@ function evalTile(e, pos, ps) {
   else if (e.kind === 'sniper') { if (nearest < 5) s -= (5 - nearest) * 6; }
   else if (nearest > 8) s -= (nearest - 8) * 5;
   if (nearest < 2 && e.kind !== 'zealot' && e.kind !== 'doll') s -= 10;
+  if (S.smart && !e.boss) s -= 8 * enemies().filter(o => o !== e && !o.summon && dist(o, pos) < 1.6).length; // 散開，不擠在一起被一發炸到
   return s;
 }
 
@@ -2865,10 +2874,22 @@ function bossSeek(e, moveCount) {
     const d = near(mv);
     if (d >= now - 0.5) continue;
     const risk = hitChance(planReactions(e, pathCells(e, mv)));
+    if (risk >= RULES.BOSS_RISK_MAX) continue; // 不走進反應射擊網
     const s = (now - d) * 3 - risk * 20 + (ps.some(g => hasLOS(S.map, mv, g)) ? 6 : 0);
     if (!best || s > best.s) best = { s, mv };
   }
   return best ? { type: 'move', e, dest: best.mv, gain: best.s } : null;
+}
+
+// 射擊目標的優先度：命中率，聰明的敵人再加上「先打千夏、最後開槍的人」（反狙擊：狙擊手更執著）
+function prio(e, o) {
+  let s = o.odds.hit;
+  if (S.smart || (e.kind === 'sniper' && Camp.mod('countersnipe'))) {
+    const u = o.unit;
+    if (u.girl === 'chinatsu') s += e.kind === 'sniper' ? 25 : 15;
+    if (u === S.lastShooter) s += 10;
+  }
+  return s;
 }
 
 // minGain：移動至少要改善多少才走
@@ -2879,8 +2900,8 @@ function aiChooseFor(es, moveCount, minGain = RULES.AI_MOVE_GAIN) {
   let shot = null;
   for (const e of es) {
     if (e.firedOut || e.noGun || bossCapped(e)) continue;
-    const t = visibleTargets(e).find(o => bossMayShoot(e, o.unit));
-    if (t && (!shot || t.odds.hit > shot.odds.hit)) shot = { e, t: t.unit, odds: t.odds };
+    const t = visibleTargets(e).filter(o => bossMayShoot(e, o.unit)).sort((a, b) => prio(e, b) - prio(e, a))[0];
+    if (t && (!shot || prio(e, t) > prio(shot.e, shot))) shot = { e, t: t.unit, odds: t.odds, unit: t.unit };
   }
   if (shot && shot.odds.hit >= RULES.AI_SHOOT) return { type: 'shoot', ...shot };
 
@@ -2892,7 +2913,10 @@ function aiChooseFor(es, moveCount, minGain = RULES.AI_MOVE_GAIN) {
     for (const mv of moveOptions(e).values()) {
       if (dist(e, mv) > 9) continue;
       const risk = hitChance(planReactions(e, pathCells(e, mv)));
-      const gain = evalTile(e, mv, ps) - risk * RULES.AI_RISK - cur;
+      const smart = S.smart && !e.unflinching;
+      if (e.boss && risk >= RULES.BOSS_RISK_MAX) continue; // 頭目不走進反應射擊網
+      if (smart && !e.boss && risk >= RULES.SMART_RISK_MAX) continue;
+      const gain = evalTile(e, mv, ps) - risk * (smart || e.boss ? RULES.AI_RISK_SMART : RULES.AI_RISK) - cur;
       if (!move || gain > move.gain) move = { type: 'move', e, dest: mv, gain };
     }
   }
@@ -2980,7 +3004,8 @@ async function impulses(acted, passed = false) {
       const ps = players();
       if (!ps.length) return;
       const near = p => Math.min(...ps.map(q => dist(p, q)));
-      const opts = [...moveOptions(e).values()].filter(m => !m.vault && dist(e, m) <= 3);
+      const opts = [...moveOptions(e).values()].filter(m => !m.vault && dist(e, m) <= 3 &&
+        !(e.boss && hitChance(planReactions(e, pathCells(e, m))) >= RULES.BOSS_RISK_MAX)); // 頭目不衝進反應射擊網
       if (!opts.length) continue;
       const best = opts.reduce((a, b) => near(b) < near(a) ? b : a);
       if (near(best) >= near(e)) continue;
@@ -3009,7 +3034,8 @@ async function impulses(acted, passed = false) {
       if (!ps.length) return;
       const prey = S.lastShooter && S.lastShooter.alive ? S.lastShooter : ps.reduce((a, b) => dist(e, b) < dist(e, a) ? b : a);
       if (!e.pinned) {
-        const opts = [...moveOptions(e).values()].filter(m => !m.vault && dist(e, m) <= 4);
+        const opts = [...moveOptions(e).values()].filter(m => !m.vault && dist(e, m) <= 4 &&
+          hitChance(planReactions(e, pathCells(e, m))) < RULES.BOSS_RISK_MAX); // 不衝進反應射擊網
         const best = opts.length ? opts.reduce((a, b) => dist(b, prey) < dist(a, prey) ? b : a) : null;
         if (best && dist(best, prey) < dist(e, prey)) {
           impulseNote(e, `追獵 ${prey.name}`);

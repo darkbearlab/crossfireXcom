@@ -96,6 +96,8 @@ function applyCard(c, notes) {
 // 回合結束：反制倒數，生效的換新的，重排作戰清單
 function endTurn(notes) {
   C.turn++;
+  // 家族擴張：每 EXPAND_EVERY 回合威脅自動 +1
+  if (C.turn % RULES.EXPAND_EVERY === 0) { C.threat++; notes.push(`⚠ 家族擴張了勢力：家族威脅 ${C.threat}（每 ${RULES.EXPAND_EVERY} 回合 +1）`); }
   for (const c of [...C.cards]) {
     c.left--;
     if (c.left <= 0) { applyCard(c, notes); C.cards.splice(C.cards.indexOf(c), 1); }
@@ -194,7 +196,7 @@ export function level(op) {
   if (C.mode === 'endless') return 5 + C.done;
   if (op.kind === 'rest') return 0;
   const boss = op.kind === 'boss' ? (bossIndex(op.member) === 0 ? 0 : 1) : 0;
-  return 2 + C.threat * 2 + boss + ({ manor: 2, finale: 2 }[op.kind] || 0);
+  return 2 + C.threat * 2 + boss + ({ manor: 2, finale: 2, stop: 2 }[op.kind] || 0); // 阻止作戰：家族嚴加看守
 }
 
 // 成員在自己的設施現身的機率
