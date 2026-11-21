@@ -92,6 +92,9 @@ export const MAPGEN = {
   MIN_ENEMY_DIST: 7,      // 敵人崗哨離部署區至少幾格
   // 後期靠「規模」加壓，不改單兵數值：難度到 BIG[i] 起，地圖寬 +4、高 +2，建築、隱蔽區跟著變多
   BIG: [8, 12],
+  // 不留可以一口氣橫越地圖的直線：任何偏橫向的直線移動路線最長幾格；貼著上下邊緣（2 列內）的更短
+  LINE_MAX: 8,
+  LINE_EDGE: 5,
 };
 export const mapScale = level => MAPGEN.BIG.filter(l => level >= l).length; // 0、1、2
 

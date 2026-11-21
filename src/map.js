@@ -64,6 +64,82 @@ function wobbly(len, base) {
   return out;
 }
 
+// ---------- 長直線 ----------
+// 偏橫向的移動方向（整數向量 p ≥ |q|，互質）；只往右掃，反方向是同一條線
+const gcd = (a, b) => b ? gcd(b, a % b) : a;
+const LINE_DIRS = [];
+for (let p = 1; p <= 14; p++) for (let q = -p; q <= p; q++) if (gcd(p, Math.abs(q)) === 1) LINE_DIRS.push([p, q]);
+
+// 跟 grid.clearMove 一樣的地形判定（身體半徑掃過、不能切牆角），只看地形
+function segClear(m, ax, az, bx, bz) {
+  const dx = bx - ax, dz = bz - az;
+  const steps = Math.ceil(Math.hypot(dx, dz) * 8), R = 0.2;
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps, px = ax + dx * t, pz = az + dz * t;
+    for (const ox of [-R, R]) for (const oz of [-R, R]) {
+      const x = Math.round(px + ox), z = Math.round(pz + oz);
+      if (x === ax && z === az) continue;
+      if (!m.walkable(x, z)) return false;
+    }
+  }
+  return true;
+}
+
+// 找出太長的直線：從每條線的起點往前推，能走幾段
+function longLines(m) {
+  const out = [];
+  const edge = z => z <= 1 || z >= m.h - 2;
+  for (let z = 0; z < m.h; z++) for (let x = 0; x < m.w; x++) {
+    if (!m.walkable(x, z)) continue;
+    for (const [p, q] of LINE_DIRS) {
+      // 便宜的預先排除：要超過最短上限，至少得走到第 need 段的格點，那一格不能走就不用細算
+      const need = Math.floor(MAPGEN.LINE_EDGE / Math.hypot(p, q)) + 1;
+      if (!m.walkable(x + need * p, z + need * q)) continue;
+      if (m.walkable(x - p, z - q) && segClear(m, x - p, z - q, x, z)) continue; // 不是線的起點
+      let n = 0;
+      while (segClear(m, x + n * p, z + n * q, x + (n + 1) * p, z + (n + 1) * q)) n++;
+      const len = n * Math.hypot(p, q);
+      const onEdge = edge(z) && edge(z + n * q) && Math.abs(q) * n <= 1;
+      if (len > (onEdge ? MAPGEN.LINE_EDGE : MAPGEN.LINE_MAX)) out.push({ x, z, p, q, n, len });
+    }
+  }
+  return out.sort((a, b) => b.len - a.len);
+}
+
+// 在太長的直線中段放障礙（多半是半掩體，偶爾是全掩體），直到沒有長直線。部署帶、keep 裡的格子不動
+function breakLines(m, DC, keep) {
+  for (let round = 0; round < 12; round++) {
+    const lines = longLines(m);
+    if (!lines.length) return true;
+    for (const L of lines) {
+      let n = 0;
+      while (segClear(m, L.x + n * L.p, L.z + n * L.q, L.x + (n + 1) * L.p, L.z + (n + 1) * L.q)) n++;
+      if (n < L.n) continue; // 已經被別的障礙斷開了
+      // 中心線穿過格子中央附近的格子（擋在這裡一定會擋住身體）；先找中段，沒有就整條線
+      const pick = (lo, hi) => {
+        const got = new Map();
+        const ex = L.x + n * L.p, ez = L.z + n * L.q, steps = Math.ceil(n * Math.hypot(L.p, L.q) * 8);
+        for (let i = 1; i < steps; i++) {
+          const t = i / steps;
+          if (t < lo || t > hi) continue;
+          const px = L.x + (ex - L.x) * t, pz = L.z + (ez - L.z) * t, x = Math.round(px), z = Math.round(pz);
+          if (Math.hypot(px - x, pz - z) > 0.3 || x <= DC || keep.has(k(x, z)) || m.get(x, z) !== T.FLOOR) continue;
+          if ((x === L.x && z === L.z) || (x === ex && z === ez)) continue;
+          got.set(k(x, z), { x, z });
+        }
+        return [...got.values()];
+      };
+      let cand = pick(0.3, 0.7);
+      if (!cand.length) cand = pick(0, 1);
+      if (!cand.length) continue;
+      const c = cand[ri(0, cand.length - 1)];
+      m.set(c.x, c.z, Math.random() < 0.25 ? T.FULL : T.HALF);
+      m.setConceal(c.x, c.z, 0);
+    }
+  }
+  return !longLines(m).length;
+}
+
 // opts: { type: 'extract'|'sabotage'|'hunt', bonus: 額外敵人數, extra: 先擺的編組（boss 等）}
 export function generateMap(level, opts = {}) {
   for (let i = 0; i < MAPGEN.ATTEMPTS; i++) {
@@ -166,6 +242,11 @@ function tryGenerate(level, opts) {
     if (!objective) return null;
     m.set(objective.x, objective.z, T.HALF); // 終端機本身當半掩體
   }
+
+  // ---- 斷開長直線：玩家一次移動能沿直線走任意距離，橫貫的空走廊（尤其是邊緣）等於一步穿越地圖 ----
+  const keep = new Set();
+  if (objective) for (const [dx, dz] of [[0, 0], [1, 0], [-1, 0], [0, 1], [0, -1]]) keep.add(k(objective.x + dx, objective.z + dz));
+  if (!breakLines(m, DC, keep)) return null;
 
   const { seen: reach, list: reachList } = flood(m, playerSpawns[0]);
   if (!reach.has(k(playerSpawns[1].x, playerSpawns[1].z))) return null;
