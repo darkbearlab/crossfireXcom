@@ -1283,7 +1283,7 @@ function countBossShot(e, t) {
 // ---------- 設施條件（難度 3 起 1 個、難度 9 起 2 個；人偶／稻草人要難度 5 起） ----------
 const COND_TEXT = {
   timer: () => `警報響起後，每 ${S.condTimer ? S.condTimer.every : 4} 個敵方主動權會有 2 名增援從撤離點那一側趕到`,
-  plant: () => '裝好炸藥後，往撤離點的路上會立刻冒出 2 名增援，全圖進入警戒',
+  plant: () => '裝好炸藥後，撤退路線的兩側會立刻冒出 2 名增援（各 1 名），全圖進入警戒',
   special: () => '這裡有魔女的東西（人偶或稻草人）',
 };
 function facilityConds(gen, level) {
@@ -1341,12 +1341,23 @@ async function facilityTimer() {
 }
 async function plantAlarm() {
   const o = S.mission.objective, ex = exitCenter();
-  const mid = { x: (o.x + ex.x) / 2, z: (o.z + ex.z) / 2 };
-  const got = callIn('gunman', 2, p => -dist(p, mid) + coverSides(S.map, p).length * 0.5, 3);
+  // 增援出現在撤退路線的兩側（各 1 名，離路線約 3 格、在路程中段），不直接擋在路上
+  const dx = ex.x - o.x, dz = ex.z - o.z, len = Math.hypot(dx, dz) || 1;
+  const flank = side => p => {
+    const t = ((p.x - o.x) * dx + (p.z - o.z) * dz) / (len * len); // 沿路線的位置 0～1
+    const perp = ((p.x - o.x) * dz - (p.z - o.z) * dx) / len;      // 離路線幾格（正負＝哪一側）
+    if (t < 0.25 || t > 0.8 || Math.sign(perp) !== side || Math.abs(perp) < 2) return null;
+    return -Math.abs(Math.abs(perp) - 3) - Math.abs(t - 0.5) * 3 + coverSides(S.map, p).length * 0.5;
+  };
+  let got = [...callIn('gunman', 1, flank(1), 3), ...callIn('gunman', 1, flank(-1), 3)];
+  if (got.length < 2) { // 有一側擠不下（貼著地圖邊）：補在另一側
+    const side = got.length && Math.sign(((got[0].x - o.x) * dz - (got[0].z - o.z) * dx)) || 1;
+    got = got.concat(callIn('gunman', 2 - got.length, flank(side), 3));
+  }
   alertEnemies(enemies(), 'plant');
   if (got.length) {
-    UI.banner('警報！增援堵住撤離路線', 'enemy');
-    UI.log(`炸藥觸發警報：${got.map(e => `${e.name}(${e.x},${e.z})`).join('、')} 冒出來堵住往撤離點的路，全圖進入警戒`, 'warn');
+    UI.banner('警報！增援從撤退路線兩側包過來', 'enemy');
+    UI.log(`炸藥觸發警報：${got.map(e => `${e.name}(${e.x},${e.z})`).join('、')} 從撤退路線的兩側冒出來，全圖進入警戒`, 'warn');
   }
   updateVisibility();
   refresh();
