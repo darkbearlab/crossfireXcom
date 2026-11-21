@@ -44,7 +44,7 @@ if (row === 'girls' || row === 'all') for (const g of GIRLS) list.push(() => {
 });
 if (row === 'girls') list.push(() => list.extra);
 const tpl = k => ENEMY_TYPES[k];
-if (row === 'bosses' || row === 'all') for (const k of ['b_exec', 'b_eye', 'b_mother', 'b_book', 'b_sis'])
+if (row === 'bosses' || row === 'all') for (const k of ['b_exec', 'b_eye', 'b_mother', 'b_book', 'b_sis', 'b_perfume', 'b_hound', 'b_puppet'])
   list.push(() => makeUnitMesh('enemy', k, tpl(k).color, 'ar', 1, { boss: true, mother: k === 'b_mother' }));
 if (row === 'enemies' || row === 'all') {
   for (const k of ['gunman', 'zealot', 'conscript', 'officer', 'sniper', 'mg', 'brute', 'doll'])

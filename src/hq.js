@@ -1,7 +1,7 @@
-// 標題畫面與作戰室（任務之間：選作戰、點成長樹、選出擊的兩人）。
+// 標題畫面、開新戰役的名單選擇、作戰室（任務之間：選作戰、點成長樹、選出擊的人）。
 import * as Camp from './campaign.js';
 import { GIRLS, TREES, FAMILY, FAMILY_BY_ID, STORY } from './girls.js';
-import { WEAPONS, RULES, ITEMS, SLOTS, COUNTERS } from './config.js';
+import { WEAPONS, RULES, ITEMS, SLOTS, COUNTERS, ROSTER } from './config.js';
 const GIRL_BY = id => GIRLS.find(g => g.id === id);
 
 const $ = id => document.getElementById(id);
@@ -38,6 +38,44 @@ export function showTitle({ onContinue, onNew, onEndless }) {
   };
 }
 
+// 開新戰役：決定雙方名單。魔法少女從 7 人挑 ROSTER.girls 人；家族成員預設隨機（也可以手選）
+export function showRoster(onDone) {
+  const rnd = (pool, n) => [...pool].sort(() => Math.random() - 0.5).slice(0, n).map(x => x.id);
+  let girls = rnd(GIRLS, ROSTER.girls), fam = rnd(FAMILY, ROSTER.family), famPick = false;
+  const draw = () => {
+    const gList = GIRLS.map(d => `<button class="rs-g ${girls.includes(d.id) ? 'on' : ''}" data-id="${d.id}">
+      <i class="dot" style="background:${hex(d.hair)}"></i><b>${d.name}</b><span class="t">${d.title}</span>
+      <small>${d.weapons.map(w => WEAPONS[w].name).join(' ＋ ')}<br>${d.active}</small></button>`).join('');
+    const fList = FAMILY.map(m => `<button class="rs-f ${fam.includes(m.id) ? 'on' : ''} ${famPick ? '' : 'veil'}" data-id="${m.id}">
+      <b>${m.title}・${m.name}</b><small>${m.buff}：${m.desc}</small></button>`).join('');
+    const ok = girls.length === ROSTER.girls && fam.length === ROSTER.family;
+    const o = open(`
+      <h1>決定名單</h1>
+      <div class="sec">魔法少女（選 ${ROSTER.girls} 人，已選 ${girls.length}；每場出擊 ${RULES.SQUAD} 人）<button class="rs-rg small">隨機</button></div>
+      <div class="roster">${gList}</div>
+      <div class="sec">魔女家族（${ROSTER.family} 名成員＋教母）${famPick ? `已選 ${fam.length}` : '：隨機，開戰後才知道是誰'}
+        <button class="rs-fp small">${famPick ? '改回隨機' : '手選'}</button></div>
+      ${famPick ? `<div class="roster fam">${fList}</div>` : ''}
+      <button id="rs-ok" ${ok ? '' : 'disabled'}>開始戰役 ▶</button>`, 'hq');
+    o.querySelectorAll('.rs-g').forEach(b => b.onclick = () => {
+      const id = b.dataset.id;
+      if (girls.includes(id)) girls = girls.filter(x => x !== id);
+      else if (girls.length < ROSTER.girls) girls.push(id);
+      draw();
+    });
+    o.querySelectorAll('.rs-f').forEach(b => b.onclick = () => {
+      const id = b.dataset.id;
+      if (fam.includes(id)) fam = fam.filter(x => x !== id);
+      else if (fam.length < ROSTER.family) fam.push(id);
+      draw();
+    });
+    o.querySelector('.rs-rg').onclick = () => { girls = rnd(GIRLS, ROSTER.girls); draw(); };
+    o.querySelector('.rs-fp').onclick = () => { famPick = !famPick; if (!famPick) fam = rnd(FAMILY, ROSTER.family); draw(); };
+    o.querySelector('#rs-ok').onclick = () => { if (ok) onDone({ girls, family: fam }); };
+  };
+  draw();
+}
+
 export function showStory(title, html, btn, cb) {
   const o = open(`<h1>${title}</h1><div class="story">${html}</div><button id="s-ok">${btn}</button>`);
   o.querySelector('#s-ok').onclick = cb;
@@ -51,7 +89,7 @@ export function showHQ(onGo, notes = []) {
   const C = Camp.C;
   const avail = C.girls.filter(g => g.evac === 0).map(g => g.id);
   C.deploy = (C.deploy || []).filter(id => avail.includes(id));
-  for (const id of avail) if (C.deploy.length < 2 && !C.deploy.includes(id)) C.deploy.push(id);
+  for (const id of avail) if (C.deploy.length < RULES.SQUAD && !C.deploy.includes(id)) C.deploy.push(id);
   render();
 }
 
@@ -62,7 +100,7 @@ function opDesc(op) {
   if (op.kind === 'manor') return '削弱增援產能；也許會有成員在場';
   if (op.kind === 'stop') return `打贏就取消這張反制：${COUNTERS[op.card].desc}`;
   if (op.kind === 'growth') return `打贏拿到：${op.reward.map(k => ITEMS[k].name).join('、')}`;
-  if (op.kind === 'rest') return '不出擊。全員回 1 顆心、後送倒數 -1；可出擊的人不足 2 名時最快回來的人提前歸隊。家族的反制照樣推進';
+  if (op.kind === 'rest') return `不出擊。全員回 1 顆心、後送倒數 -1；可出擊的人不足 ${RULES.SQUAD} 名時最快回來的人提前歸隊。家族的反制照樣推進`;
   const left = story ? Camp.C.members.filter(m => m.alive).map(m => FAMILY_BY_ID[m.id].name) : [];
   return `增援 ${Camp.C.production} 波。打倒教母就結束${left.length ? `（${left.join('、')} 也在莊園）` : ''}`;
 }
@@ -159,7 +197,7 @@ function render() {
   }).join('');
 
   const avail = C.girls.filter(g => g.evac === 0).length;
-  const need = Math.min(2, avail);
+  const need = Math.min(RULES.SQUAD, avail);
   const isRest = op && op.kind === 'rest';
   const ready = C.phase !== 'done' && op && (isRest || (C.deploy.length === need && need > 0));
   const mk = Camp.market();

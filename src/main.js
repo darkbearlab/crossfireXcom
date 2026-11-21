@@ -8,7 +8,7 @@
 // - 潛入：敵人一開始未警戒，只看自己的責任區、視距短、看不穿半掩體與隱蔽區。被看到或聽到槍聲才警戒。
 // - 玩家武器有彈匣；換主武器、主武器換彈 → 交出主動權。手槍則不會。
 // - 敵人衝動：主動權交回玩家時，這輪沒行動的敵人會做自己的衝動行為。
-// - 魔法少女：四人輪替、每張地圖出 2 人；每人一個被動、一個魔法（每圖一次），兩條成長樹。
+// - 魔法少女：7 人池子挑 5 人、每張地圖出 3 人；每人一個被動、一個魔法（每圖一次），兩條成長樹。
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { ITEMS, T, RULES, THEMES, ENEMY_TYPES, WEAPONS } from './config.js';
@@ -149,15 +149,22 @@ function diceBonus(s) {
   if (s.girl === 'yukino' && s.raised && lv(s, 'gun') >= 2) b += 1;
   if (s.transformed && lv(s, 'gun') >= 4) b += 1;
   if (s.suppressed && s.heavySup) b -= 1;
+  if (s.marked && s.markLv >= 1) b -= 1; // 被千夏標記（魔法 1）
   return b;
 }
 // 破防：打被壓制的敵人時，不算壓制給的那 1 級掩體
 const breach = s => s.team === 'player' && lv(s, 'gun') >= ({ akane: 2, hikari: 3, momo: 3 }[s.girl] || 99);
+// 千夏：這次主動權還沒移動過 → 視野 +3、看得穿迷霧
+const keenEye = u => !!u && u.girl === 'chinatsu' && u.movedInit !== S.initNo;
+const sees = (a, b) => hasLOS(S.map, a, b, keenEye(a) ? RULES.SIGHT + 3 : RULES.SIGHT, keenEye(a));
 // 瞄準鏡：步槍、機槍、狙擊槍，這次主動權還沒移動過才有加值（反應射擊沒有）
 const SCOPED = ['ar', 'lmg', 'hmg', 'sn'];
 const scopeBonus = s => s.scope && s.movedInit !== S.initNo && SCOPED.includes(weapon(s).id) ? 15 : 0;
+// 千夏的標記：隊友打被標記的敵人每顆骰 +10%（+15%）；千夏槍法 4 再 +1 骰
+const markDie = (s, t) => s.team === 'player' && t.marked ? RULES.MARK_BONUS[t.markLv >= 4 ? 1 : 0] : 0;
+const markDice = (s, t) => s.girl === 'chinatsu' && lv(s, 'gun') >= 4 && t.marked ? 1 : 0;
 const oddsVs = (s, t, opts = {}) => shotOdds(S.map, s, s, t, {
-  suppressed: !!t.suppressed, breach: breach(s), weapon: weapon(s), diceBonus: diceBonus(s), dieBonus: opts.reaction ? 0 : (t.bigTarget || 0) + scopeBonus(s), air: !!t.flying, raised: !!t.raised, hardy: !!t.hardy, ...opts });
+  suppressed: !!t.suppressed, breach: breach(s), weapon: weapon(s), diceBonus: diceBonus(s) + markDice(s, t), dieBonus: (opts.reaction ? 0 : (t.bigTarget || 0) + scopeBonus(s)) + markDie(s, t), air: !!t.flying, raised: !!t.raised, hardy: !!t.hardy, ...opts });
 const iceAt = (x, z) => S.ice.find(i => i.x === x && i.z === z);
 const isExit = p => S.mission && S.mission.exits.some(e => e.x === p.x && e.z === p.z);
 const adjObjective = u => {
@@ -259,10 +266,21 @@ function buildWorld() {
   }
   world.add(tiles);
 
+  S.cellMesh = new Map(); // 每格掩體的模型（楓炸掉掩體時換掉）
   for (let z = 0; z < h; z++) for (let x = 0; x < w; x++) {
     const t = map.get(x, z);
-    if (t === T.HALF) world.add(makeHalf(th, x, z));
-    if (t === T.FULL) world.add(makeFull(th, x, z));
+    const m = t === T.HALF ? makeHalf(th, x, z) : t === T.FULL ? makeFull(th, x, z) : null;
+    if (m) { world.add(m); S.cellMesh.set(key(x, z), m); }
+  }
+
+  // 迷霧（卡蜜拉的「迷香」）
+  const fogTiles = [];
+  for (let z = 0; z < h; z++) for (let x = 0; x < w; x++) if (map.isFog(x, z)) fogTiles.push([x, z]);
+  if (fogTiles.length) {
+    const fogMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1.3, 1),
+      new THREE.MeshStandardMaterial({ color: 0xb8a0d8, transparent: true, opacity: 0.38, depthWrite: false, roughness: 1 }), fogTiles.length);
+    fogTiles.forEach(([x, z], i) => fogMesh.setMatrixAt(i, m4.makeTranslation(x, 0.65, z)));
+    world.add(fogMesh);
   }
 
   // 隱蔽區：草叢/瓦礫的細長突起
@@ -427,6 +445,23 @@ function outfit(d, gs) {
     if (g >= 1) p.sweetDice += 1;
     if (g >= 2) ws[1].dice += 1;
     if (g >= 4) ws[1].canReact = true;
+  } else if (d.id === 'chinatsu') {
+    if (g >= 1) p.dieMod = (p.dieMod || 0) + 5;
+    if (g >= 2) { p.mag += 1; p.ammo = p.mag; p.reserve += 4; }
+    if (g >= 3) p.closeDice = 0;
+    if (g >= 5) p.canReact = true;
+  } else if (d.id === 'kaede') {
+    if (g >= 1) p.noFriendly = true;
+    if (g >= 2) { p.mag += 1; p.ammo = p.mag; p.reserve += 3; }
+    if (g >= 3) p.pierce = 2;
+    if (g >= 4) ws[1].dice += 1;
+    if (g >= 5) p.rubbleSure = true;
+  } else if (d.id === 'shiori') {
+    if (g >= 1) p.sweetDice += 1;
+    if (g >= 2) p.spraySure = true;
+    if (g >= 3) p.noReactPenalty = true;
+    if (g >= 4) p.dieMod = (p.dieMod || 0) + 5;
+    if (g >= 5) { p.mag += 4; p.ammo = p.mag; p.reserve += 8; }
   }
   return ws;
 }
@@ -440,6 +475,7 @@ function makeGirlUnit(gs) {
   if (slots.includes('mag')) { const p = u.weapons[0]; p.mag += 2; p.ammo = p.mag; if (isFinite(p.reserve)) p.reserve += 4; }
   if (slots.includes('scope')) u.scope = true;
   if (slots.includes('reddot')) for (const w of u.weapons) if (w.sidearm || w.id === 'duals') w.dieMod = (w.dieMod || 0) + 5;
+  if (d.ability === 'bless') u.uses = u.usesMax = 2 + (gs.magic >= 4 ? 1 : 0); // 詩織的祝福：每張地圖 2 次（魔法 4：3 次）
   u.items = slots.filter(k => ITEMS[k] && ITEMS[k].kind === 'use');
   u.gear = slots.filter(k => ITEMS[k] && ITEMS[k].kind === 'gear');
   return u;
@@ -495,7 +531,7 @@ function unpackGen(p) {
   m.conceal.set(p.map.conceal);
   m.zone.set(p.map.zone);
   const g = JSON.parse(JSON.stringify(p));
-  return { ...g, map: m, theme: THEMES[p.theme] || THEMES[0], curse: g.curse || [] };
+  return { ...g, map: m, theme: THEMES[p.theme] || THEMES[0], curse: g.curse || [], fog: g.fog || [] };
 }
 
 function cloneGen(g) {
@@ -515,6 +551,23 @@ function pickCurse(gen) {
     if (m.walkable(x, z) && !bad.has(k) && !out.includes(k)) out.push(k);
   }
   return out;
+}
+
+// 迷霧：幾片隨機漫步的區塊（不在部署區）
+function pickFog(gen) {
+  const m = gen.map, out = new Set();
+  const bad = new Set(gen.enemies.map(e => key(e.x, e.z)));
+  for (let i = 0; i < RULES.FOG_PATCHES; i++) {
+    let x = ri(5, m.w - 2), z = ri(0, m.h - 1);
+    const len = ri(4, 6);
+    for (let j = 0, n = 0; j < 30 && n < len; j++) {
+      if (m.walkable(x, z) && !out.has(key(x, z))) { out.add(key(x, z)); n++; }
+      const [dx, dz] = ORTH[ri(0, 3)];
+      x = Math.max(5, Math.min(m.w - 1, x + dx));
+      z = Math.max(0, Math.min(m.h - 1, z + dz));
+    }
+  }
+  return [...out].filter(k => !bad.has(k) || Math.random() < 0.5); // 有些崗哨就站在霧裡
 }
 
 function drawCurse() {
@@ -551,7 +604,7 @@ function startMission() {
   else {
     const extra = [];
     let type;
-    if (op.kind === 'boss') { type = 'hunt'; extra.push([FAMILY_BY_ID[op.member].boss, 'gunman']); }
+    if (op.kind === 'boss') { const b = FAMILY_BY_ID[op.member].boss; type = 'hunt'; extra.push([b, ...(ENEMY_TYPES[b].escort || ['gunman'])]); }
     else if (op.kind === 'finale') {
       type = 'hunt';
       extra.push(['b_mother', 'brute']);
@@ -563,8 +616,14 @@ function startMission() {
     } else if (op.kind === 'facility' && story && op.member && Math.random() < Camp.appearChance(op.member)) {
       extra.push([FAMILY_BY_ID[op.member].boss]); // 成員親自現身（天選者）
     }
-    gen = generateMap(Camp.level(op), { type, extra, bonus: 2 * S.buffs.filter(b => b === 'book').length + Camp.mod('extra') });
+    gen = generateMap(Camp.level(op), { type, extra, bonus: 2 * S.buffs.filter(b => b === 'book').length + Camp.mod('extra') + RULES.SQUAD_EXTRA });
     gen.curse = S.buffs.includes('sis') ? pickCurse(gen) : [];
+    gen.fog = S.buffs.includes('perfume') ? pickFog(gen) : [];
+    // 桃樂絲的「提線」：每張地圖至少 1 具人偶
+    if (S.buffs.includes('puppet') && !gen.enemies.some(p => p.type === 'doll')) {
+      const c = gen.enemies.filter(p => p.type === 'gunman' || p.type === 'zealot');
+      if (c.length) c[ri(0, c.length - 1)].type = 'doll';
+    }
     gen.theme = THEMES[ri(0, THEMES.length - 1)];
     gen.conds = ['facility', 'stop', 'growth'].includes(op.kind) ? facilityConds(gen, Camp.level(op)) : [];
     // 反制「重裝化」：每層把 1 名槍手換成重裝兵；「封鎖補給」：補給箱減半
@@ -575,6 +634,9 @@ function startMission() {
     Camp.save();
   }
   S.map = gen.map;
+  S.map.fog.fill(0);
+  for (const k of gen.fog || []) { const [x, z] = k.split(',').map(Number); S.map.setFog(x, z, 1); }
+  S.lastShooter = null;
   S.mission = gen.mission;
   S.crates = gen.crates;
   S.theme = gen.theme;
@@ -590,7 +652,8 @@ function startMission() {
 
   C.deploy.forEach((id, i) => {
     const u = makeGirlUnit(Camp.girlState(id));
-    Object.assign(u, { x: gen.playerSpawns[i].x, z: gen.playerSpawns[i].z, alive: true, suppressed: false, firedOut: false });
+    const sp = gen.playerSpawns[i] || gen.deployZone[gen.deployZone.length - 1 - i]; // 舊存檔的地圖只有 2 個出生點
+    Object.assign(u, { x: sp.x, z: sp.z, alive: true, suppressed: false, firedOut: false });
     spawnUnit(u);
   });
   for (const p of gen.enemies) {
@@ -690,7 +753,7 @@ function endMission(win, why) {
     const now = Camp.girlState(u.girl).hp;
     return `<li>${u.name}：${u.alive ? `HP ${hp[u.girl]}${now !== hp[u.girl] ? ` → ${now}` : ''}/${GIRL[u.girl].maxHp}` : '倒下後送'}</li>`;
   }).join('');
-  const body = (win ? `<p>${why}。主動權共 ${S.initNo} 次（易手 ${S.initNo - 1} 次）。</p>` : `<p>${why || '上場的兩人都倒下了'}。${Camp.C.mode === 'story' ? '這場留在作戰清單上，可以重打，也可以先做別的事。' : '這張地圖要重打。'}</p>`) +
+  const body = (win ? `<p>${why}。主動權共 ${S.initNo} 次（易手 ${S.initNo - 1} 次）。</p>` : `<p>${why || '上場的人都倒下了'}。${Camp.C.mode === 'story' ? '這場留在作戰清單上，可以重打，也可以先做別的事。' : '這張地圖要重打。'}</p>`) +
     `<ul>${rows}</ul>` + (notes.length ? `<ul class="notes">${notes.map(n => `<li>${n}</li>`).join('')}</ul>` : '') +
     (win ? '<p style="opacity:.6">彈藥會在下張地圖補滿。</p>' : '') +
     '<p class="rec-btns"><button class="rec-dl">匯出這場紀錄</button> <button class="rec-cp">複製</button></p>';
@@ -730,6 +793,7 @@ async function giveInitiative(side) {
 
   S.busy = true;
   S.selected = null;
+  await reviveDolls();
   refresh();
   await facilityTimer();
   const anyAlert = enemies().some(e => e.alerted);
@@ -795,7 +859,7 @@ async function resolvePlayerAction(ok, actor = null) {
 function updateVisibility() {
   const ps = players();
   for (const e of enemies()) {
-    const vis = ps.some(p => hasLOS(S.map, p, e));
+    const vis = !!e.marked || ps.some(p => sees(p, e)); // 被標記的敵人一直看得到
     e.mesh.visible = vis;
     if (vis) e.spotted = true;
   }
@@ -833,7 +897,9 @@ function detect() {
   const found = enemies().filter(e => !e.alerted && ps.some(p => quietSees(e, p)));
   if (!found.length) return false;
   const zones = new Set(found.map(e => e.zone));
-  alertEnemies(enemies().filter(e => zones.has(e.zone)), 'spot');
+  const hunt = S.buffs.includes('hound'); // 艾琳娜的「追獵」：全圖警戒
+  if (hunt) UI.log('家族加持「追獵」：全圖的敵人都被叫醒了', 'warn');
+  alertEnemies(enemies().filter(e => hunt || zones.has(e.zone)), 'spot');
   return true;
 }
 
@@ -995,7 +1061,7 @@ async function performMove(u, dest) {
 // ================= 射擊 =================
 function visibleTargets(u) {
   return S.units
-    .filter(e => e.alive && e.team !== u.team && hasLOS(S.map, u, e) && (!u.range || dist(u, e) <= u.range + 0.5)) // 人偶：射程短
+    .filter(e => e.alive && e.team !== u.team && (u.team === 'player' ? sees(u, e) : hasLOS(S.map, u, e)) && (!u.range || dist(u, e) <= u.range + 0.5)) // 人偶：射程短
     .map(e => ({ unit: e, odds: oddsVs(u, e) }))
     // 仇恨：變身後的光是敵人的優先目標
     .sort((a, b) => (b.odds.hit + (b.unit.transformed ? 25 : 0)) - (a.odds.hit + (a.unit.transformed ? 25 : 0)));
@@ -1045,18 +1111,36 @@ async function shoot(s, t, { reaction = false, forceMiss = false, triple = false
 
   const ap = !reaction && s.apNext && t.armor; // 穿甲彈：這一槍無視裝甲
   if (!reaction && s.apNext) { s.apNext = false; if (ap) UI.log(`${s.name} 的穿甲彈無視了裝甲`, 'good'); }
-  const eff = hit && t.armor && !ap ? Math.max(0, rolled - t.armor) : rolled; // 扣掉裝甲後真正生效的命中
+  const arm = Math.max(0, (t.armor || 0) - (!reaction && w.pierce ? w.pierce : 0)); // 榴彈無視裝甲 1～2 點
+  let eff = hit && arm && !ap ? Math.max(0, rolled - arm) : rolled; // 扣掉裝甲後真正生效的命中
+  if (s.team === 'player' && !reaction) S.lastShooter = s; // 艾琳娜追的是最後一個開槍的少女
+  // 詩織：相鄰的隊友被反應射擊打中時，有機率替她擋下一下
+  const guard = reaction && eff > 0 && s.team === 'enemy' && t.team === 'player'
+    ? players().find(p => p.girl === 'shiori' && p !== t && dist(p, t) < 1.5 && !p.suppressed) : null;
+  let guarded = false;
+  if (guard && Math.random() * 100 < RULES.GUARD_CHANCE) { eff--; rolled--; guarded = true; }
   Rec.shot(s.team, reaction, forceMiss ? 0 : (triple ? Math.round((1 - Math.pow(1 - odds.die / 100, n)) * 100) : odds.hit), eff > 0);
   const tag = `${s.name}${reaction ? '（反應）' : triple ? '（三管齊發）' : ''} → ${t.name}（${forceMiss ? '必定落空' : `${n} 骰×${odds.die}%`}）`;
   if (hit) {
     UI.log(`${tag} 中 ${rolled}${eff < rolled ? (eff ? `（裝甲擋掉 ${rolled - eff}）` : '（全被裝甲擋掉，沒有效果）') : ''}`,
       eff ? (s.team === 'player' ? 'good' : 'bad') : (s.team === 'player' ? 'warn' : 'dim'));
-    if (!eff) floatText(t, '裝甲', 'miss');
+    if (!eff && !guarded) floatText(t, '裝甲', 'miss');
+    if (guarded) {
+      floatText(guard, '擋下！', 'ow');
+      UI.log(`${guard.name} 替 ${t.name} 擋下了一下`, 'good');
+      await strike(guard, 1, s);
+    }
     await strike(t, eff, s);
   } else {
     floatText(t, '未命中', 'miss');
     UI.log(`${tag} 未命中`, 'dim');
+    // 詩織的衝鋒槍：打空也有機率讓目標累積 1 下
+    if (!reaction && w.spray && !forceMiss && t.alive && !t.unflinching && !t.shield && (w.spraySure || Math.random() < 0.5)) {
+      UI.log(`彈幕讓 ${t.name} 抬不起頭（累積 1 下）`, 'good');
+      addStress(t);
+    }
   }
+  if (!reaction && w.splash) await grenade(s, t, w); // 榴彈：波及周圍 1 格、可能炸掉掩體
   if (!reaction && s.team === 'player' && w.pin && !t.shield) pinFire(s, t); // 頭目剛重新部署：不跟著壓制
   chipIce(s, t);
   makeNoise(s, t);
@@ -1179,6 +1263,12 @@ async function bossPhase(b) {
   const reCands = (S.mission.reinforceSpots || []).filter(free);
   const group = reCands.length ? reCands.slice(0, rule.kinds.length) : reinforceSpots(b, ps, allFloor.filter(free), rule);
   group.forEach((p, i) => { spawnEnemy(rule.kinds[i], p.x, p.z, S.map.zoneAt(p.x, p.z), true).firedOut = true; }); // 剛到場：這次主動權內不開槍
+  if (rule.curse) { // 莉莉絲：在最近的少女腳下下詛咒
+    const ts = [...ps].sort((a, c) => dist(a, b) - dist(c, b)).slice(0, rule.curse);
+    for (const p of ts) { S.curse.add(key(p.x, p.z)); suppress(p, '詛咒！'); }
+    drawCurse();
+    if (ts.length) UI.log(`${b.name} 在 ${ts.map(p => p.name).join('、')} 腳下下了詛咒`, 'warn');
+  }
   if (group.length) UI.log(`增援 ${group.map((p, i) => `${ENEMY_TYPES[rule.kinds[i]].name}(${p.x},${p.z})`).join('、')} 趕到（剛到場，這次主動權內不能開槍）`, 'warn');
 
   // 3. 振奮
@@ -1203,7 +1293,9 @@ function reinforceSpots(b, ps, floor, rule) {
     watch: p => near(p) < 8 || !seers(p).length || !covered(p) ? null : side(p) * 3 + seers(p).length * 4 - (near(p) - 8),
     ambush: p => seers(p).length || near(p) < 4 || near(p) > 6.5 ? null : dist(p, b) * 0.5 - Math.abs(near(p) - 5) * 2 + side(p),
     guard: p => dist(p, b) > 3 || near(p) < 4 ? null : side(p) * 3 + (covered(p) ? 4 : -4) - dist(p, b),
-  }[rule.where];
+    fog: p => !S.map.isFog(p.x, p.z) || seers(p).length || near(p) < 3 ? null : side(p) - Math.abs(near(p) - 5),
+    rear: p => p.x > 4 || near(p) < 3 ? null : (seers(p).length ? 0 : 3) + side(p) - p.x,
+  }[rule.where] || (() => null);
   const pick = (sc, gap) => {
     const out = [];
     const cands = floor.map(p => ({ p, s: sc(p) })).filter(c => c.s !== null)
@@ -1219,7 +1311,7 @@ function reinforceSpots(b, ps, floor, rule) {
   // 地形不允許時退而求其次：離少女至少 5 格、靠掩體
   if (out.length < n) {
     const used = out;
-    const want = rule.where === 'ambush' ? 5 : 7; // 包抄型還是要近（4～6 格），其他照原本離遠一點
+    const want = ['ambush', 'fog', 'rear'].includes(rule.where) ? 5 : 7; // 包抄型還是要近（4～6 格），其他照原本離遠一點
     const rest = pick(p => near(p) < 4 || used.some(q => q.x === p.x && q.z === p.z) ? null : side(p) * 3 - Math.abs(near(p) - want) * 2, 1);
     out = [...used, ...rest.filter(p => !used.some(q => dist(q, p) < 1))].slice(0, n);
   }
@@ -1396,6 +1488,15 @@ function pinFire(s, t) {
   }
 }
 
+// 累積 1 下（不受傷）：到門檻就受阻／壓制
+function addStress(t) {
+  if (!t.alive || t.unflinching || t.steady) return;
+  if (t.stress < RULES.SUP_AT) t.stress++;
+  if (t.stress >= RULES.SUP_AT) suppress(t);
+  else if (t.stress >= RULES.PIN_AT) pin(t);
+  if (t.label) UI.updateLabel(t.label, t);
+}
+
 // 受阻：不能移動（還能開槍、反應射擊）
 function pin(t, label = '受阻') {
   if (!t.alive || t.suppressed || t.pinned || t.unflinching) return;
@@ -1451,6 +1552,7 @@ async function die(u) {
     if (p.label) UI.updateLabel(p.label, p);
   }
   if (u.crowLocked) { const f = u.crowLocked, o = f.owner; if (o) o.crows = f.hp; removeFlock(f); }
+  if (u.kind === 'doll' && S.buffs.includes('puppet') && !u.revived) { u.revivePending = true; UI.log('（桃樂絲的線還連在人偶身上……）', 'warn'); }
   u.alive = false;
   u.hp = 0;
   u.suppressed = false;
@@ -1634,7 +1736,7 @@ function updateHover() {
     if (!canAct(u)) showTip(`<b>${occ.name}</b>${info}`);
     else if (u.firedOut) showTip(`<b>${occ.name}</b><br><small>此單位這次主動權不能再開槍</small>${info}`);
     else if (weapon(u).ammo <= 0) showTip(`<b>${occ.name}</b><br><small>彈匣空了</small>${info}`);
-    else if (hasLOS(S.map, u, occ)) {
+    else if (sees(u, occ)) {
       const o = oddsVs(u, occ);
       showTip(`<b>${occ.name}</b> ${o.dice} 骰×${o.die}%：至少中一顆 <b>${o.hit}%</b>${occ.armor ? `<br>裝甲 ${occ.armor}：要中 ${occ.armor + 1} 顆才有效 <b>${UI.effHit(o, occ.armor)}%</b>` : ''}<br><small>${UI.coverName(o)}${occ.suppressed ? ' · 壓制中' : occ.pinned ? ' · 受阻' : ''} · 點敵人瞄準</small>${info}`);
     } else showTip(`<b>${occ.name}</b><br><small>無視線</small>${info}`);
@@ -1676,6 +1778,16 @@ function magicHover(u, t) {
     const r = opt.rider;
     const sub = r ? (r.team === 'enemy' ? '被抬起的敵人不能移動、算半掩體' : '站在冰塊上算半掩體') : `全掩體・擋視線・耐久 ${m >= 1 ? 5 : RULES.ICE_HP}`;
     showTip(`<b>${r ? `把 ${r.name} 抬到冰塊上` : '放置冰塊'}</b>${confirmHint()}<br><small>${sub}</small>`);
+  } else if (opt.kind === 'mark') {
+    showTip(`<b>標記 ${opt.unit.name}</b>${confirmHint()}<br><small>一直看得到她；隊友打她每顆骰 +${RULES.MARK_BONUS[m >= 4 ? 1 : 0]}%${m >= 1 ? '・她開槍 -1 骰' : ''}${m >= 2 ? '・受阻' : ''}${m >= 3 ? '・擴散到周圍 1 格的敵人' : ''}</small>`);
+  } else if (opt.kind === 'blast') {
+    const occ = iceAt(t.x, t.z) ? '冰塊' : S.map.get(t.x, t.z) === T.FULL ? '全掩體' : '半掩體';
+    const r = m >= 3 ? 2.5 : 1.5;
+    const hit = enemies().filter(e => e.mesh.visible && dist(e, t) <= r);
+    showTip(`<b>爆破${occ}</b>${confirmHint()}<br><small>炸成空地；周圍 ${m >= 3 ? 2 : 1} 格的敵人進入壓制${m >= 1 ? '並各吃 1 下命中' : ''}${hit.length ? `（${hit.map(e => e.name).join('、')}）` : ''}・會發出聲響</small>`);
+  } else if (opt.kind === 'bless') {
+    const p = opt.unit;
+    showTip(`<b>祝福 ${p.name}</b>${confirmHint()}<br><small>回 ${m >= 5 ? 2 : 1} 顆心${p.suppressed || p.pinned ? '、解除' + (p.suppressed ? '壓制' : '受阻') + '（不會吃反應射擊）' : ''}${m >= 2 ? '・這次主動權內不會再被壓制' : ''}${m >= 3 ? '・累積歸零' : ''}</small>`);
   } else {
     const cells = [{ x: t.x, z: t.z, t: 1 }];
     const { plan, spot } = drawPreview(u, cells, [u, t], 0xff8fc0);
@@ -1777,7 +1889,7 @@ function enterTargetMode(pref) {
   const ts = visibleTargets(u);
   if (!ts.length) { UI.toast('沒有視線內的目標'); return; }
   S.mode = 'target';
-  S.targets = ts.map(t => ({ ...t, armor: u.apNext ? 0 : (t.unit.armor || 0) })); // 裝了穿甲彈就不算裝甲
+  S.targets = ts.map(t => ({ ...t, armor: u.apNext ? 0 : Math.max(0, (t.unit.armor || 0) - (weapon(u).pierce || 0)) })); // 裝了穿甲彈就不算裝甲；榴彈無視 1～2 點
   S.targetIdx = Math.max(0, ts.findIndex(t => t.unit === pref));
   S.moves = null;
   drawRange();
@@ -2009,9 +2121,9 @@ function magicInfo(u) {
     if (lv(u, 'magic') >= 5) return { label: '變身', usable: true };
     return { label: '變身', usable: false, why: '她自己的行動失敗時會自動變身' };
   }
-  const name = { dash: '突進', ice: '冰塊', airdrop: '空投' }[u.ability];
+  const name = { dash: '突進', ice: '冰塊', airdrop: '空投', mark: '標記', blast: '爆破', bless: '祝福' }[u.ability];
   let usable = u.uses > 0, why = u.uses > 0 ? '' : '這張地圖已經用完了';
-  if (usable && u.ability !== 'ice' && (u.suppressed || u.pinned)) { usable = false; why = u.suppressed ? '被壓制中，先起身' : '受阻中，先起身'; }
+  if (usable && u.ability !== 'ice' && u.ability !== 'bless' && (u.suppressed || u.pinned)) { usable = false; why = u.suppressed ? '被壓制中，先起身' : '受阻中，先起身'; }
   if (usable && u.ability === 'airdrop' && u.weapons[0].reserve < 3) { usable = false; why = '霰彈備彈不足 3 發，不能空投'; }
   return { label: `${name}×${u.uses}`, usable, why };
 }
@@ -2042,6 +2154,14 @@ function magicOptions(u) {
       if (!ps.some(q => dist(q, p) <= RULES.SIGHT && hasLOS(S.map, q, p))) continue;
       out.set(key(x, z), { kind: 'airdrop', x, z });
     }
+  } else if (u.ability === 'mark') {
+    for (const e of enemies()) if (e.mesh.visible && !e.summon && sees(u, e)) out.set(key(e.x, e.z), { kind: 'mark', x: e.x, z: e.z, unit: e });
+  } else if (u.ability === 'blast') {
+    const R = RULES.BLAST_RANGE[lv(u, 'magic') >= 2 ? 1 : 0];
+    for (const p of blastCells(u, R)) out.set(key(p.x, p.z), { kind: 'blast', x: p.x, z: p.z });
+  } else if (u.ability === 'bless') {
+    const R = RULES.BLESS_RANGE[lv(u, 'magic') >= 1 ? 1 : 0];
+    for (const p of players()) if (dist(u, p) <= R + 0.01 && (p === u || hasLOS(S.map, u, p))) out.set(key(p.x, p.z), { kind: 'bless', x: p.x, z: p.z, unit: p });
   }
   return out;
 }
@@ -2070,7 +2190,8 @@ async function useMagic() {
   drawRange();
   updateHover();
   refresh();
-  UI.toast({ dash: '選擇突進終點（橘色格子）', ice: '選擇放冰塊的位置（可以放在隊友腳下）', airdrop: '選擇落點（橘色格子）' }[u.ability], 2200);
+  UI.toast({ dash: '選擇突進終點（橘色格子）', ice: '選擇放冰塊的位置（可以放在隊友腳下）', airdrop: '選擇落點（橘色格子）',
+    mark: '選擇要標記的敵人', blast: '選擇要炸掉的掩體或冰塊', bless: '選擇要祝福的隊友（可以選自己）' }[u.ability], 2200);
 }
 
 function exitMagic() {
@@ -2086,13 +2207,148 @@ async function execMagic(u, opt) {
   S.busy = true;
   clearOverlays();
   u.uses--;
-  Rec.tag('魔法：' + ({ dash: '突進', ice: '冰牆', airdrop: '空投' }[opt.kind] || opt.kind));
+  Rec.tag('魔法：' + ({ dash: '突進', ice: '冰牆', airdrop: '空投', mark: '標記', blast: '爆破', bless: '祝福' }[opt.kind] || opt.kind));
   let ok = true;
   if (opt.kind === 'dash') ok = await dash(u, opt);
   else if (opt.kind === 'ice') { placeIce(opt.x, opt.z, opt.rider, u); await wait(0.4); }
   else if (opt.kind === 'airdrop') ok = await airdrop(u, opt);
+  else if (opt.kind === 'mark') markEnemy(u, opt.unit);
+  else if (opt.kind === 'blast') await blast(u, opt);
+  else if (opt.kind === 'bless') bless(u, opt.unit);
   S.busy = false;
   await resolvePlayerAction(ok, u);
+}
+
+// ---------- 千夏：標記 ----------
+function markEnemy(u, t) {
+  const m = lv(u, 'magic');
+  const list = [t, ...(m >= 3 ? enemies().filter(e => e !== t && !e.summon && dist(e, t) < 1.5) : [])];
+  for (const e of list) {
+    e.marked = true;
+    e.markLv = Math.max(e.markLv || 0, m);
+    e.mesh.visible = true;
+    e.spotted = true;
+    floatText(e, '標記', 'crit');
+    if (m >= 2) pin(e, '標記・受阻');
+    if (e.label) UI.updateLabel(e.label, e);
+  }
+  UI.log(`${u.name} 標記了 ${list.map(e => e.name).join('、')}：一直看得到她們，隊友打她們每顆骰 +${RULES.MARK_BONUS[m >= 4 ? 1 : 0]}%`, 'good');
+  refresh();
+}
+
+// ---------- 楓：榴彈、爆破、炸掉掩體 ----------
+const isObjective = (x, z) => !!S.mission.objective && S.mission.objective.x === x && S.mission.objective.z === z;
+// 掩體降一級（或直接變成 to）：換掉模型
+function degradeCell(x, z, to = null) {
+  const cur = S.map.get(x, z);
+  if (cur === T.FLOOR || isObjective(x, z) || iceAt(x, z)) return false;
+  const next = to ?? (cur === T.FULL ? T.HALF : T.FLOOR);
+  const k = key(x, z), old = S.cellMesh && S.cellMesh.get(k);
+  if (old) { world.remove(old); disposeTree(old); S.cellMesh.delete(k); }
+  S.map.set(x, z, next);
+  if (next === T.HALF) { const nm = makeHalf(S.theme, x, z); world.add(nm); S.cellMesh.set(k, nm); }
+  floatText({ mesh: { position: { x, z } } }, next === T.HALF ? '炸成半掩體' : '炸掉了', 'crit');
+  updateVisibility();
+  return true;
+}
+// 目標面對射手那一側的掩體（最高的一格）
+function coverCellFacing(t, s) {
+  const vx = s.x - t.x, vz = s.z - t.z, L = Math.hypot(vx, vz) || 1;
+  let best = null;
+  for (const [dx, dz] of ORTH) {
+    const x = t.x + dx, z = t.z + dz, c = S.map.get(x, z);
+    if (!S.map.inB(x, z) || c === T.FLOOR || isObjective(x, z) || iceAt(x, z) || (dx * vx + dz * vz) / L < 0.35) continue;
+    if (!best || c > best.c) best = { x, z, c };
+  }
+  return best;
+}
+async function grenade(s, t, w) {
+  // 波及：目標周圍 1 格的人各擲一次（楓槍法 1 起不打自己人）
+  const near = S.units.filter(o => o.alive && o !== t && o !== s && !o.flying && dist(o, t) < 1.5 && !(w.noFriendly && o.team === s.team));
+  for (const o of near) {
+    const od = oddsVs(s, o);
+    let r = 0;
+    for (let i = 0; i < od.dice; i++) if (Math.random() * 100 < od.die) r++;
+    const a = Math.max(0, (o.armor || 0) - (w.pierce || 0));
+    const e2 = Math.max(0, r - a);
+    UI.log(`榴彈波及 ${o.name}（${od.dice} 骰×${od.die}%）${r ? `中 ${r}${e2 < r ? `（裝甲擋掉 ${r - e2}）` : ''}` : '未命中'}`, o.team === s.team ? 'bad' : e2 ? 'good' : 'dim');
+    if (e2) await strike(o, e2, s);
+  }
+  // 炸掉目標的掩體
+  {
+    const c = coverCellFacing(t, s);
+    if (c && (w.rubbleSure || Math.random() * 100 < RULES.RUBBLE_CHANCE)) {
+      degradeCell(c.x, c.z);
+      UI.log(`榴彈把 (${c.x},${c.z}) 的${c.c === T.FULL ? '全掩體炸成半掩體' : '半掩體炸掉了'}`, 'good');
+    }
+  }
+}
+function blastCells(u, R) {
+  const out = [];
+  for (let z = 0; z < S.map.h; z++) for (let x = 0; x < S.map.w; x++) {
+    const p = { x, z };
+    if (dist(u, p) > R + 0.01 || isObjective(x, z)) continue;
+    const ice = iceAt(x, z);
+    if (!ice && S.map.get(x, z) === T.FLOOR) continue;
+    if (!hasLOS(S.map, u, p, R + 0.5)) continue;
+    out.push(p);
+  }
+  return out;
+}
+async function blast(u, opt) {
+  const m = lv(u, 'magic');
+  floatText(u, '爆破！', 'ow');
+  const ice = iceAt(opt.x, opt.z);
+  if (ice) breakIce(ice);
+  else degradeCell(opt.x, opt.z, T.FLOOR);
+  if (m >= 4) { // 連旁邊一格一起炸
+    const side = ORTH.map(([dx, dz]) => ({ x: opt.x + dx, z: opt.z + dz })).find(p => S.map.inB(p.x, p.z) && S.map.get(p.x, p.z) !== T.FLOOR && !isObjective(p.x, p.z) && !iceAt(p.x, p.z));
+    if (side) degradeCell(side.x, side.z, T.FLOOR);
+  }
+  const r = m >= 3 ? 2.5 : 1.5;
+  const hit = enemies().filter(e => dist(e, opt) <= r);
+  UI.log(`${u.name} 爆破 (${opt.x},${opt.z})${hit.length ? `：${hit.map(e => e.name).join('、')} 進入壓制` : ''}`, 'good');
+  for (const e of hit) {
+    suppress(e, '爆破！');
+    if (m >= 1) await strike(e, 1, u);
+  }
+  makeNoise(u, opt);
+  await wait(0.3);
+}
+
+// ---------- 詩織：祝福 ----------
+function bless(u, p) {
+  const m = lv(u, 'magic');
+  const heal = (m >= 5 ? 2 : 1) * RULES.HEART_HP;
+  const before = p.hp;
+  p.hp = Math.min(p.maxHp, p.hp + heal);
+  if (p.suppressed || p.pinned) rally(p); // 不算暴露：不吃反應射擊
+  if (m >= 2) p.steady = true;
+  if (m >= 3) p.stress = 0;
+  floatText(p, `祝福${p.hp > before ? ` +${Math.round((p.hp - before) / RULES.HEART_HP)} 心` : ''}`, 'ow');
+  UI.log(`${u.name} 祝福了 ${p.name === u.name ? '自己' : p.name}${p.hp > before ? `，回 ${Math.round((p.hp - before) / RULES.HEART_HP)} 顆心` : ''}`, 'good');
+  if (p.label) UI.updateLabel(p.label, p);
+  refresh();
+}
+
+// ---------- 桃樂絲的「提線」：被打倒的人偶在下一次敵方主動權站起來 ----------
+async function reviveDolls() {
+  for (const e of S.units) {
+    if (e.alive || !e.revivePending || S.gameOver) continue;
+    e.revivePending = false;
+    if (unitAt(e.x, e.z)) continue;
+    e.revived = true;
+    e.alive = true;
+    e.hp = Math.ceil(e.maxHp / 2);
+    e.stress = 0;
+    e.mesh.rotation.x = 0;
+    e.mesh.position.y = 0;
+    e.mesh.traverse(o => { if (o.material) { o.material.opacity = 1; o.material.transparent = false; } });
+    e.label = UI.makeLabel(e);
+    if (e.mesh.visible) { focusUnit(e); floatText(e, '提線！', 'crit'); }
+    UI.log(`${e.name} 被線拉了起來（生命 ${e.hp}）`, 'warn');
+    await wait(0.4);
+  }
 }
 
 // ---------- 朱音：突進 + 近戰 ----------
@@ -2736,6 +2992,31 @@ async function impulses(acted, passed = false) {
       drawCurse();
       suppress(p, '詛咒！');
       UI.log(`${p.name} 腳下被下了詛咒`, 'bad');
+    } else if (e.impulse === 'gas') { // 卡蜜拉：毒霧
+      const ps = players().filter(p => hasLOS(S.map, e, p));
+      if (!ps.length) continue;
+      const crowd = p => players().filter(q => dist(q, p) < 1.5).length;
+      const p = ps.reduce((a, b) => crowd(b) > crowd(a) || (crowd(b) === crowd(a) && dist(e, b) < dist(e, a)) ? b : a);
+      impulseNote(e, '毒霧');
+      const hit = players().filter(q => dist(q, p) < 1.5);
+      for (const q of hit) suppress(q, '毒霧！');
+      UI.log(`${e.name} 朝 ${p.name} 丟出毒霧：${hit.map(q => q.name).join('、')} 被壓制`, 'bad');
+    } else if (e.impulse === 'hunt') { // 艾琳娜：追最後一個開槍的少女，衝 4 格後開一槍
+      const ps = players();
+      if (!ps.length) return;
+      const prey = S.lastShooter && S.lastShooter.alive ? S.lastShooter : ps.reduce((a, b) => dist(e, b) < dist(e, a) ? b : a);
+      if (!e.pinned) {
+        const opts = [...moveOptions(e).values()].filter(m => !m.vault && dist(e, m) <= 4);
+        const best = opts.length ? opts.reduce((a, b) => dist(b, prey) < dist(a, prey) ? b : a) : null;
+        if (best && dist(best, prey) < dist(e, prey)) {
+          impulseNote(e, `追獵 ${prey.name}`);
+          await performMove(e, best);
+        }
+      }
+      if (e.alive && !e.firedOut && !bossCapped(e) && hasLOS(S.map, e, prey) && bossMayShoot(e, prey) && prey.alive) {
+        countBossShot(e, prey);
+        await shoot(e, prey);
+      }
     } else if (e.impulse === 'launch') {
       if (!canLaunch(e)) continue;
       impulseNote(e, '放出烏鴉');
@@ -3019,14 +3300,14 @@ const continueGame = () => { Camp.load(); enterHQ(); };
 const newGame = (opts = {}) => { Camp.newStory(opts); HQ.showStory('序章', STORY.intro, '前往作戰室 ▶', () => enterHQ()); };
 const newEndless = () => { Camp.newEndless(); enterHQ(); };
 function boot() {
-  HQ.showTitle({ onContinue: continueGame, onNew: newGame, onEndless: newEndless });
+  HQ.showTitle({ onContinue: continueGame, onNew: () => HQ.showRoster(newGame), onEndless: newEndless });
 }
 boot();
 requestAnimationFrame(frame);
 window.__game = { S, actions, camera, THREE, scene, zoneMesh, Camp, // 除錯用
   useItem,
   dbg: { pickTile, strike, melee, dash, giveInitiative, actChance, spawnEnemy, segFloor, playerMove, moveOptions, quietSees, enemies, players, weapon, step: updateTweens, magicOptions, execMagic, pushInfo, execPush,
-    startMission, enterHQ, transform, spawnWave, bossPhase, performMove, die, aiChoose, lockAfterAttack, enemyInitiative } };
+    startMission, enterHQ, transform, spawnWave, bossPhase, performMove, die, aiChoose, lockAfterAttack, enemyInitiative, impulses, reviveDolls } };
 // 純文字介面（給代理測試用）：window.TXT
 TextUI.init({ S, actions, Camp, key, coverSides, players, enemies, weapon, visibleTargets, moveOptions, playerMove, selectUnit,
   enterTargetMode, cancelTarget, fire, magicOptions, execMagic, magicInfo, canAct, startBattle, deployTo, actChance,

@@ -45,7 +45,7 @@ export function newStory(opts = {}) {
 
 export function newEndless() {
   const meta = loadMeta();
-  const base = meta.girls || freshGirls();
+  const base = meta.girls || freshGirls(pickRoster(GIRLS, ROSTER.girls));
   C = {
     mode: 'endless', v: 2, done: 0, buffs: [], deploy: [], op: null, retry: false, nextOp: null, hv: 1, mods: {}, stash: { medkit: 2, flash: 1 },
     loot: 0, market: null, family: meta.family || FAMILY.map(m => m.id),
@@ -162,7 +162,7 @@ export function enemyEstimate(op) {
   if (op.kind === 'rest') return 0;
   const book = activeBuffs(op).filter(b => b === 'book').length;
   const extra = { boss: 2, finale: 2 }[op.kind] || 0;
-  return enemyCount(level(op)) + 2 * book + extra + mod('extra');
+  return enemyCount(level(op)) + 2 * book + extra + mod('extra') + RULES.SQUAD_EXTRA;
 }
 
 export function ops() {
@@ -206,7 +206,7 @@ export function appearChance(member) {
   return Math.min(cap, base + per * Math.max(0, C.turn - m.lastSeen - 1));
 }
 
-// 無盡模式：可出擊的人不到 2 個時，後送最快回來的人提前歸隊。戰役模式改由休整處理
+// 無盡模式：可出擊的人不到 RULES.SQUAD 個時，後送最快回來的人提前歸隊。戰役模式改由休整處理
 export function ensureAvailable() {
   if (C.mode !== 'endless') return [];
   return recallFastest();
@@ -214,7 +214,7 @@ export function ensureAvailable() {
 function recallFastest() {
   const recalled = [];
   const ev = C.girls.filter(g => g.evac > 0).sort((a, b) => a.evac - b.evac);
-  while (C.girls.filter(g => g.evac === 0).length < 2 && ev.length) {
+  while (C.girls.filter(g => g.evac === 0).length < RULES.SQUAD && ev.length) {
     const g = ev.shift();
     g.evac = 0;
     g.hp = Math.max(g.hp, Math.ceil(GIRL[g.id].maxHp * RULES.EARLY_RETURN));
@@ -342,7 +342,7 @@ export function restTurn() {
       notes.push(`${GIRL[g.id].name} 休息 +1 心`);
     }
   }
-  // 保底：可出擊的人不足 2 名時，最快回來的人提前歸隊
+  // 保底：可出擊的人不足 RULES.SQUAD 名時，最快回來的人提前歸隊
   for (const id of recallFastest()) notes.push(`${GIRL[id].name} 提前歸隊（至少 2/3 血）`);
   endTurn(notes);
   C.op = null;

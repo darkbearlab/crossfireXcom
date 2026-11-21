@@ -23,7 +23,7 @@ export function init(api) {
   if (/[?&]text\b/.test(location.search)) { G.setInstant(true); fastSet = true; panel(); }
 }
 
-const HELP = `指令（座標是 x z；角色用代號 A 朱音 / H 光 / Y 雪乃 / M 小桃；敵人用地圖上的編號）
+const HELP = `指令（座標是 x z；角色用代號 A 朱音 / H 光 / Y 雪乃 / M 小桃 / C 千夏 / K 楓 / S 詩織；敵人用地圖上的編號）
   look [all]          目前狀態；all＝連看不到的敵人也顯示（除錯用）
   title               回到標題畫面
   new | endless       開新戰役 / 無盡模式（會覆蓋這個網站的存檔）
@@ -31,7 +31,7 @@ const HELP = `指令（座標是 x z；角色用代號 A 朱音 / H 光 / Y 雪�
   ok                  按下畫面上的主要按鈕（劇情、結算畫面）
   hq                  作戰室：列出作戰與少女
   op N                選第 N 個作戰（從 1 開始）
-  squad A H           選出擊的兩人
+  squad A H Y         選出擊的人（3 人）
   learn A gun|magic   用獎章學下一格成長樹（第 5 格要 2 枚）
   spend A heal|evac   成長樹點滿後：1 枚獎章回 1 顆心／後送少 1 場
   equip A 道具 | unequip A 道具   帶上／放回倉庫（每人 3 格；medkit apround flash calm vest mag scope reddot）
@@ -94,6 +94,7 @@ function mapText(S, all) {
       const t = m.get(x, z);
       if (t === T.FULL) c = '#';
       else if (t === T.HALF) c = '+';
+      else if (m.isFog && m.isFog(x, z)) c = '~';
       else if (m.isConceal(x, z)) c = ',';
       if (ice.has(k)) c = 'I';
       if (S.curse && S.curse.has(k)) c = '*';
@@ -106,8 +107,8 @@ function mapText(S, all) {
     }
     lines.push(row);
   }
-  lines.push('圖例：# 全掩體  + 半掩體  , 隱蔽區  . 空地  X 撤離點  O 終端  c 補給箱  I 冰塊  * 詛咒格' + (deploy ? '  _ 部署區' : '') +
-    '  A/H/Y/M 少女  其他數字/小寫字母＝敵人編號（不用 c i l o x）');
+  lines.push('圖例：# 全掩體  + 半掩體  , 隱蔽區  . 空地  X 撤離點  O 終端  c 補給箱  I 冰塊  * 詛咒格  ~ 迷霧（擋視線，霧裡的人只有相鄰看得到）' + (deploy ? '  _ 部署區' : '') +
+    '  A/H/Y/M/C/K/S 少女  其他數字/小寫字母＝敵人編號（不用 c i l o x）');
   return lines.join('\n');
 }
 
@@ -132,7 +133,7 @@ function enemyLine(S, e, all) {
   return `${eKey(S, e)} ${e.name} (${e.x},${e.z})  生命 ${e.hp}/${e.maxHp}  累積 ${pips(e)} ${status(e)}  ${e.alerted ? '警戒' : '未察覺'}` +
     (e.noGun ? '  不開槍' : `  ${e.dice} 骰${e.dieMod ? `(${e.dieMod > 0 ? '+' : ''}${e.dieMod}%)` : ''}`) +
     (e.act ? `  啟動 ${G.actChance(e)}%` : e.boss ? `  頭目第 ${e.phase} 段` : '') + (e.shotCap ? `  這次敵方主動權已開槍 ${e.shotsUsed || 0}/${e.shotCap}（同一人最多 2 槍）` : '') +
-    (e.impulse ? `  衝動:${e.impulse}` : '') + (e.firedOut ? '  ✕不能再開槍' : '') +
+    (e.marked ? '  ◎被標記（一直看得到，打她加成）' : '') + (e.revivePending ? '  提線中' : '') + (e.impulse ? `  衝動:${e.impulse}` : '') + (e.firedOut ? '  ✕不能再開槍' : '') +
     (e.kind === 'doll' ? `  不會受阻/壓制、每中一顆受 1 傷、移動 ${e.moveRange} 射程 ${e.range}、不反應射擊；攻擊它沒打倒的人這次主動權不能再行動` : '') +
     (e.kind === 'scarecrow' ? `  不會動/不開槍/不會受阻壓制；身上烏鴉 ${e.crows}/${e.crowMax}${e.flock ? '（飛出中）' : e.crowAim ? `（滿了，下次放向 ${e.crowAim.name}）` : e.crows < e.crowMax ? `（恢復 ${e.regen}/4）` : ''}；不做啟動檢定；打中它烏鴉就傳送回去` : '') +
     (e.kind === 'crows' ? `  烏鴉 ${e.hp} 隻，${e.attached ? '纏在 ' + e.attached.name + ' 身上' : '在空中飛向 ' + (e.target ? e.target.name : '?')}；沒有掩體，每中一顆打掉一隻` : '') + (seen ? '' : '  （看不到）');
@@ -262,7 +263,7 @@ async function run(line) {
           `\n倉庫：` + (Object.entries(C.stash || {}).filter(([, n]) => n > 0).map(([k, n]) => `${k}=${ITEMS[k].name}×${n}`).join('、') || '空的') + '\n' : '';
         return (document.querySelector('#overlay #s-ok') ? '（畫面上還有劇情，先 ok 才會回到作戰室）\n' : '') + fam + '作戰：\n' + ops.map((o, i) => `  ${i + 1}. ${o.retry ? '重打：' : ''}${o.name}（${o.kind}）${o.kind === 'rest' ? '不出擊，選了直接 go' : `難度 ${G.Camp.level(o)} 敵人約 ${G.Camp.enemyEstimate(o)}`}`).join('\n') +
           '\n少女：\n' + C.girls.map(g => `  ${GIRL_KEY[g.id]} ${GIRL[g.id].name} 生命 ${g.hp}/${GIRL[g.id].maxHp} 槍法 ${g.gun} 魔法 ${g.magic} 獎章 ${g.medals}` +
-            ` 道具[${(g.slots || []).join(',')}]${g.evac ? ` 後送中（還要 ${g.evac} 回合；休整時可出擊的人不到 2 個會提前歸隊，至少 2/3 血）` : ''}${(C.deploy || []).includes(g.id) ? (g.evac ? ' ✓出擊（但後送中，不能出擊）' : ' ✓出擊') : ''}`).join('\n');
+            ` 道具[${(g.slots || []).join(',')}]${g.evac ? ` 後送中（還要 ${g.evac} 回合；休整時可出擊的人不到 3 個會提前歸隊，至少 2/3 血）` : ''}${(C.deploy || []).includes(g.id) ? (g.evac ? ' ✓出擊（但後送中，不能出擊）' : ' ✓出擊') : ''}`).join('\n');
       }
       case 'op': if (!clickBtn(b => b.dataset.o === String(+args[0] - 1))) return '沒有這個作戰（先 hq）'; return run('hq');
       case 'squad': {
@@ -383,6 +384,8 @@ async function run(line) {
         if (args.length < 2) {
           const list = [...opts.values()].map(o => {
             if (o.kind === 'ice') return { o, txt: `(${o.x},${o.z})${o.rider ? '抬起' + o.rider.name : ''}`, r: 0 };
+            if (o.kind === 'mark' || o.kind === 'bless') return { o, txt: `(${o.x},${o.z})${o.unit.team === 'enemy' ? o.unit.tag : ''}${o.unit.name}`, r: 0 };
+            if (o.kind === 'blast') return { o, txt: `(${o.x},${o.z})`, r: 0 };
             const cells = o.kind === 'dash' ? G.pathCells(u, o.mv) : [{ x: o.x, z: o.z, t: 1 }];
             const r = Math.round(G.moveRisk(u, G.planReactions(u, cells, true), o.kind === 'dash' && u.magicLv >= 4 ? 1 : 0) * 100);
             const tg = o.kind === 'dash' ? G.enemies().filter(e => e.mesh.visible && Math.hypot(e.x - o.x, e.z - o.z) < 1.5).map(e => e.tag).join('') : '';

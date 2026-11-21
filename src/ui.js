@@ -86,7 +86,7 @@ export function updateHUD(S) {
     card.style.borderLeftColor = u.hair ? '#' + u.hair.toString(16).padStart(6, '0') : '';
     card.innerHTML = `
       <div class="nm">${u.name}<span class="tag">${u.title || ''}</span>${u.alive ? '' : '<span class="tag kia">後送</span>'}</div>
-      <div class="hrow">${heartsHtml(u)}<span>${Math.max(0, u.hp)}/${u.maxHp}${u.lineUsed ? '' : ' · 心線未用'}</span></div>
+      <div class="hrow">${heartsHtml(u)}<span>${Math.max(0, u.hp)}/${u.maxHp}<span class="ln2">${u.lineUsed ? '' : ' · 心線未用'}</span></span></div>
       <div class="wl">${weaponLine(u)}</div>
       <div class="meta">${st.join('') || '<span class="dim">待命</span>'}</div>
       <div class="stats">累積命中 ${stressPips(u)}</div>`;
@@ -209,7 +209,8 @@ export function makeLabel(u) {
 }
 
 export function updateLabel(d, u) {
-  const icons = (u.team === 'enemy' && !u.alerted ? '<b class="calm">?</b> ' : '') +
+  const icons = (u.team === 'enemy' && !u.alerted ? '<b class="calm">?</b> ' : '') + (u.marked ? '<b class="execi" title="被千夏標記：一直看得到，打她每顆骰加成">◎</b> ' : '') +
+    (u.steady && !u.suppressed ? '<b class="calm" title="穩住：這次主動權不會被壓制">◆</b> ' : '') +
     (u.execBuff && !u.spareUsed && !u.firedOut ? '<b class="execi" title="不留活口">⚔</b> ' : '') +
     (u.suppressed ? '<b class="supi">▼</b> ' : u.pinned ? '<b class="supi">▽</b> ' : '') + (u.firedOut ? '<b class="outi">✕</b> ' : '') + (u.locked ? '<b class="outi" title="被人偶纏住">⛓</b> ' : '') + (u.crowLocked ? '<b class="outi" title="被烏鴉纏住">🐦</b> ' : '') + (u.crowAimed ? '<b class="outi" title="稻草人的烏鴉瞄準她：敵方一行動就會放出">⚠🐦</b> ' : '') +
     (u.shotCap ? `<b class="stri" title="這次敵方主動權已開槍／最多開槍（同一人最多 ${2} 槍）">🔫${u.shotsUsed || 0}/${u.shotCap}</b> ` : '') + (u.kind === 'scarecrow' ? `<b class="stri" title="身上的烏鴉">🐦${u.crows}/${u.crowMax}${u.flock ? ' 飛出中' : u.crowAim ? `→${u.crowAim.name}` : u.crows < u.crowMax ? ` 恢復${u.regen}/4` : ''}</b> ` : '') +

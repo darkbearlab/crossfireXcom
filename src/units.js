@@ -56,6 +56,13 @@ function makeGun(type, parent, x, y, z) {
       add(box(0.14, 0.15, 0.42), GUN_DARK, 0, 0, 0.08); add(box(0.12, 0.14, 0.16), M(0x3c4a30), -0.12, -0.02, 0.02);
       add(box(0.03, 0.08, 0.14), GUN_METAL, 0, 0.12, 0.05);
       barrel(0.04, 0.34, 0, 0.02, 0.29); add(cyl(0.055, 0.055, 0.08, 6), GUN_METAL, 0, 0.02, 0.6, Math.PI / 2); len = 0.66; break;
+    case 'gl': // 楓的榴彈發射器：粗短的大口徑槍管＋轉輪彈倉
+      add(box(0.09, 0.1, 0.22), WOOD, 0, -0.02, -0.08);
+      add(cyl(0.075, 0.075, 0.12, 6), M(0xc06020), 0, 0.02, 0.06, Math.PI / 2);
+      barrel(0.055, 0.26, 0, 0.03, 0.12, GUN_DARK); len = 0.38; break;
+    case 'smg': // 詩織的衝鋒槍：短小、直彈匣
+      add(box(0.06, 0.08, 0.24), M(0xe8e0d0), 0, 0, 0.04); add(box(0.04, 0.14, 0.05), GUN_DARK, 0, -0.1, 0.08);
+      add(box(0.04, 0.09, 0.05), GUN_DARK, 0, -0.06, -0.04); barrel(0.016, 0.1, 0, 0.01, 0.16); len = 0.26; break;
     case 'tommy': // 黑手黨的衝鋒槍（彈鼓）
       add(box(0.06, 0.08, 0.32), GUN_DARK, 0, 0, 0.06); add(cyl(0.07, 0.07, 0.05, 8), GUN_METAL, 0, -0.08, 0.06, 0, 0, Math.PI / 2);
       add(box(0.05, 0.08, 0.14), WOOD, 0, -0.01, -0.16); barrel(0.018, 0.12, 0, 0.01, 0.22); len = 0.36; break;
@@ -128,6 +135,27 @@ function girlParts(add, girl, color, hairColor) {
     add(cyl(0.13, 0.13, 0.08, 8), M(0x2c5ab0), 0, 0.95, 0);       // 圍巾
     add(box(0.07, 0.3, 0.03), M(0x2c5ab0), 0.08, 0.78, 0.12, 0.15);
     add(ball(0.03, 0), GLOW(0xffffff, 0x9be7ff, 1.2), -0.12, 1.24, 0.08); // 雪花髮夾
+  } else if (girl === 'chinatsu') { // 千夏：墨綠斗篷、短鮑伯頭、單邊瞄準鏡片
+    const b = femaleBody(add, { top: color, skirt: 0x2a3a34, skirtLen: 0.22, flare: 0.26, legs: 0x1a2420, boots: 0x3a2a20, bootH: 0.3, hair: hairColor, eyes: 0x60e0b0 });
+    add(box(0.33, 0.2, 0.2), b.hair, 0, 1.07, -0.08);                   // 鮑伯頭
+    for (const s of [-1, 1]) add(box(0.06, 0.18, 0.1), b.hair, 0.15 * s, 1.04, 0.04); // 兩側的髮
+    add(cone(0.3, 0.46, 6), M(0x2a4a40), 0, 0.7, -0.08);                // 斗篷
+    add(box(0.05, 0.05, 0.03), GLOW(0x9bffd8, 0x30c090, 1.6), -0.06, 1.1, 0.15); // 單邊鏡片
+    add(box(0.14, 0.04, 0.03), M(0x203028), -0.02, 1.13, 0.14);
+  } else if (girl === 'kaede') { // 楓：橘色短外套、工作褲、蓬鬆短髮、護目鏡、彈帶
+    const b = femaleBody(add, { top: color, skirt: null, legs: 0x5a4a38, boots: 0x3a2a1a, bootH: 0.26, hair: hairColor, eyes: 0xffb040 });
+    for (const s of [-1, 1]) add(cone(0.08, 0.2, 5), b.hair, 0.12 * s, 1.17, -0.06, -0.6, 0, -1.0 * s); // 亂翹
+    add(box(0.3, 0.06, 0.06), M(0x2a2a2a), 0, 1.22, 0.06);              // 護目鏡帶
+    for (const s of [-1, 1]) add(cyl(0.045, 0.045, 0.04, 8), GLOW(0xffe0a0, 0xc07020, 1), 0.07 * s, 1.23, 0.11, Math.PI / 2);
+    add(box(0.07, 0.42, 0.04), M(0x8a6a30), 0, 0.8, 0.13, 0, 0, 0.6);   // 斜背的榴彈帶
+    for (const y of [0.7, 0.8, 0.9]) add(cyl(0.025, 0.025, 0.06, 6), M(0xc06020), (y - 0.8) * 0.7, y, 0.16, Math.PI / 2);
+  } else if (girl === 'shiori') { // 詩織：嫩綠洋裝、長捲髮、花冠、天使般的小翅膀
+    const b = femaleBody(add, { top: color, skirt: 0xf4f8ec, skirtLen: 0.3, flare: 0.34, legs: 0xffffff, boots: 0xd8e8c8, bootH: 0.22, hair: hairColor, eyes: 0x70c070 });
+    add(box(0.32, 0.5, 0.08), b.hair, 0, 0.9, -0.13);
+    for (const s of [-1, 1]) add(cone(0.07, 0.32, 5), b.hair, 0.15 * s, 0.86, -0.05, Math.PI, 0, 0.15 * s);
+    for (let i = 0; i < 5; i++) { const a = -1.2 + i * 0.6; add(ball(0.035, 0), GLOW(0xffffff, i % 2 ? 0xffc0e0 : 0xfff0a0, 0.7), Math.sin(a) * 0.16, 1.24, Math.cos(a) * 0.12 - 0.02); }
+    for (const s of [-1, 1]) add(cone(0.08, 0.22, 3), GLOW(0xffffff, 0xd8ffd0, 0.5), 0.12 * s, 0.9, -0.17, 0.3, 0.4 * s, -1.1 * s);
+    add(box(0.1, 0.06, 0.04), glowBow, 0, 0.88, 0.1);
   } else { // momo
     const b = femaleBody(add, { top: color, skirt: color, skirtLen: 0.18, flare: 0.28, legs: 0xffe2cf, boots: 0xf2c230, bootH: 0.2, hair: hairColor, eyes: 0xffa020 });
     for (const s of [-1, 1]) { // 過大的靴子
@@ -237,6 +265,32 @@ function bossParts(add, kind, color) {
     add(ball(0.07, 0), GLOW(0xd060ff, 0xa020ff, 2.2), -0.22, 0.95, 0.22);
     return 'pistol';
   }
+  if (kind === 'b_perfume') { // 卡蜜拉：薰衣草色禮服、盤髮、香水瓶、身邊飄著霧
+    const b = femaleBody(add, { top: color, skirt: color, skirtLen: 0.46, flare: 0.34, legs: black, boots: black, bootH: 0.16, hair: 0xd8c0e8, eyes: 0xe0a0ff });
+    add(ball(0.1, 0), b.hair, 0, 1.28, -0.08);
+    add(cyl(0.025, 0.025, 0.16, 6), M(0x2a1838), 0, 1.36, -0.08, 0.3, 0, 0.6); // 髮簪
+    add(ball(0.06, 0), GLOW(0xe8c0ff, 0xa060e0, 1.4), -0.22, 0.82, 0.18);       // 香水瓶
+    add(cyl(0.015, 0.015, 0.05, 6), M(0xffd070), -0.22, 0.9, 0.18);
+    for (const [x, y, z] of [[0.25, 0.4, -0.1], [-0.2, 0.3, -0.18], [0.1, 0.25, 0.25]]) add(ball(0.12, 0), M(0xc8b0e0, { transparent: true, opacity: 0.35 }), x, y, z);
+    return 'pistol';
+  }
+  if (kind === 'b_hound') { // 艾琳娜：皮夾克、狼耳般的亂髮、項圈、長圍巾
+    const b = femaleBody(add, { top: color, skirt: null, legs: 0x2a2018, boots: 0x1a1410, bootH: 0.3, hair: 0x5a4a3a, eyes: 0xffc040 });
+    for (const s of [-1, 1]) add(cone(0.06, 0.18, 4), b.hair, 0.1 * s, 1.3, -0.02, 0, 0, -0.2 * s); // 像狼耳的頭髮
+    add(box(0.3, 0.4, 0.1), b.hair, 0, 0.96, -0.12);
+    add(cyl(0.1, 0.1, 0.04, 8), GLOW(0xff4040, 0x801010, 0.8), 0, 0.98, 0);      // 項圈
+    add(box(0.06, 0.5, 0.02), M(0x8a2a20), 0.1, 0.78, -0.16, 0.4, 0, 0.2);      // 飄起的圍巾
+    return 'sg';
+  }
+  if (kind === 'b_puppet') { // 桃樂絲：洛可可洋裝、雙捲髮、手上垂著提線的十字木架
+    const b = femaleBody(add, { top: color, skirt: color, skirtLen: 0.44, flare: 0.4, legs: 0xf2ead8, boots: 0x3a2030, bootH: 0.16, hair: 0xf0d080, eyes: 0xff80a0 });
+    for (const s of [-1, 1]) { add(cyl(0.06, 0.06, 0.34, 6), b.hair, 0.17 * s, 0.92, -0.04); add(ball(0.06, 0), b.hair, 0.17 * s, 0.74, -0.04); }
+    add(box(0.16, 0.1, 0.06), GLOW(0xffc0d0, 0xff6090, 1), 0, 1.24, 0.04);      // 大蝴蝶結
+    const cross = add(box(0.3, 0.03, 0.03), M(0x6a4a2a), -0.2, 1.25, 0.2);
+    add(box(0.03, 0.03, 0.22), M(0x6a4a2a), 0, 0, 0, 0, 0, 0, cross);
+    for (const x of [-0.12, 0, 0.12]) add(cyl(0.003, 0.003, 0.5, 3), GLOW(0xffffff, 0xffe0f0, 1), x, -0.25, 0, 0, 0, 0, cross);
+    return 'pistol';
+  }
   // 瑪格麗特：黑色毛皮大衣到地、毛領、大魔女帽＋面紗、長步槍
   const b = femaleBody(add, { top: color, skirt: color, skirtLen: 0.6, flare: 0.4, legs: black, boots: black, bootH: 0.16, hair: 0xa8a0a8, eyes: 0xd0a0ff });
   add(new THREE.TorusGeometry(0.17, 0.07, 5, 8), M(0x3a3438, { roughness: 1 }), 0, 0.94, 0, Math.PI / 2);
@@ -263,7 +317,7 @@ function dollParts(add, color) {
   add(box(0.32, 0.09, 0.04), gold, 0, 0.82, -0.32);
 }
 
-// gun: 'ar' | 'sg' | 'sn' | 'lmg' | 'pistol' | 'duals' | 'hmg' | 'tri' | 'magnum'（只影響外觀）
+// gun: 'ar' | 'sg' | 'sn' | 'lmg' | 'pistol' | 'duals' | 'hmg' | 'tri' | 'magnum' | 'gl' | 'smg'（只影響外觀）
 // opt: { hair, girl, boss, mother }
 export function makeUnitMesh(team, kind, color, gun = 'ar', scale = 1, opt = {}) {
   const g = new THREE.Group();

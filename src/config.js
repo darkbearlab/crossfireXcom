@@ -35,7 +35,7 @@ export const RULES = {
   BENCH_HEAL: 3,
   FIELD_HEAL: 3,
   EVAC_MISSIONS: 2,       // 倒下後送，要再完成幾個任務才回歸（期間每場回 1 顆心）
-  EARLY_RETURN: 2 / 3,    // 可出擊不足 2 人時，後送的人提前歸隊，至少回到這個比例的生命
+  EARLY_RETURN: 2 / 3,    // 可出擊不足 SQUAD 人時，後送的人提前歸隊，至少回到這個比例的生命
   // 難度曲線（第四輪代理共識）
   FIRST_BOSS_AT: 4,       // 全戰役完成幾場後，成員才會現身（另外還要拆掉她 2 座設施）
   DETOURS: 2,             // 頭目戰／突襲／決戰輸了，每次失敗可以先改打幾場替代作戰
@@ -57,6 +57,14 @@ export const RULES = {
   ICE_HP: 3,              // 冰塊被打幾下會碎
   ICE_RANGE: 5,           // 冰塊放置距離
   CURSE_TILES: 6,         // 詛咒地 buff 的詛咒格數量
+  FOG_PATCHES: 3,         // 迷香 buff 的迷霧片數（每片 4～6 格）
+  SQUAD: 3,               // 每場出擊人數
+  SQUAD_EXTRA: 1,         // 出擊 3 人時，每張地圖敵人多幾名（原本的敵人數是照 2 人調的）
+  MARK_BONUS: [10, 15],   // 千夏的標記：隊友打被標記的敵人每顆骰 +%（魔法 4 起用第二個）
+  BLAST_RANGE: [6, 9],    // 楓的爆破距離（魔法 2 起用第二個）
+  BLESS_RANGE: [3, 5],    // 詩織的祝福距離（魔法 1 起用第二個）
+  GUARD_CHANCE: 30,       // 詩織的被動：相鄰隊友被反應射擊打中時，替她擋下一下的機率（%）
+  RUBBLE_CHANCE: 40,      // 楓的榴彈打在掩體上時，把掩體炸掉一級的機率（%）
   WAVE_SIZE: 3,           // 決戰每波增援人數
   CROW_MAX: 3,            // 稻草人的烏鴉數（全部恢復才會再放出）
   CROW_SPEED: 3,          // 烏鴉每次衝動往前飛幾格（再 1 格內就纏上）
@@ -95,8 +103,12 @@ export const WEAPONS = {
             sweet: [4, 7], sweetDice: 1, note: '3 骰；甜蜜距離 4–7 格 +1 骰' },
   sg:     { name: '霰彈槍',   short: '霰彈', dice: 2, mag: 4,  reserve: 16, canReact: true,
             sweet: [1, 2], sweetDice: 2, exposedDice: 1, farRange: 5, farPenalty: 8, note: '2 骰；甜蜜距離 1–2 格 +2 骰、打沒掩體的目標 +1 骰，5 格外每格 -8%' },
-  sn:     { name: '狙擊步槍', short: '狙擊', dice: 2, dieMod: 15, mag: 3,  reserve: 12, canReact: false,
-            ignoreHalf: true, sweet: [9, 99], sweetDice: 1, farRange: 99, note: '2 骰、每骰 +15%；甜蜜距離 9 格以上 +1 骰；主動射擊無視半掩體；不能反應射擊' },
+  sn:     { name: '狙擊步槍', short: '狙擊', dice: 2, dieMod: 15, mag: 3,  reserve: 12, canReact: false, closeDice: -1,
+            ignoreHalf: true, sweet: [7, 10], sweetDice: 1, farRange: 99, note: '2 骰、每骰 +15%；甜蜜距離 7–10 格 +1 骰、3 格內 -1 骰；主動射擊無視半掩體；不能反應射擊' },
+  gl:     { name: '榴彈發射器', short: '榴彈', dice: 2, mag: 2, reserve: 6, canReact: false, splash: true, pierce: 1,
+            sweet: [4, 8], sweetDice: 1, farRange: 10, note: '2 骰；打中的那一格和周圍 1 格的人（包括自己人）各擲一次；無視裝甲 1 點；可能炸掉目標的掩體；不能反應射擊' },
+  smg:    { name: '衝鋒槍', short: '衝鋒', dice: 4, dieMod: -12, mag: 12, reserve: 36, canReact: true, spray: true,
+            sweet: [2, 4], sweetDice: 1, note: '4 骰、每骰 -12%；甜蜜距離 2–4 格 +1 骰；主動射擊打空時，有一半機率讓目標累積 1 下' },
   lmg:    { name: '輕機槍',   short: '機槍', dice: 3, mag: 10, reserve: 30, canReact: true,
             keepFiring: true, sweet: [5, 8], sweetDice: 1, note: '3 骰；甜蜜距離 5–8 格 +1 骰；反應射擊打空也不會停火' },
   pistol: { name: '手槍',     short: '手槍', dice: 2, mag: 8,  canReact: false, sidearm: true,
@@ -155,8 +167,17 @@ export const ENEMY_TYPES = {
                reinforce: { kinds: ['gunman', 'gunman', 'gunman'], where: 'guard' },
                desc: '帳房。突破階段時，3 名槍手圍到她身邊。打倒她「人手充足」就失效' },
   b_sis:     { name: '莉莉絲', maxHp: 6, dice: 3, color: 0x7a2a6a, boss: true, impulse: 'curse',
-               reinforce: { kinds: ['doll'], where: 'ambush' },
-               desc: '魔女姊姊。衝動：把詛咒下在最近的我方腳下。突破階段時，1 具人偶從少女看不到的地方（離少女 4～6 格）出現。打倒她「詛咒地」就失效' },
+               reinforce: { kinds: [], curse: 2 },
+               desc: '魔女姊姊。衝動：把詛咒下在最近的我方腳下。突破階段時，在最近的 2 名少女腳下下詛咒（被壓制）。打倒她「詛咒地」就失效' },
+  b_perfume: { name: '卡蜜拉', maxHp: 6, dice: 3, color: 0x6a4a8a, boss: true, impulse: 'gas',
+               reinforce: { kinds: ['gunman', 'gunman'], where: 'fog' },
+               desc: '調香師。衝動：朝看得到的少女丟毒霧，她和周圍 1 格的少女進入壓制。突破階段時，2 名槍手從少女看不到的迷霧裡出現。打倒她「迷香」就失效' },
+  b_hound:   { name: '艾琳娜', maxHp: 6, dice: 3, color: 0x7a5a2a, boss: true, impulse: 'hunt', keepFiring: false,
+               reinforce: { kinds: ['zealot', 'zealot'], where: 'rear' },
+               desc: '獵犬。衝動：朝最後一個開槍的少女衝 4 格，然後朝她開一槍。突破階段時，2 名狂徒從少女的部署區那一側出現（斷後路）。打倒她「追獵」就失效' },
+  b_puppet:  { name: '桃樂絲', maxHp: 6, dice: 3, color: 0xa04060, boss: true, impulse: 'shoot', escort: ['doll', 'doll'],
+               reinforce: { kinds: ['doll', 'doll'], where: 'guard' },
+               desc: '人偶師。據點裡身邊有 2 具人偶。突破階段時，再叫來 2 具人偶守在身邊。打倒她「提線」就失效' },
   b_mother:  { name: '瑪格麗特', maxHp: 9, dice: 3, dieMod: 5, color: 0x1e1428, boss: true, impulse: 'shoot', keepFiring: true,
                reinforce: { kinds: ['mg', 'gunman'], where: 'guard' },
                desc: '教母：反應射擊打空不停火。突破階段時，機槍手和槍手守到她身邊。打倒她就結束了' },
@@ -186,9 +207,9 @@ export const MARKET = {
 };
 
 // ---------- 名單：每場戰役開始時決定雙方的名單 ----------
-// 現在魔法少女和家族都只有 4 名，所以全部上場；之後增加到 7 名時，從池子裡隨機或手選
+// 池子：魔法少女 7 名、家族成員 7 名。開新戰役時手選或隨機
 export const ROSTER = {
-  girls: 4,               // 一場戰役的魔法少女人數
+  girls: 5,               // 一場戰役的魔法少女人數（每場出擊 RULES.SQUAD 人）
   family: 4,              // 一場戰役的家族成員人數（不含教母）
 };
 

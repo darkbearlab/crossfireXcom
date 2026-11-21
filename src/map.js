@@ -9,12 +9,15 @@ export class GameMap {
     this.tiles = new Uint8Array(w * h);
     this.conceal = new Uint8Array(w * h); // 隱蔽區（草叢、陰影…）
     this.zone = new Int16Array(w * h);    // 責任區編號；0 = 部署帶，沒有人負責
+    this.fog = new Uint8Array(w * h);     // 迷霧（卡蜜拉的「迷香」）：擋視線，站在裡面只有相鄰的人看得到
   }
   inB(x, z) { return x >= 0 && z >= 0 && x < this.w && z < this.h; }
   get(x, z) { return this.inB(x, z) ? this.tiles[z * this.w + x] : T.FULL; }
   set(x, z, v) { if (this.inB(x, z)) this.tiles[z * this.w + x] = v; }
   walkable(x, z) { return this.inB(x, z) && this.get(x, z) === T.FLOOR; }
   isConceal(x, z) { return this.inB(x, z) && this.conceal[z * this.w + x] === 1; }
+  isFog(x, z) { return this.inB(x, z) && this.fog[z * this.w + x] === 1; }
+  setFog(x, z, v) { if (this.inB(x, z)) this.fog[z * this.w + x] = v; }
   setConceal(x, z, v) { if (this.inB(x, z)) this.conceal[z * this.w + x] = v; }
   zoneAt(x, z) { return this.inB(x, z) ? this.zone[z * this.w + x] : -1; }
   setZone(x, z, v) { if (this.inB(x, z)) this.zone[z * this.w + x] = v; }
@@ -148,7 +151,7 @@ function tryGenerate(level, opts) {
   const zc = ri(1, h - 4);
   for (let x = 0; x < DC; x++) for (let z = zc - 1; z <= zc + 3; z++) { m.set(x, z, T.FLOOR); m.setConceal(x, z, 0); }
   if (m.get(DC, zc + 1) === T.FLOOR && Math.random() < 0.7) m.set(DC, zc + 1, T.HALF);
-  const playerSpawns = [{ x: 1, z: zc }, { x: 1, z: zc + 2 }];
+  const playerSpawns = [{ x: 1, z: zc }, { x: 1, z: zc + 2 }, { x: 0, z: zc + 1 }];
   const spawnC = { x: 1, z: zc + 1 };
 
   // ---- 任務 ----

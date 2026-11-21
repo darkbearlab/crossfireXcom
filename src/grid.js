@@ -6,10 +6,11 @@ export const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
 export const ORTH = [[1, 0], [-1, 0], [0, 1], [0, -1]];
-function clearLine(map, ax, az, bx, bz) {
+// fog：迷霧擋視線（千夏站著不動時看得穿）
+function clearLine(map, ax, az, bx, bz, fog = true) {
   const dx = bx - ax, dz = bz - az;
   const steps = Math.ceil(Math.hypot(dx, dz) * 6);
-  const full = (x, z) => map.inB(x, z) && map.get(x, z) === T.FULL;
+  const full = (x, z) => (map.inB(x, z) && map.get(x, z) === T.FULL) || (fog && map.isFog && map.isFog(x, z));
   let px = ax, pz = az;
   for (let i = 1; i <= steps; i++) {
     const t = i / steps;
@@ -25,7 +26,7 @@ function clearLine(map, ax, az, bx, bz) {
 
 // 「探身」：貼著全掩體、目標在牆的那一側時，往旁邊跨一格、沿著牆邊看出去。
 // 跨出去的那一格前面不能也是牆（要站在牆的盡頭才探得出去）。兩邊都檢查，所以視線是對稱的。
-function peekLine(map, from, to) {
+function peekLine(map, from, to, fog = true) {
   const full = (x, z) => map.inB(x, z) && map.get(x, z) === T.FULL;
   const vx = to.x - from.x, vz = to.z - from.z;
   for (const [wx, wz] of ORTH) {
@@ -33,16 +34,20 @@ function peekLine(map, from, to) {
     for (const [sx, sz] of [[wz, wx], [-wz, -wx]]) { // 沿牆的兩個方向
       const px = from.x + sx, pz = from.z + sz;
       if (!map.walkable(px, pz) || full(px + wx, pz + wz)) continue;
-      if (clearLine(map, px, pz, to.x, to.z)) return true;
+      if (clearLine(map, px, pz, to.x, to.z, fog)) return true;
     }
   }
   return false;
 }
 
-export function hasLOS(map, a, b, sight = RULES.SIGHT) {
-  if (dist(a, b) > sight) return false;
-  if (clearLine(map, a.x, a.z, b.x, b.z)) return true;
-  return peekLine(map, a, b) || peekLine(map, b, a);
+// noFog：看得穿迷霧（千夏）。站在迷霧裡的人只有相鄰的人看得到（雙向）
+export function hasLOS(map, a, b, sight = RULES.SIGHT, noFog = false) {
+  const d = dist(a, b);
+  if (d > sight) return false;
+  const fog = !noFog;
+  if (fog && map.isFog && d > 1.5 && (map.isFog(a.x, a.z) || map.isFog(b.x, b.z))) return false;
+  if (clearLine(map, a.x, a.z, b.x, b.z, fog)) return true;
+  return peekLine(map, a, b, fog) || peekLine(map, b, a, fog);
 }
 
 // 目標格 t 面對攻擊者 from 時的掩體等級：0 無、1 半、2 全
@@ -124,14 +129,14 @@ export function vaultTargets(map, p, blocked) {
 // 未警戒的視線：距離較短、看不穿半掩體、看不穿也看不進隱蔽區、不能探身
 export function quietLOS(map, a, b, sight = RULES.QUIET_SIGHT) {
   if (dist(a, b) > sight) return false;
-  if (map.isConceal(b.x, b.z)) return false;
+  if (map.isConceal(b.x, b.z) || (map.isFog && map.isFog(b.x, b.z))) return false;
   const dx = b.x - a.x, dz = b.z - a.z;
   const steps = Math.ceil(Math.hypot(dx, dz) * 6);
   for (let i = 1; i < steps; i++) {
     const t = i / steps;
     const x = Math.round(a.x + dx * t), z = Math.round(a.z + dz * t);
     if ((x === a.x && z === a.z) || (x === b.x && z === b.z)) continue;
-    if (map.get(x, z) !== T.FLOOR || map.isConceal(x, z)) return false;
+    if (map.get(x, z) !== T.FLOOR || map.isConceal(x, z) || (map.isFog && map.isFog(x, z))) return false;
   }
   return true;
 }
