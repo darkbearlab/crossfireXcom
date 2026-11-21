@@ -153,8 +153,11 @@ function diceBonus(s) {
 }
 // 破防：打被壓制的敵人時，不算壓制給的那 1 級掩體
 const breach = s => s.team === 'player' && lv(s, 'gun') >= ({ akane: 2, hikari: 3, momo: 3 }[s.girl] || 99);
+// 瞄準鏡：步槍、機槍、狙擊槍，這次主動權還沒移動過才有加值（反應射擊沒有）
+const SCOPED = ['ar', 'lmg', 'hmg', 'sn'];
+const scopeBonus = s => s.scope && s.movedInit !== S.initNo && SCOPED.includes(weapon(s).id) ? 15 : 0;
 const oddsVs = (s, t, opts = {}) => shotOdds(S.map, s, s, t, {
-  suppressed: !!t.suppressed, breach: breach(s), weapon: weapon(s), diceBonus: diceBonus(s), dieBonus: opts.reaction ? 0 : (t.bigTarget || 0), air: !!t.flying, raised: !!t.raised, hardy: !!t.hardy, ...opts });
+  suppressed: !!t.suppressed, breach: breach(s), weapon: weapon(s), diceBonus: diceBonus(s), dieBonus: opts.reaction ? 0 : (t.bigTarget || 0) + scopeBonus(s), air: !!t.flying, raised: !!t.raised, hardy: !!t.hardy, ...opts });
 const iceAt = (x, z) => S.ice.find(i => i.x === x && i.z === z);
 const isExit = p => S.mission && S.mission.exits.some(e => e.x === p.x && e.z === p.z);
 const adjObjective = u => {
@@ -435,7 +438,8 @@ function makeGirlUnit(gs) {
   const slots = gs.slots || [];
   if (slots.includes('vest')) { u.maxHp += RULES.HEART_HP; u.hp += RULES.HEART_HP; }
   if (slots.includes('mag')) { const p = u.weapons[0]; p.mag += 2; p.ammo = p.mag; if (isFinite(p.reserve)) p.reserve += 4; }
-  if (slots.includes('scope')) for (const w of u.weapons) w.dieMod = (w.dieMod || 0) + 5;
+  if (slots.includes('scope')) u.scope = true;
+  if (slots.includes('reddot')) for (const w of u.weapons) if (w.sidearm || w.id === 'duals') w.dieMod = (w.dieMod || 0) + 5;
   u.items = slots.filter(k => ITEMS[k] && ITEMS[k].kind === 'use');
   u.gear = slots.filter(k => ITEMS[k] && ITEMS[k].kind === 'gear');
   return u;
@@ -703,7 +707,7 @@ function endMission(win, why) {
 // ================= 主動權 =================
 async function giveInitiative(side) {
   if (S.gameOver) return;
-  for (const u of S.units) { u.firedOut = false; u.spareUsed = false; u.shield = false; u.locked = false; u.shotsUsed = 0; u.shotAt = null; }
+  for (const u of S.units) { u.firedOut = false; u.spareUsed = false; u.shield = false; u.locked = false; u.shotsUsed = 0; u.shotAt = null; u.steady = false; }
   S.grab = false;       // 心線：要把主動權搶回我方
   S.forceEnemy = false; // 頭目突破階段：主動權要交給敵方
   S.initDeaths = 0;     // 這次主動權內倒下的敵人數（啟動檢定用）
@@ -944,6 +948,7 @@ async function reactAt(u, plan, i) {
 
 // 回傳 true = 移動成功；false = 被反應射擊命中（行動失敗）
 async function performMove(u, dest) {
+  u.movedInit = S.initNo;
   if (u.raised) leaveIce(u);
   const start = { x: u.x, z: u.z };
   const cells = pathCells(u, dest);
@@ -1105,6 +1110,7 @@ async function strike(t, hits, src = null) {
   }
   if (t.kind === 'scarecrow' && t.flock) recallCrows(t);
   if (t.unflinching) { /* 不會受阻、不會被壓制 */ }
+  else if (t.steady) { /* 起身後穩住了：這次主動權內不會再被壓制或受阻 */ }
   else if (t.stress >= RULES.SUP_AT) suppress(t);
   else if (t.stress >= RULES.PIN_AT) pin(t);
   if (src && src.girl === 'yukino' && lv(src, 'gun') >= 4 && t.suppressed) t.heavySup = true;
@@ -1852,6 +1858,12 @@ async function useItem(u, item, target = null) {
     UI.log(`${u.name} 丟出閃光彈：${hit.map(e => e.name).join('、')} 進入壓制`, 'good');
     makeNoise(u, t);
     S.busy = false;
+  } else if (item === 'calm') {
+    if (u.steady && !u.suppressed && !u.pinned) return `${u.name} 已經穩住了`;
+    if (u.suppressed || u.pinned) rally(u); // 不算暴露：不吃反應射擊
+    u.steady = true;
+    floatText(u, '鎮定', 'ow');
+    UI.log(`${u.name} 用了鎮定劑：這次主動權內不會再被壓制`, 'good');
   } else return '不能用';
   u.items.splice(u.items.indexOf(item), 1);
   Camp.consume(u.girl, item);
@@ -1878,6 +1890,7 @@ const actions = {
     if (!canAct(u) || !(u.suppressed || u.pinned)) return;
     S.busy = true;
     rally(u);
+    if (u.girl === 'yukino') u.steady = true; // 很壯：起身後這次主動權內不會再被壓制
     const hit = await exposeReact(u); // 抬頭的瞬間會被盯上
     S.busy = false;
     Rec.rally('player', !hit);
@@ -1970,6 +1983,7 @@ UI.init(actions);
 // ================= 魔法少女的能力 =================
 // 落地檢查：詛咒格
 function landed(u) {
+  u.movedInit = S.initNo;
   if (!u.alive || u.team !== 'player') return;
   if (S.curse.has(key(u.x, u.z)) && !u.suppressed) {
     UI.log(`${u.name} 踩到詛咒格，被壓制了`, 'bad');

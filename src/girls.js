@@ -19,7 +19,7 @@ export const GIRLS = [
   {
     id: 'yukino', key: 'Y', name: '雪乃', title: '文靜', color: 0x34507a, hair: 0xcfeeff,
     hearts: 5, maxHp: 15, weapons: ['hmg', 'pistol'], ability: 'ice',
-    passive: '重機槍主動射擊必定壓制目標（沒命中也算）。看起來很細，其實很壯',
+    passive: '重機槍主動射擊必定壓制目標（沒命中也算）。看起來很細，其實很壯：起身後，這次主動權內被打中也不會再被壓制或受阻',
     active: '冰塊：變出全掩體、擋視線的冰塊；放在隊友腳下會把她抬起來（半掩體）。相鄰時點冰塊可以推動',
     line: '……我重訓，是為了讓人好好聽我說話。',
   },

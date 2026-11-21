@@ -34,9 +34,9 @@ const HELP = `指令（座標是 x z；角色用代號 A 朱音 / H 光 / Y 雪�
   squad A H           選出擊的兩人
   learn A gun|magic   用獎章學下一格成長樹（第 5 格要 2 枚）
   spend A heal|evac   成長樹點滿後：1 枚獎章回 1 顆心／後送少 1 場
-  equip A 道具 | unequip A 道具   帶上／放回倉庫（每人 3 格；medkit apround flash vest mag scope）
+  equip A 道具 | unequip A 道具   帶上／放回倉庫（每人 3 格；medkit apround flash calm vest mag scope reddot）
   market | buy N | trade N | sell 道具   黑市（作戰室；用戰利品買、以物易物、賣掉換戰利品）
-  use [A] 道具 [N]    戰鬥中用消耗品：medkit 回 1 心、apround 下一槍無視裝甲、flash 丟向敵人 N（不交主動權）
+  use [A] 道具 [N]    戰鬥中用消耗品：medkit 回 1 心、apround 下一槍無視裝甲、flash 丟向敵人 N、calm 起身且這次主動權不會再被壓制（不交主動權）
   go                  出擊
   deploy A x z        部署階段：把角色擺到 (x,z)
   start               部署完成，開始行動
@@ -58,7 +58,7 @@ const gKey = u => GIRL_KEY[u.girl] || '?';
 // 敵人編號（e.tag）在生成時就固定，戰鬥紀錄裡的名字也帶著它（例如「槍手3」）
 const eKey = (S, e) => e.tag || '?';
 const pips = u => '●'.repeat(Math.min(2, u.stress || 0)) + '○'.repeat(2 - Math.min(2, u.stress || 0));
-const status = u => u.suppressed ? '壓制' : u.pinned ? '受阻' : '正常';
+const status = u => u.suppressed ? '壓制' : u.pinned ? '受阻' : u.steady ? '穩住（這次主動權不會被壓制）' : '正常';
 
 function findGirl(S, k) {
   if (!k) return S.selected && S.selected.team === 'player' ? S.selected : null;
@@ -293,7 +293,7 @@ async function run(line) {
       case 'equip': case 'unequip': { // equip A medkit
         const id = Object.keys(GIRL_KEY).find(k => GIRL_KEY[k] === (args[0] || '').toUpperCase());
         if (!id || !ITEMS[args[1]]) return `用法：${cmd} A 道具代號（${Object.keys(ITEMS).join('/')}）`;
-        if (!(cmd === 'equip' ? G.Camp.equip(id, args[1]) : G.Camp.unequip(id, args[1]))) return cmd === 'equip' ? `帶不了：倉庫沒有，或 ${SLOTS} 格滿了` : '她沒有帶這個';
+        if (!(cmd === 'equip' ? G.Camp.equip(id, args[1]) : G.Camp.unequip(id, args[1]))) return cmd === 'equip' ? `帶不了：倉庫沒有、${SLOTS} 格滿了，或她的槍裝不上` : '她沒有帶這個';
         G.refreshHQ(); // 不重設選好的作戰
         return run('hq');
       }

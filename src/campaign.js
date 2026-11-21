@@ -72,7 +72,10 @@ function fillCards() {
   while (C.cards.length < RULES.CARDS) {
     const used = C.cards.map(c => c.id);
     const pool = Object.keys(COUNTERS).filter(k => !used.includes(k));
-    C.cards.push({ id: pickOne(pool), left: rnd(RULES.CARD_TURNS[0], RULES.CARD_TURNS[1]), revealed: false });
+    // 一回合最多生效一張：倒數撞到別張就延後
+    let left = rnd(RULES.CARD_TURNS[0], RULES.CARD_TURNS[1]);
+    while (C.cards.some(c => Math.abs(c.left - left) < RULES.CARD_CLASH)) left += RULES.CARD_CLASH;
+    C.cards.push({ id: pickOne(pool), left, revealed: false });
   }
   if (!C.cards.some(c => c.revealed)) C.cards.reduce((a, b) => (b.left < a.left ? b : a)).revealed = true;
 }
@@ -139,7 +142,7 @@ function makeBoard() {
     const c = rev.reduce((a, b) => (b.left < a.left ? b : a));
     out.push({ kind: 'stop', card: c.id, name: `阻止反制：${COUNTERS[c.id].name}` });
   } else {
-    const reward = [pickOne(Object.keys(ITEMS)), pickOne(['medkit', 'apround', 'flash'])];
+    const reward = [pickOne(Object.keys(ITEMS)), pickOne(['medkit', 'apround', 'flash', 'calm'])];
     out.push({ kind: 'growth', reward, name: `物資作戰（${reward.map(k => ITEMS[k].name).join('、')}）` });
   }
   out.push({ kind: 'rest', name: '休整' });
@@ -249,9 +252,11 @@ export function spend(id, what) {
 }
 
 // ---------- 道具與裝備（每人 SLOTS 格） ----------
+// 有些裝備只能裝在特定武器上（瞄準鏡、紅點）
+export const fits = (id, item) => !ITEMS[item] || !ITEMS[item].fits || !!(GIRL[id] && GIRL[id].weapons.some(w => ITEMS[item].fits.includes(w)));
 export function equip(id, item) {
   const g = girlState(id);
-  if (!g || !ITEMS[item] || !(C.stash[item] > 0)) return false;
+  if (!g || !ITEMS[item] || !(C.stash[item] > 0) || !fits(id, item)) return false;
   g.slots = g.slots || [];
   if (g.slots.length >= SLOTS) return false;
   C.stash[item]--;

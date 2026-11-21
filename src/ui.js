@@ -75,6 +75,7 @@ export function updateHUD(S) {
     const st = [];
     if (u.alive && u.suppressed) st.push('<span class="sup">壓制中</span>');
     else if (u.alive && u.pinned) st.push('<span class="sup">受阻</span>');
+    else if (u.alive && u.steady) st.push('<span>穩住：這次主動權不會被壓制</span>');
     if (u.alive && u.locked) st.push('<span class="sup">被人偶纏住：這次主動權不能再行動</span>');
     if (u.alive && u.crowLocked) st.push('<span class="sup">被烏鴉纏住：隊友朝她開槍打掉烏鴉，或打中稻草人</span>');
     if (u.alive && u.crowAimed) st.push(`<span class="sup">⚠ ${u.crowAimed.name}的烏鴉瞄準她：敵方一行動就會放出${u.crowAimedLast ? '（只剩她能行動，被纏住就輸）' : ''}</span>`);

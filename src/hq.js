@@ -153,7 +153,7 @@ function render() {
       ${trees}${det}
       <div class="gf"><span class="medal">獎章 ${g.medals}</span>${status}</div>
       <div class="gf slots">道具 ${(g.slots || []).length}/${SLOTS}：${(g.slots || []).map(k => `<button class="unequip" data-g="${d.id}" data-k="${k}" title="${ITEMS[k].desc}（點一下放回倉庫）">${ITEMS[k].name} ✕</button>`).join(' ') || '<span class="dim">沒帶</span>'}
-        ${(g.slots || []).length < SLOTS && stashList.length ? `<select class="equip" data-g="${d.id}"><option value="">＋ 帶上…</option>${stashList.map(([k, n]) => `<option value="${k}">${ITEMS[k].name}（${n}）</option>`).join('')}</select>` : ''}</div>
+        ${(g.slots || []).length < SLOTS && stashList.length ? `<select class="equip" data-g="${d.id}"><option value="">＋ 帶上…</option>${stashList.filter(([k]) => Camp.fits(d.id, k)).map(([k, n]) => `<option value="${k}">${ITEMS[k].name}（${n}）</option>`).join('')}</select>` : ''}</div>
       ${Camp.maxed(g) && g.medals >= 1 ? `<div class="gf spend">成長樹已滿：${g.evac > 0 ? `<button class="spend" data-g="${d.id}" data-w="evac">1 枚：後送少 1 場</button>` : g.hp < d.maxHp ? `<button class="spend" data-g="${d.id}" data-w="heal">1 枚：回 1 顆心</button>` : '<span class="dim">獎章留著，受傷或後送時可以用</span>'}</div>` : ''}
     </div>`;
   }).join('');

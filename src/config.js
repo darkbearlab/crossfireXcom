@@ -48,7 +48,8 @@ export const RULES = {
   FAC_TIMER: [4, 3],      // 設施條件「增援計時」：每幾個敵方主動權補 2 人（難度 9 起用第二個）
   // 戰役 v2
   CARDS: 3,               // 家族同時準備幾張反制（其中 1 張公開）
-  CARD_TURNS: [4, 6],     // 反制的倒數（回合）
+  CARD_TURNS: [6, 9],     // 反制的倒數（回合）
+  CARD_CLASH: 2,          // 反制之間至少隔幾回合生效；新反制的倒數離別張太近就延後這麼多回合
   REPELS: 2,              // 擊退成員幾次，解鎖她的據點
   APPEAR: [0.25, 0.1, 0.75], // 成員在自己設施現身的機率：基本、每回合沒現身 +、上限
   MANOR_AT: 3,            // 打倒幾名成員後退守莊園（家族 4 人時；人數更多時改成「剩 3 人時」，見 campaign.manorAt）
@@ -169,7 +170,9 @@ export const ITEMS = {
   flash: { name: '閃光彈', kind: 'use', price: 3, desc: '丟向 6 格內看得到的敵人：她和周圍 1 格的敵人進入壓制（會發出聲響）' },
   vest: { name: '防彈背心', kind: 'gear', price: 5, desc: '上場時多 1 顆心（只在這場內）' },
   mag: { name: '擴充彈匣', kind: 'gear', price: 4, desc: '主武器彈匣 +2、備彈 +4' },
-  scope: { name: '瞄準鏡', kind: 'gear', price: 6, desc: '所有武器每顆骰 +5%' },
+  scope: { name: '瞄準鏡', kind: 'gear', price: 6, fits: ['ar', 'lmg', 'hmg', 'sn'], desc: '步槍、機槍、狙擊槍：這次主動權還沒移動過時，每顆骰 +15%（手槍、霰彈槍不能裝）' },
+  reddot: { name: '紅點瞄具', kind: 'gear', price: 4, fits: ['pistol', 'magnum', 'duals'], desc: '手槍類（手槍、左輪、雙槍）每顆骰 +5%，移動後也有效' },
+  calm: { name: '鎮定劑', kind: 'use', price: 3, desc: '行動：解除自己的受阻和壓制（不會吃反應射擊），這次主動權內不會再被壓制或受阻（不交主動權）' },
 };
 export const SLOTS = 3;
 
