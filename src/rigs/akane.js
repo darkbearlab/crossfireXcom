@@ -29,27 +29,15 @@ export default {
   unit: 48,            // 身高格數（決定一格多大：一格＝身高/48）。腳底到頭頂 50 格，馬尾另計
 
   // 部位：寫的順序要「上層先寫」。pivot＝關節位置（跟方塊同一套座標）
+  // 堆出來的部位（腿、靴子、裙子、上身、手臂、頭）都用比骨架細一倍的格子（fine: 2），形狀和顏色都直接來自參考圖
+  // 這些部位 build 裡的座標是細格子；pivot 和手排的部位（飄帶、槍、馬尾）是骨架的格子
   parts: {
-    hips: {
-      pivot: [0, 24, 0],
-      build(v) { v.box(-3, 3, 23, 27, -2, 2, R_D); },           // 裙子裡面，平常看不到
-    },
-    // 腿和靴子的形狀是堆出來的；顏色重新上（參考圖的黑線和陰影搬到立體上會變成雜點）
-    thighL: { parent: 'hips', pivot: [3.5, 23, -0.5], build(v) { v.put(CARVED.thighL).tint(() => SKIN); } },
-    shinL: {                                                                 // 膝蓋＋長靴
-      parent: 'thighL', pivot: [3.5, 14, -0.5],
-      build(v) { v.put(CARVED.shinL).tint(c => c.c === SKIN || c.c === SKIN_D ? (c.y >= 12 ? SKIN : BOOT_L) : c.y === 0 ? SOLE : c.y >= 11 ? BOOT_L : BOOT); },
-    },
+    hips: { pivot: [0, 24, 0], build(v) { v.box(-3, 3, 23, 27, -2, 2, R_D); } },   // 裙子裡面，平常看不到
+    thighL: { parent: 'hips', pivot: [3.5, 23, -0.5], fine: 2, build(v) { v.put(CARVED.thighL); } },
+    shinL: { parent: 'thighL', pivot: [3.5, 14, -0.5], fine: 2, build(v) { v.put(CARVED.shinL); } },   // 膝蓋＋長靴
     thighR: { mirror: 'thighL' },
     shinR: { mirror: 'shinL' },
-    skirt: {
-      parent: 'hips', pivot: [0, 27.5, 0],
-      build(v) {
-        v.put(CARVED.skirt);
-        // 百褶：每三格一條深色的褶線（前後面看 x、側面看 z）
-        v.tint(c => (Math.abs(c.x) >= 6 ? Math.abs(c.z) % 3 === 2 : Math.abs(c.x) % 3 === 2) || c.y === 23 ? R_D : R);
-      },
-    },
+    skirt: { parent: 'hips', pivot: [0, 27.5, 0], fine: 2, build(v) { v.put(CARVED.skirt); } },
     // 腰後的大蝴蝶結和兩條飄帶（手排，兩節，會甩）
     ribbon1: {
       parent: 'hips', pivot: [0, 26.5, -6.5],
@@ -68,31 +56,18 @@ export default {
         v.box(5, 5, 4, 6, -7, -7, RIB_D).clear(3, 3, 5, 5, -7, -7);
       },
     },
+    // 上身：金邊、領子、蝴蝶結都是參考圖上的像素。青色的格子（蝴蝶結）改成發光
+    // 肩膀在規格裡削斜（xcap）；脖子是另外補的（頭比參考圖抬高，讓脖子露出來）
     torso: {
-      parent: 'hips', pivot: [0, 28, 0],
+      parent: 'hips', pivot: [0, 28, 0], fine: 2,
       build(v) {
-        v.put(CARVED.torso).tint(() => R);
-        // 參考圖上只有一兩個像素寬的細節，堆的時候會被吃掉，用畫的補回來
-        v.paint(-3, 3, 28, 28, -3, 3, GOLD);                                         // 金色腰線
-        v.paint(-1, 1, 29, 29, 2, 3, GOLD).paint(0, 0, 30, 30, 2, 3, GOLD);          // 前面往上的尖
-        v.paint(-2, 2, 38, 38, -3, 3, GOLD).paint(0, 0, 37, 37, 1, 3, GOLD);         // 立領
-        [[-3, 36], [-2, 35], [-1, 34], [0, 33], [1, 34], [2, 35], [3, 36]].forEach(([x, y]) => v.paint(x, x, y, y, -3, -3, GOLD)); // 背後的 V
-        v.paint(-3, -3, 29, 36, -3, 3, R_D).paint(3, 3, 29, 36, -3, 3, R_D);         // 兩側暗一點
-        v.clear(-3, -3, 37, 37, -3, 3).clear(3, 3, 37, 37, -3, 3);                   // 肩膀削斜（肩線放低）
-        v.box(-1, 1, 39, 41, -2, 0, SKIN_D).box(-1, 1, 39, 41, 0, 0, SKIN);          // 脖子（頭比參考圖抬高兩格，讓脖子露出來）
-      },
-    },
-    // 胸前發光的蝴蝶結（手排：要發光）
-    bow: {
-      parent: 'torso', pivot: [0, 34, 4],
-      build(v) {
-        v.sym(1, 2, 35, 35, 4, 4, BOW, 'e').sym(1, 3, 34, 34, 4, 4, BOW, 'e').sym(1, 2, 33, 33, 4, 4, BOW, 'e');
-        v.dot(0, 34, 4, BOW_C, 'e').sym(1, 1, 32, 32, 4, 4, BOW, 'e');
+        v.put(CARVED.torso).glow(c => { const n = parseInt(c.c.slice(1), 16); return (n >> 16) < 150 && (n >> 8 & 255) > 150 && (n & 255) > 150; });
+        v.box(-2, 2, 78, 83, -4, 1, SKIN_D).box(-2, 2, 78, 83, 1, 1, SKIN);
       },
     },
     // 手臂比參考圖低一格（肩膀放低）
-    upperArmL: { parent: 'torso', pivot: [4.5, 36.5, -2.5], build(v) { v.put(CARVED.upperArmL).tint(() => SKIN).move(0, -1, 0); } },
-    lowerArmL: { parent: 'upperArmL', pivot: [4.5, 30, -3], build(v) { v.put(CARVED.lowerArmL).tint(c => c.y <= 26 ? SKIN_D : SKIN).move(0, -1, 0); } },
+    upperArmL: { parent: 'torso', pivot: [4.5, 36.5, -2.5], fine: 2, build(v) { v.put(CARVED.upperArmL).move(0, -2, 0); } },
+    lowerArmL: { parent: 'upperArmL', pivot: [4.5, 30, -3], fine: 2, build(v) { v.put(CARVED.lowerArmL).move(0, -2, 0); } },
     // 手槍（手排）：平常槍口朝下（手垂著），手臂抬平時槍口自然朝前。樞紐在手掌
     gunL: {
       parent: 'lowerArmL', pivot: [5, 24, -3],

@@ -47,7 +47,7 @@ export function voxelBuilder() {
     // 整包平移
     move(dx, dy, dz) {
       const all = [...cells.values()]; cells.clear();
-      for (const v of all) set(v.x + dx, v.y + dy, v.z + dz, v.c, v.m);
+      for (const v of all) { set(v.x + dx, v.y + dy, v.z + dz, v.c, v.m); cells.get(`${v.x + dx},${v.y + dy},${v.z + dz}`).mask = v.mask; }
       return B;
     },
     // 只補空的格子（不蓋掉已經有的）
@@ -63,10 +63,17 @@ export function voxelBuilder() {
     // 每一格問一次 fn(格子)，有回傳顏色就換
     tint(fn) { for (const v of cells.values()) { const c = fn(v); if (c) v.c = c; } return B; },
     // 放進一整包現成的方塊（art/rig_carve.py 從參考圖堆出來的：{ palette, cells:[x,y,z,色號,...] }）
+    // stride 5 的包只有表面的方塊，第 5 個數字記哪幾面露在外面（裡面是空的，那幾面以外不畫）
     put(part) {
-      for (let i = 0; i < part.cells.length; i += 4) set(part.cells[i], part.cells[i + 1], part.cells[i + 2], part.palette[part.cells[i + 3]]);
+      const n = part.stride || 4, c = part.cells;
+      for (let i = 0; i < c.length; i += n) {
+        set(c[i], c[i + 1], c[i + 2], part.palette[c[i + 3]]);
+        if (n > 4) cells.get(`${c[i]},${c[i + 1]},${c[i + 2]}`).mask = c[i + 4];
+      }
       return B;
     },
+    // 符合條件的格子改成發光
+    glow(test) { for (const v of cells.values()) if (test(v)) v.m = 'e'; return B; },
     list: () => [...cells.values()],
   };
   return B;
@@ -96,7 +103,9 @@ function meshCells(cells, origin, s, deco) {
     col.set(v.c);
     const cx = v.x - origin[0], cy = v.y + 0.5 - origin[1];
     const cz = (deco ? deco.zc : v.z) - origin[2], sz = deco ? deco.zd : 1;
-    for (const f of FACES) {
+    for (let fi = 0; fi < 6; fi++) {
+      const f = FACES[fi];
+      if (v.mask !== undefined && !(v.mask >> fi & 1)) continue;        // 堆出來的空心部位：這一面朝裡面
       const nb = occ.get(`${v.x + f.d[0]},${v.y + f.d[1]},${v.z + f.d[2]}`);
       if (nb && (nb === 'g') === (v.m === 'g')) continue;
       for (const i of [0, 1, 2, 0, 2, 3]) {
@@ -252,7 +261,7 @@ export class VoxelRig {
         const src = def.parts[p.mirror];
         defs.push([name, {
           ...src, ...p, parent: p.parent ?? swapSide(src.parent), pivot: [-src.pivot[0], src.pivot[1], src.pivot[2]],
-          cells: () => { const b = voxelBuilder(); src.build(b); return b.list().map(v => ({ ...v, x: -v.x })); },
+          cells: () => { const b = voxelBuilder(); src.build(b); return b.list().map(v => ({ ...v, x: -v.x, mask: v.mask === undefined ? undefined : (v.mask & ~3) | (v.mask & 1) << 1 | (v.mask & 2) >> 1 })); },
         }]);
       } else defs.push([name, { ...p, cells: () => { const b = voxelBuilder(); p.build?.(b); return b.list(); } }]);
     }

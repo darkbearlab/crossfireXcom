@@ -23,6 +23,7 @@
     fill: true             每一列把最左到最右之間填滿
     skin: [[x0,x1,y0,y1], ...]  正面這幾塊強制塗膚色（臉：眼睛嘴巴改用貼片）
     cap: [[y0,y1,zmax], ...]    這幾列的 z 不超過 zmax（把臉削平，貼片才貼得上）
+    xcap: [[y0,y1,xmax], ...]   這幾列的 |x| 不超過 xmax（削肩）
     palette: ["#..", ...]  只用這幾個顏色（取最接近的）；省略＝照參考圖的顏色
     fine: 2                這個部位的格子細幾倍（頭用 2）；y/x/z/cap/skin/dome 都用細格子的座標
     default: "#d8222c"     找不到顏色時用的顏色
@@ -87,7 +88,11 @@ def hexc(c, pal=None):
     if pal:
         rgb = lambda h: tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))
         return min(pal, key=lambda h: sum((a - b) ** 2 for a, b in zip(rgb(h), c)))
-    return '#%02x%02x%02x' % tuple(min(255, (v // 8) * 8 + 4) for v in c)
+    q = spec.get('quant', 8)       # 顏色取整（太細會有上百種顏色）
+    return '#%02x%02x%02x' % tuple(min(255, (v // q) * q + q // 2) for v in c)
+
+
+NB = [(1, 0, 0), (-1, 0, 0), (0, 1, 0), (0, -1, 0), (0, 0, 1), (0, 0, -1)]
 
 
 def carve(name, P):
@@ -108,6 +113,9 @@ def carve(name, P):
         xs = [x for x in range(x0, x1 + 1) if ok(sample('front', x + fo, y)[0], fcls)]
         zs = [z for z in range(z0, z1 + 1) if ok(sample('side', z + so, y)[0], scls)]
         if not xs or not zs: continue
+        for a, b, m in P.get('xcap', []):      # 這幾列左右不超過 ±m（削肩）
+            if a <= y <= b: xs = [x for x in xs if abs(x) <= m]
+        if not xs: continue
         if P.get('fill'):
             xs = list(range(min(xs), max(xs) + 1)); zs = list(range(min(zs), max(zs) + 1))
         cxm, hx = (min(xs) + max(xs)) / 2, (max(xs) - min(xs) + 1) / 2
@@ -136,6 +144,7 @@ def carve(name, P):
     skin = P.get('skin', [])
     default = P.get('default', '#d8222c')
     for (x, y, z) in cells:
+        if all((x + dx, y + dy, z + dz) in cells for dx, dy, dz in NB): continue   # 裡面的不用上色
         fo, so = offs[y]
         front = (x, y, z + 1) not in cells
         back = (x, y, z - 1) not in cells
@@ -149,12 +158,15 @@ def carve(name, P):
         elif side: c = pick('side', z, y, z0, z1, so)
         else: c = pick('front', x, y, x0, x1, fo)   # 只有上下露出來的
         cells[(x, y, z)] = P.get('skinColor', '#f6cdb0') if c == 'SKIN' else hexc(c, P.get('palette')) if c else default
-    pal, idx, flat = [], {}, []
+    # 只存表面的方塊，每格多存一個數字記哪幾面露在外面（+x -x +y -y +z -z 各一個 bit），裡面是空的
+    pal, idx, flat, n = [], {}, [], 0
     for (x, y, z), c in sorted(cells.items(), key=lambda kv: (kv[0][1], kv[0][0], kv[0][2])):
+        mask = sum(1 << i for i, (dx, dy, dz) in enumerate(NB) if (x + dx, y + dy, z + dz) not in cells)
+        if not mask: continue
         if c not in idx: idx[c] = len(pal); pal.append(c)
-        flat += [x, y, z, idx[c]]
-    print(f'{name:10s} {len(cells):5d} 格  {len(pal):3d} 色')
-    return {'palette': pal, 'cells': flat}
+        flat += [x, y, z, idx[c], mask]; n += 1
+    print(f'{name:10s} {len(cells):6d} 格（表面 {n}）  {len(pal):3d} 色')
+    return {'palette': pal, 'stride': 5, 'cells': flat}
 
 
 def face_tiles(F):
