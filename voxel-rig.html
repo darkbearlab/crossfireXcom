@@ -30,6 +30,7 @@
 <div id="top"><b>可動方塊模型</b>：朱音　拖曳旋轉、雙指／滾輪縮放</div>
 <div id="bubble"></div>
 <div id="panel">
+  <div class="row" id="r-model"><span>模型</span></div>
   <div class="row" id="r-clip"><span>動作</span></div>
   <div class="row" id="r-expr"><span>表情</span></div>
   <div class="row" id="r-mouth"><span>嘴形</span></div>
@@ -40,14 +41,18 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { buildRig } from './src/voxel-rig.js';
-import akane from './src/rigs/akane.js';
+import akaneCarved from './src/rigs/akane.js';
+import akaneMc from './src/rigs/akane-mc.js';
 
 // 網址參數（截圖用：面板在背景時 rAF 會被節流，用參數把姿勢固定住）
 //   ?clip=walk&t=0.4  動作和時間（有 t 就凍結）   ?expr=smile  ?mouth=big   ?angle=0.6（弧度）
 //   ?cam=face 看臉  ?board 地圖視角  ?zoom=1.5  ?panel=0 收起面板
 //   ?sheet=expr|mouth|clip 一次排一整排（每個表情／嘴形／動作一隻）
 const qs = new URLSearchParams(location.search);
-const DEF = akane;
+// ?model=mc（方塊人，預設）｜carved（從參考圖堆出來的那一版）
+const MODELS = { mc: akaneMc, carved: akaneCarved };
+const modelKey = MODELS[qs.get('model')] ? qs.get('model') : 'mc';
+const DEF = MODELS[modelKey];
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -56,7 +61,7 @@ document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x2a2d36);
 // ?overlay=front|side|back：正交鏡頭＋把參考圖半透明疊上去（?op=0.5 透明度、?ovy=中心高度、?ovh=畫面涵蓋的高度）
-const overlay = qs.get('overlay');
+const overlay = qs.get('overlay');   // 只有有參考圖對位資料（DEF.ref）的模型能用
 const OV = { h: +(qs.get('ovh') || 2.1), y: +(qs.get('ovy') || 0.98) };
 const cam = overlay ? new THREE.OrthographicCamera(-1, 1, 1, -1, 0.05, 100) : new THREE.PerspectiveCamera(30, 1, 0.05, 100);
 scene.add(new THREE.HemisphereLight(0xdde6ff, 0x3a3040, 1.4));
@@ -172,6 +177,7 @@ function btnRow(rowId, items, onClick, isOn) {
 const refreshers = [];
 const refreshAll = () => refreshers.forEach(f => f());
 let loopClip = 'idle', walkCircle = false, spin = false;
+btnRow('r-model', [['mc', '方塊人'], ['carved', '參考圖堆疊版']], k => { const u = new URL(location.href); u.searchParams.set('model', k); location.href = u; }, k => k === modelKey);
 btnRow('r-clip', Object.entries(CLIP_ZH), k => {
   if (walkCircle && k !== 'walk' && k !== 'run') walkCircle = false;
   if (rig.clips[k].loop) loopClip = k;

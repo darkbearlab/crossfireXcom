@@ -102,6 +102,38 @@ export function voxelBuilder() {
   return B;
 }
 
+// ───────── 方塊人的「皮膚」：一個盒子六個面各一張字元圖（像 Minecraft 的皮膚），分內層和外層 ─────────
+// box: [x0, y0, z0, 寬, 高, 深]；faces: { front, back, side（左右共用，或分 left/right）, top, bottom, fill }
+//   front/back：從外面正對著那一面看，上到下、左到右
+//   side/left/right：上到下，第 0 欄是靠前面（臉那邊）的那一欄
+//   top/bottom：第 0 列是後面，往下是前面；左到右同 front
+// pal: { 字元: 顏色 或 [顏色, 模式] }；'.' ＝這格不畫
+// outer: true ＝外層：只有畫了的格子才有方塊，貼在盒子外面多凸一格（頭髮、裙子、靴子）
+export function skinBox(v, [x0, y0, z0, w, h, d], faces, pal, outer = false) {
+  const x1 = x0 + w - 1, y1 = y0 + h - 1, z1 = z0 + d - 1, o = outer ? 1 : 0;
+  const put = (x, y, z, ch) => {
+    if (!ch || ch === '.' || ch === ' ') return;
+    const c = pal[ch]; if (!c) throw new Error(`皮膚顏色 ${ch} 沒定義`);
+    Array.isArray(c) ? v.dot(x, y, z, c[0], c[1]) : v.dot(x, y, z, c);
+  };
+  if (!outer) v.box(x0, x1, y0, y1, z0, z1, Array.isArray(pal[faces.fill]) ? pal[faces.fill][0] : pal[faces.fill]);
+  const g = (grid, r, c) => grid && grid[r] && grid[r][c];
+  // 上下 → 左右 → 前後（邊上的格子由後畫的蓋掉）
+  for (let r = 0; r < d; r++) for (let c = 0; c < w; c++) {
+    put(x0 + c, y1 + o, z0 + r, g(faces.top, r, c));
+    put(x0 + c, y0 - o, z0 + r, g(faces.bottom, r, c));
+  }
+  for (let r = 0; r < h; r++) for (let c = 0; c < d; c++) {
+    put(x1 + o, y1 - r, z1 - c, g(faces.left || faces.side, r, c));     // 角色的左邊（+x）
+    put(x0 - o, y1 - r, z1 - c, g(faces.right || faces.side, r, c));    // 角色的右邊（-x）
+  }
+  for (let r = 0; r < h; r++) for (let c = 0; c < w; c++) {
+    put(x1 - c, y1 - r, z0 - o, g(faces.back, r, c));
+    put(x0 + c, y1 - r, z1 + o, g(faces.front, r, c));
+  }
+  return v;
+}
+
 // ───────── 方塊 → 網格（同一個部位裡互相貼著的面不畫）─────────
 const FACES = [
   { d: [1, 0, 0], v: [[.5, -.5, .5], [.5, -.5, -.5], [.5, .5, -.5], [.5, .5, .5]] },
@@ -278,14 +310,17 @@ export class VoxelRig {
     const root = new THREE.Group(); root.name = 'root';
     this.object.add(root);
     this.parts = { root: { name: 'root', group: root, pivot: [0, 0, 0], rest: new THREE.Vector3() } };
+    // evenX：身體寬度是偶數格的角色（方塊人：8 格寬），中線在 x=-0.5。鏡像用 x → -x-1，整隻往右挪半格對回中間
+    const EX = def.evenX ? 1 : 0;
+    if (EX) this.parts.root.rest.x = 0.5 * s;
     // 展開左右鏡像
     const defs = [];
     for (const [name, p] of Object.entries(def.parts)) {
       if (p.mirror) {
         const src = def.parts[p.mirror];
         defs.push([name, {
-          ...src, ...p, parent: p.parent ?? swapSide(src.parent), pivot: [-src.pivot[0], src.pivot[1], src.pivot[2]],
-          cells: () => { const b = voxelBuilder(); src.build(b); return b.list().map(v => ({ ...v, x: -v.x, mask: v.mask === undefined ? undefined : (v.mask & ~3) | (v.mask & 1) << 1 | (v.mask & 2) >> 1 })); },
+          ...src, ...p, parent: p.parent ?? swapSide(src.parent), pivot: [-src.pivot[0] - EX, src.pivot[1], src.pivot[2]],
+          cells: () => { const b = voxelBuilder(); src.build(b); return b.list().map(v => ({ ...v, x: -v.x - EX, mask: v.mask === undefined ? undefined : (v.mask & ~3) | (v.mask & 1) << 1 | (v.mask & 2) >> 1 })); },
         }]);
       } else defs.push([name, { ...p, cells: () => { const b = voxelBuilder(); p.build?.(b); return b.list(); } }]);
     }
