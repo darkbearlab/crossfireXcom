@@ -35,6 +35,23 @@ export function voxelBuilder() {
       }
       return B;
     },
+    // 只補空的格子（不蓋掉已經有的）
+    under(x0, x1, y0, y1, z0, z1, c, m) {
+      for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) if (!cells.has(`${x},${y},${z}`)) set(x, y, z, c, m);
+      return B;
+    },
+    // 只改已經有的格子的顏色（在堆出來的部位上畫細節：腰線、領子、褶子）
+    paint(x0, x1, y0, y1, z0, z1, c, m) {
+      for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) if (cells.has(`${x},${y},${z}`)) set(x, y, z, c, m);
+      return B;
+    },
+    // 每一格問一次 fn(格子)，有回傳顏色就換
+    tint(fn) { for (const v of cells.values()) { const c = fn(v); if (c) v.c = c; } return B; },
+    // 放進一整包現成的方塊（art/rig_carve.py 從參考圖堆出來的：{ palette, cells:[x,y,z,色號,...] }）
+    put(part) {
+      for (let i = 0; i < part.cells.length; i += 4) set(part.cells[i], part.cells[i + 1], part.cells[i + 2], part.palette[part.cells[i + 3]]);
+      return B;
+    },
     list: () => [...cells.values()],
   };
   return B;
@@ -192,6 +209,8 @@ function gait(t, P, cad, leg, arm, lean, bob) {
   P('torso').x += lean; P('torso').y += 0.12 * sw; P('hips').y -= 0.12 * sw;
   P('head').x -= lean * 0.5; P('head').y -= 0.06 * sw;
   P('skirt').x -= 0.06 * Math.abs(sw);
+  // 站姿如果是外八（A 字），走起來要收腿
+  for (const n of ['thighL', 'thighR', 'shinL', 'shinR']) P(n).z *= 0.35;
 }
 
 // ───────── 組裝 ─────────

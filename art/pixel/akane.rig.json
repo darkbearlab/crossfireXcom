@@ -1,0 +1,20 @@
+{
+  "image": "art/pixel/akane.png",
+  "out": "src/rigs/akane.carved.js",
+  "cell": 15,
+  "feet": 969,
+  "front": 313,
+  "side": 815,
+  "back": 1220,
+  "parts": {
+    "thighL":    { "palette": ["#f6cdb0", "#e0a888"], "y": [14, 22], "x": [1, 6],  "z": [-3, 2],  "fx": [0, 2.0],    "f": "sR", "s": "sR", "c": "s", "round": 3, "fill": true, "default": "#f6cdb0" },
+    "shinL":     { "palette": ["#6e1a20", "#9c2430", "#3e0c12", "#f6cdb0", "#e0a888"], "y": [0, 13],  "x": [1, 6],  "z": [-3, 4],  "fx": [2.25, 4.7], "sz": [-1, -1], "f": "*", "s": "*", "c": "sRD", "round": 3, "fill": true, "default": "#6e1a20" },
+    "skirt":     { "palette": ["#d8222c", "#a3151d"], "y": [23, 27], "x": [-7, 7], "z": [-5, 5],  "f": "RD", "s": "*", "c": "RD", "round": 3, "fill": true },
+    "torso":     { "palette": ["#d8222c", "#a3151d", "#e8b440"], "y": [28, 38], "x": [-3, 3], "z": [-3, 3],  "f": "RDkyC", "s": "*", "c": "RDy", "round": 4, "fill": true },
+    "upperArmL": { "palette": ["#f6cdb0", "#e0a888"], "y": [31, 37], "x": [3, 6],  "z": [-5, -1], "fx": [-1, 1.5],   "sz": [0.3, -0.3],  "f": "s", "s": "s", "c": "s", "default": "#f6cdb0" },
+    "lowerArmL": { "palette": ["#f6cdb0", "#e0a888"], "y": [24, 30], "x": [3, 6],  "z": [-5, -1], "fx": [1.9, 5.0],  "sz": [-0.3, -1.5], "f": "s", "s": "s", "c": "s", "default": "#f6cdb0" },
+    "head":      { "palette": ["#e5202a", "#a8121c", "#c81a24", "#f6cdb0", "#e0a888"], "y": [39, 50], "x": [-8, 8], "z": [-8, 6],  "f": "*", "s": "*", "c": "sRD", "round": 4, "dome": [45, 50],
+                   "cap": [[39, 44, 3], [45, 50, 5]],
+                   "skin": [[-4, -2, 42, 44], [2, 4, 42, 44], [-1, 1, 40, 41]] }
+  }
+}
