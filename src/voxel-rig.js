@@ -149,7 +149,7 @@ const MATS = {
   e: new THREE.MeshBasicMaterial({ vertexColors: true }), // 發光：不吃光影
 };
 // cells: [{x,y,z,c,m}]；origin：樞紐；s：一格多大；zc/zd：貼花（臉）用，z 中心和厚度
-function meshCells(cells, origin, s, deco) {
+function meshCells(cells, origin, s, deco, mats = MATS) {
   const occ = new Map(cells.map(v => [`${v.x},${v.y},${v.z}`, v.m]));
   const buf = {};
   const col = new THREE.Color();
@@ -177,7 +177,7 @@ function meshCells(cells, origin, s, deco) {
     geo.setAttribute('position', new THREE.Float32BufferAttribute(b.p, 3));
     geo.setAttribute('normal', new THREE.Float32BufferAttribute(b.n, 3));
     geo.setAttribute('color', new THREE.Float32BufferAttribute(b.c, 3));
-    const mesh = new THREE.Mesh(geo, MATS[m]);
+    const mesh = new THREE.Mesh(geo, mats[m]);
     mesh.castShadow = m !== 'g';
     g.add(mesh);
   }
@@ -297,13 +297,16 @@ function gait(t, P, cad, leg, arm, lean, bob) {
 const blank = () => ({ x: 0, y: 0, z: 0, px: 0, py: 0, pz: 0, visible: undefined });
 const swapSide = n => n?.replace(/L$/, 'R');
 
-export function buildRig(def, height = 1.35) {
-  return new VoxelRig(def, height);
+// opt.ownMats：這一隻用自己的材質（遊戲裡受傷閃紅、倒地變透明是直接改材質，共用的話會全場一起變）
+export function buildRig(def, height = 1.35, opt = {}) {
+  return new VoxelRig(def, height, opt);
 }
 
 export class VoxelRig {
-  constructor(def, height = 1.35) {
+  constructor(def, height = 1.35, opt = {}) {
     this.def = def;
+    this.mats = opt.ownMats ? { n: MATS.n.clone(), g: MATS.g.clone(), e: MATS.e.clone() } : MATS;
+    this.rate = 1;                            // 動作播放速度倍率（遊戲裡跑步要配合移動速度）
     const s = this.s = height * (def.scale || 1) / def.unit;   // scale：個子（小桃 0.88）
     this.clips = { ...CLIPS, ...(def.clips || {}) };
     this.object = new THREE.Group();          // 外面拿來放到場上的
@@ -332,7 +335,7 @@ export class VoxelRig {
       g.position.copy(rest);
       // fine：這個部位的格子比身體細幾倍（頭用 2）。build 裡的座標是細格子，pivot 還是身體的格子
       const fine = p.fine || 1;
-      g.add(meshCells(p.cells(), p.pivot.map(v => v * fine), s / fine));
+      g.add(meshCells(p.cells(), p.pivot.map(v => v * fine), s / fine, undefined, this.mats));
       if (p.hidden) g.visible = false;
       parent.group.add(g);
       const part = this.parts[name] = { name, group: g, pivot: p.pivot, rest, hidden: !!p.hidden, fine };
@@ -370,7 +373,7 @@ export class VoxelRig {
         }));
         const z = L.z ?? F.z, d = L.depth ?? F.depth ?? 0.2;
         const fine = F.fine || head.fine || 1;   // 臉的貼片可以比頭的格子更細
-        const g = meshCells(cells, head.pivot.map(v => v * fine), this.s / fine, { zc: z + d / 2, zd: d });
+        const g = meshCells(cells, head.pivot.map(v => v * fine), this.s / fine, { zc: z + d / 2, zd: d }, this.mats);
         g.traverse(m => { m.castShadow = false; });   // 貼片不投影子（不然臉上會有一圈錯位的陰影）
         g.visible = false; g.name = `${lname}:${vname}`;
         head.group.add(g);
@@ -427,7 +430,7 @@ export class VoxelRig {
 
   update(dt) {
     const clip = this.clips[this.clipName];
-    this.time += dt;
+    this.time += dt * this.rate;
     if (!clip.loop && this.time >= clip.dur && !clip.hold) { this.play(this.nextClip || clip.next || 'idle'); }
     const cur = this.clips[this.clipName];
     let pose = this.pose(this.clipName, cur.loop || !cur.hold ? this.time : Math.min(this.time, cur.dur));

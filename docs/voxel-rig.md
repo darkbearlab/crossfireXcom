@@ -263,19 +263,24 @@ rig.parts.head.group                 // 任何部位的 Group，要掛東西（�
 7. `rest` 填站姿（扳直時量到的斜度）。
 8. 在 `voxel-rig.html` 換掉 `DEF`（之後可以加角色選單）。
 
-## 7. 接進遊戲的方案（這次還沒做）
+## 7. 遊戲裡怎麼用（已接上）
 
-遊戲現在的角色在 `src/units.js` 的 `makeUnitMesh`（面向 +z、腳底 y=0、約 1.35 高），動作是在 `main.js` 直接移動整個 mesh。建議分三步：
+接法都在 `src/unit-rigs.js`，遊戲本身只改了幾個地方：
 
-1. **外觀替換**：`makeUnitMesh` 裡，少女有 `rigs/<id>.js` 的就回傳 `buildRig(def, 1.35).object`，並把 rig 存在 `mesh.userData.rig`；沒有的維持舊模型。外框、選取光圈、血條這些掛在外層 group 上的東西不受影響。
-2. **動作對接**：在主迴圈每幀對所有 `userData.rig` 呼叫 `update(dt)`；
-   移動動畫開始時 `play('walk')`（衝刺用 `run`）、結束 `play('idle')`；
-   開火時 `play('shoot')`，子彈飛行時間跑完回 `idle`；
-   被打到 `play('hurt')`；死亡 `play('down')`（停在最後一格，屍體留在地上）。
-   頭髮物理是看世界加速度算的，所以只要整個 mesh 在移動，馬尾就會自己甩。
-3. **劇情對話**：`src/scene.js` 的打字機每打一個字呼叫 `rig.speakChar(ch)`；角色立繪如果改成從這個模型即時算（而不是事先渲染好的圖），表情可以跟台詞資料走（例如每句台詞加 `face: 'angry'`）。
+- **外觀**：`src/units.js` 的 `makeUnitMesh`／`makeScarecrowMesh` 一開始先問 `rigDefFor()`，有方塊人就回傳 `makeRigMesh()` 做的 Group（面向 +z、腳底 y=0，跟舊模型一樣），`userData.rig` 是那隻的 `VoxelRig`。沒有方塊人的（使魔、使魔巢穴、烏鴉）照舊。網址加 `?lowpoly` 全部退回舊模型。
+- **副武器**：少女的皮膚檔畫的是主武器；換成手槍、麥格農、霰彈槍時，用 `def.variant({ gun: GUNS.pistol })` 換槍重做一隻。
+- **每隻自己的材質**（`buildRig(def, 高度, { ownMats: true })`）：遊戲受傷閃紅、倒地變半透明是直接改材質，共用的話會全場一起變。
+- **動作**（`src/main.js` 的 `anim(u, 名稱)`）：移動 `run`（播放速度 1.6 倍，配合移動速度）、開槍前先 `shoot` 舉槍 0.1 秒、被打到 `hurt`（播完回到原本的動作）、倒下 `down`、人偶被拉起來回 `idle`、近戰和打手揮棒用 `shoot`。主迴圈每幀對看得到的方塊人呼叫 `rig.update(dt)`。
+- **槍口位置**：做模型的時候擺一次射擊姿勢，量槍口火光的位置存進 `userData.muzzle`，子彈光跡從那裡出發。
+- **頭像／立繪**：`src/scene.js` 本來就是拿 `makeUnitMesh` 的模型算圖，所以自動換成方塊人（靜態圖，待機姿勢）。
 
-效能：每隻約 40 個 draw call（解析度提高只會讓頂點變多，draw call 不變），戰場上十幾隻還可以；之後如果手機吃力，可以把同材質的部位合併到一個 `SkinnedMesh`（每個部位一根骨頭），一隻就降到 2～3 個 draw call，資料格式不用變。
+還沒做的：
+
+- 劇情對話的對嘴和表情：頭像是事先算好的靜態圖，要改成即時算才能用 `rig.speakChar(ch)` 和每句台詞的表情。
+- 被壓制還是沿用舊的「整隻壓扁」，沒有做蹲下的動作。
+- 光變身的光環和翅膀是掛在整隻外面，不會跟著頭和身體動。
+
+效能：每隻約 30～40 個 draw call，戰場上十幾隻沒問題；手機實機還沒量過。之後如果吃力，可以把同材質的部位合併到一個 `SkinnedMesh`（每個部位一根骨頭），一隻就降到 2～3 個 draw call，資料格式不用變。
 
 ## 8. 已知限制／之後可以做
 

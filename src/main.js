@@ -183,6 +183,15 @@ function tween(dur, fn) {
   return new Promise(res => tweens.push({ t: 0, dur, fn, res }));
 }
 const wait = s => tween(s, () => {});
+// 方塊人的動作：單位的模型如果是方塊人（userData.rig），叫它播某個動作；舊模型就什麼都不做
+const rigOf = u => u && u.mesh && u.mesh.userData.rig;
+function anim(u, name, opt = {}) {
+  const r = rigOf(u);
+  if (!r || !r.clips[name]) return;
+  if (r.clips[name].loop) u.mesh.userData.loop = name;      // 記住現在的常態動作，受傷完要回到它
+  r.rate = opt.rate || 1;
+  r.play(name, opt);
+}
 function updateTweens(dt) {
   for (let i = tweens.length - 1; i >= 0; i--) {
     const tw = tweens[i];
@@ -1096,6 +1105,11 @@ async function reactAt(u, plan, i) {
 
 // 回傳 true = 移動成功；false = 被反應射擊命中（行動失敗）
 async function performMove(u, dest) {
+  anim(u, 'run', { rate: 1.6, fade: 0.1 });
+  try { return await performMove0(u, dest); }
+  finally { if (u.alive) anim(u, 'idle'); }
+}
+async function performMove0(u, dest) {
   u.movedInit = S.initNo;
   if (u.raised) leaveIce(u);
   const start = { x: u.x, z: u.z };
@@ -1167,6 +1181,7 @@ async function shoot(s, t, { reaction = false, forceMiss = false, triple = false
   s.mesh.rotation.y = Math.atan2(t.x - s.x, t.z - s.z);
   s.mesh.updateMatrixWorld(true);
   s.mesh.visible = true;
+  if (rigOf(s)) { anim(s, 'shoot', { fade: 0.08 }); await wait(0.1); }      // 先舉槍
 
   let rolled = 0;
   if (!forceMiss) for (let i = 0; i < n; i++) if (Math.random() * 100 < odds.die) rolled++;
@@ -1190,6 +1205,7 @@ async function shoot(s, t, { reaction = false, forceMiss = false, triple = false
     flash.intensity = 0;
     await wait(0.03);
   }
+  if (s.alive) anim(s, 'idle');
 
   const ap = !reaction && s.apNext && t.armor; // 穿甲彈：這一槍無視裝甲
   if (!reaction && s.apNext) { s.apNext = false; if (ap) UI.log(`${s.name} 的穿甲彈無視了裝甲`, 'good'); }
@@ -1267,6 +1283,7 @@ async function strike(t, hits, src = null, direct = false) {
   }
   Rec.damage(t, dmg, cut);
   const mats = t.mesh.userData.mats;
+  if (t.hp > 0) anim(t, 'hurt', { next: t.mesh.userData.loop || 'idle' });
   await tween(0.25, k => mats.forEach(m => m.emissive.setRGB((1 - k) * 0.9, 0, 0)));
   if (t.hp <= 0) {
     await die(t);
@@ -1697,7 +1714,8 @@ async function die(u) {
     UI.banner('幹部倒了', 'player');
   }
   const m = u.mesh;
-  await tween(0.5, k => {
+  if (rigOf(u)) { anim(u, 'down'); await wait(0.9); }       // 方塊人：膝蓋一軟往後倒
+  else await tween(0.5, k => {
     m.rotation.x = -k * Math.PI / 2;
     m.position.y = 0.12 * k;
   });
@@ -2476,6 +2494,7 @@ async function reviveDolls() {
     e.mesh.rotation.x = 0;
     e.mesh.position.y = 0;
     e.mesh.traverse(o => { if (o.material) { o.material.opacity = 1; o.material.transparent = false; } });
+    anim(e, 'idle', { fade: 0.4 });
     e.label = UI.makeLabel(e);
     if (e.mesh.visible) { focusUnit(e); floatText(e, '提線！', 'crit'); }
     UI.log(`${e.name} 被線拉了起來（生命 ${e.hp}）`, 'warn');
@@ -2506,9 +2525,11 @@ async function dash(u, opt) {
 async function melee(u, t) {
   u.mesh.rotation.y = Math.atan2(t.x - u.x, t.z - u.z);
   const p0 = u.mesh.position.clone(), p1 = p0.clone().lerp(new THREE.Vector3(t.x, p0.y, t.z), 0.4);
+  anim(u, 'shoot', { fade: 0.05 });
   await tween(0.1, k => u.mesh.position.lerpVectors(p0, p1, k));
   floatText(u, '近戰！', 'ow');
   await tween(0.12, k => u.mesh.position.lerpVectors(p1, p0, k));
+  anim(u, 'idle');
   if (!t.alerted) alertEnemies([t], 'melee'); // 只驚動被打的那個：近戰不發出槍聲
   UI.log(`${u.name} 近戰 → ${t.name}：直接受傷 ${RULES.MELEE_WOUNDS} 次`, 'good');
   if (!t.shield && !t.unflinching) t.stress = RULES.SUP_AT; // 近戰不經過三階
@@ -3351,8 +3372,11 @@ async function brawlerHit(e, p) {
   e.mesh.visible = true;
   e.mesh.rotation.y = Math.atan2(p.x - e.x, p.z - e.z);
   const a = e.mesh.position.clone(), b = new THREE.Vector3((e.x + p.x) / 2, 0, (e.z + p.z) / 2);
+  anim(e, 'shoot', { fade: 0.05, t: 0.25 });      // 打手的 shoot 是揮球棒
   await tween(0.12, k => e.mesh.position.lerpVectors(a, b, k));
   await tween(0.12, k => e.mesh.position.lerpVectors(b, a, k));
+  if (rigOf(e)) await wait(0.25);
+  anim(e, 'idle');
   floatText(p, '重擊！', 'dmg');
   UI.log(`${e.name} 衝到 ${p.name} 身邊揮出一棍：必中，直接受傷 1 次`, 'bad');
   await strike(p, 1, e, true);
@@ -3810,6 +3834,10 @@ function frame(now) {
     S.objMesh.userData.screen.emissive.setHex(on ? 0xff2020 : 0x330000);
   }
 
+  if (S.units) for (const u of S.units) {      // 方塊人的動作、頭髮、眨眼（看不到的不算）
+    const r = u.mesh && u.mesh.userData.rig;
+    if (r && u.mesh.visible && u.mesh.parent) r.update(dt);
+  }
   if (S.units) for (const u of S.units) {
     const imps = u.alive && u.mesh.userData.imps;
     if (!imps) continue;

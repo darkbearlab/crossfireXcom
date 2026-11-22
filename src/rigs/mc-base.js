@@ -314,6 +314,7 @@ export function mcRig(o) {
   }
   return {
     id: o.id, name: o.name, unit: 32, evenX: true, scale: o.scale || 1,
+    variant: over => mcRig({ ...o, ...over }),      // 換掉部分設定重做一隻（遊戲裡換武器用）
     parts: P,
     rest: { ...rest, ...o.rest },
     clips: { ...clips, ...o.clips },

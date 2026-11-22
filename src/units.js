@@ -1,6 +1,8 @@
 // 單位模型：low poly（平面著色、少面數）。正面朝 +Z，地面 y = 0，一格 = 1。
 // 只求「味道對」：魔法少女是裙裝＋髮型＋招牌武器；黑手黨手下是西裝＋帽子；家族成員是魔女＋黑手黨。
 import * as THREE from 'three';
+import { rigDefFor, makeRigMesh } from './unit-rigs.js';
+import { ENEMIES as RIG_ENEMIES } from './rigs/enemies-mc.js';
 
 const M = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.78, metalness: 0.05, flatShading: true, ...o });
 const GLOW = (color, emissive, k = 1.5) => new THREE.MeshStandardMaterial({ color, emissive, emissiveIntensity: k, flatShading: true });
@@ -325,6 +327,9 @@ function dollParts(add, color) {
 // gun: 'ar' | 'sg' | 'sn' | 'lmg' | 'pistol' | 'duals' | 'hmg' | 'tri' | 'magnum' | 'gl' | 'smg'（只影響外觀）
 // opt: { hair, girl, boss, mother }
 export function makeUnitMesh(team, kind, color, gun = 'ar', scale = 1, opt = {}) {
+  // 有方塊人的單位用方塊人（src/unit-rigs.js）；沒有的、或網址加了 ?lowpoly，才用下面的舊模型
+  const rigDef = rigDefFor(team, kind, gun, opt);
+  if (rigDef) return makeRigMesh(rigDef, scale);
   const g = new THREE.Group();
   const add = adder(g);
   let gx = 0.2, gy = 0.84, gz = 0.12;
@@ -380,6 +385,18 @@ function makeCrow(flying) {
 
 // 稻草人：木樁＋橫桿＋破爛外套＋布袋頭＋歪掉的魔女帽。身上停著的烏鴉在 userData.perched
 export function makeScarecrowMesh(color, scale = 1) {
+  if (rigDefFor('enemy', 'scarecrow')) {      // 方塊人版：兩臂和帽子上一樣停著三隻烏鴉
+    const g = makeRigMesh(RIG_ENEMIES.scarecrow, scale);
+    g.userData.perched = [[-0.42, 1.03, 0], [0.42, 1.03, 0], [0.1, 1.62, 0.02]].map(([x, y, z], i) => {
+      const c = makeCrow(false);
+      c.position.set(x, y, z);
+      c.rotation.y = i === 2 ? 0.5 : 0.3 * Math.sign(x);
+      g.add(c);
+      return c;
+    });
+    g.userData.muzzle = new THREE.Vector3(0, 1, 0.2);
+    return g;
+  }
   const g = new THREE.Group();
   const add = adder(g);
   const wood = M(0x6b4a2a), coat = M(color), patch = M(0x7a5a30), sack = M(0xc8a878), straw = M(0xe0c060), stitch = M(0x3a2a1a);
