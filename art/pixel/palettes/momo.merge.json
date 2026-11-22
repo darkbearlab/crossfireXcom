@@ -1,0 +1,39 @@
+{
+  "tool": {
+    "name": "merge-palette",
+    "version": "1.5.0"
+  },
+  "sources": [
+    {
+      "file": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\q_info\\momo_back_q15.qa.json",
+      "name": "momo_back_q15.qa",
+      "entries": 15
+    },
+    {
+      "file": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\q_info\\momo_front_q13.qa.json",
+      "name": "momo_front_q13.qa",
+      "entries": 13
+    },
+    {
+      "file": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\q_info\\momo_side_q15.qa.json",
+      "name": "momo_side_q15.qa",
+      "entries": 15
+    }
+  ],
+  "input_colours": 43,
+  "requested": 15,
+  "produced": 15,
+  "space": "oklab",
+  "seed": 0,
+  "converged": true,
+  "iterations": 3,
+  "fit_to_sources": {
+    "mean_delta_e76": 3.1899,
+    "max_delta_e76": 12.7766,
+    "share_over_delta_e76_10": 0.0519
+  },
+  "output": {
+    "gpl": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\palettes\\momo.gpl",
+    "entries_including_transparent": 16
+  }
+}

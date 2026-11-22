@@ -1,0 +1,20 @@
+GIMP Palette
+Name: kaede_front_q15
+Columns: 16
+#
+255   0 255	00 transparent
+ 31  27  20	01 fixed
+ 44  35  24	02 fixed
+ 68  34  15	03 fixed
+ 53  44  32	04 fixed
+ 80  39  16	05 fixed
+ 74  53  34	06 fixed
+108  55  22	07 fixed
+ 88  66  40	08 fixed
+138  65  23	09 fixed
+109  81  48	10 fixed
+171  81  19	11 fixed
+138 101  56	12 fixed
+197 114  55	13 fixed
+233 171 103	14 fixed
+211 207 203	15 fixed

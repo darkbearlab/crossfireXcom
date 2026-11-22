@@ -1,0 +1,20 @@
+GIMP Palette
+Name: kaede
+Columns: 16
+#
+255   0 255	00 transparent
+ 31  27  20	01 set
+ 44  35  24	02 set
+ 68  34  15	03 set
+ 53  44  32	04 set
+ 80  39  16	05 set
+ 74  53  34	06 set
+108  55  22	07 set
+ 88  66  40	08 set
+138  65  23	09 set
+109  81  48	10 set
+171  81  19	11 set
+138 101  56	12 set
+197 114  55	13 set
+233 171 103	14 set
+211 207 203	15 set
