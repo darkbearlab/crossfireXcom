@@ -1,7 +1,7 @@
 # 可動方塊模型（voxel rig）
 
 把方塊角色拆成部位、綁上關節，讓它能用程式算出來的動作動起來，臉上的貼圖可以換來換表情和嘴形。
-七個少女都有方塊人版本。預覽頁：`voxel-rig.html`（上面的「模型」切換角色，或網址加 `?model=hikari`；`?sheet=cast` 七個人排一排）。
+七個少女、十種敵人、七名魔女和教母都有方塊人版本。預覽頁：`voxel-rig.html`（上面三排按鈕切換角色，或網址加 `?model=hikari`；`?sheet=cast`／`enemies`／`witches` 整組排一排）。
 
 | 角色 | 檔案 | 特別的部位 |
 |---|---|---|
@@ -13,6 +13,11 @@
 | 楓 | `src/rigs/kaede-mc.js` | 刺刺頭、護目鏡、沒有裙子、榴彈發射器、預設露齒笑 |
 | 詩織 | `src/rigs/shiori-mc.js` | 長捲髮、花冠、一對小翅膀、衝鋒槍（垂著拿）、預設微笑 |
 | 朱音（參考圖堆疊版） | `src/rigs/akane.js` | 4 頭身，形狀和顏色從像素三視圖堆出來。評價不好，先保留不用。第 1 節以後講的是這一版 |
+
+**敵人**（`src/rigs/enemies-mc.js`，沒有參考圖，照遊戲裡現在的造型和 `config.js` 的顏色）：槍手 `gunman`、狂徒 `zealot`、小弟 `conscript`、幹部 `officer`、打手 `brawler`（球棒，攻擊動作是揮）、狙擊手 `sniper`、機槍手 `mg`、重裝兵 `brute`、人偶 `doll`、稻草人 `scarecrow`。前七種共用檔案裡的 `goon()` 樣板（西裝、襯衫領帶、發光的黃眼睛），每一種只寫不一樣的地方。
+使魔巢穴、使魔、烏鴉不是人形，沒有做。
+
+**魔女**（`src/rigs/witches-mc.js`，一樣沒有參考圖）：薇歐拉 `b_eye`、蕾貝卡 `b_exec`、莫妮卡 `b_book`、莉莉絲 `b_sis`、卡蜜拉 `b_perfume`、艾琳娜 `b_hound`、桃樂絲 `b_puppet`、教母瑪格麗特 `b_mother`。代號跟 `config.js` 的 `ENEMY_TYPES` 一樣。
 
 所有版本共用同一套動作、頭髮物理、表情和對嘴（`src/voxel-rig.js`）。方塊人共用的骨架在 `src/rigs/mc-base.js`。
 
@@ -30,12 +35,13 @@
 | 欄位 | 內容 |
 |---|---|
 | `id`、`name`、`pal`、`scale` | 代號、名字、調色盤（字元 → 顏色）、個子（預設 1） |
-| `head: { in, out, extra(v) }` | 頭的內層、外層（頭髮）、另外加的方塊（髮飾、翹起來的頭髮） |
-| `body: { in, out }` | 身體的內層、外層 |
+| `head: { in, out, extra(v) }` | 頭的內層、外層（頭髮）、另外加的方塊（髮飾、帽子）。`headOf('long'｜'bob'｜'updo'｜'short'｜'bald')` 給現成的髮型；帽子有 `fedora()`、`witchHat()` |
+| `body: { in, out }` | 身體的內層、外層。`torsoOf({ front, back, side })` 可以只畫正面，背面和側面給一串字 |
 | `skirt: { rows, faces }` | 掛在骨盆上的一圈裙襬（空心），`rows` 是幾列高。沒有裙子就不寫 |
 | `armUp`、`armLo`、`thigh`、`shin` | 手腳的皮膚。通常寫 `bands('WWssKW')`：由上到下每一列整圈一個顏色；第二個參數可以蓋掉某一面 |
 | `thighOut`、`shinOut`、`armUpOut`、`armLoOut` | 手腳的外層（雪乃的大衣下襬） |
-| `gun: { hand, rows, gr, mr, thick, carry, per }` | 單手拿的槍：`rows` 是槍的側面圖（槍口朝右，第 0 欄貼著手）、`gr` 哪一列對齊手心、`mr` 槍口在哪一列、`thick` 幾格厚、`carry: false` 是垂著拿（預設端在腰邊）、`per` 幾秒一發。會自動做出槍、槍口火光、射擊動作 |
+| `gun: { hand, rows, gc, gr, mr, thick, carry, per }` | 槍：`rows` 是槍的側面圖（槍口朝右）。握把那一欄（`gc`）緊貼在手的前面，握把正上方那一列（`gr`，機匣）壓在前臂上緣，所以握把左邊的欄（槍托）會沿著前臂往手肘伸，右邊是槍管。`mr` 槍口在哪一列、`thick` 幾格厚、`hand: 'both'` 是雙槍、`carry: false` 是垂著拿（預設端在腰邊）、`per` 幾秒一發、`melee: true` 是近戰武器。會自動做出槍、槍口火光、射擊動作。現成的槍在 `GUNS`（`tommy` `lmg` `sg` `sn` `pistol` `magnum` `dbl` `bat`） |
+| `thighWide`、`shinWide` | 長裙／長大衣，用 `...gown('CCCCCCCCCc..', 1)` 產生：12 個字是由上到下每一列的顏色，第二個參數是前面敞開幾格。畫在腿的外層，跟著腿擺 |
 | `parts` | 其他部位，直接併進去：馬尾、披風、翅膀。`longHair(pal, {...})` 會給兩節會甩的長髮，`plane(v, 字元圖, pal, {...})` 排一片直立的薄片 |
 | `rest`、`clips`、`expressions` | 站姿、動作、表情的覆寫（小桃把 `normal` 換成臭臉） |
 | `face: { colors, layers }` | 臉：換顏色，換掉或新增貼圖（跟預設的合併） |
@@ -53,7 +59,7 @@
 
 ### 加新的方塊人
 
-複製一個最像的角色檔，改調色盤和字元圖，到 `voxel-rig.html` 的 `CAST` 加一行。參考圖在 `art/pixel/<id>.png`（朱音和光以外的五張目前只在 main 上）。
+複製一個最像的角色檔，改調色盤和字元圖，到 `voxel-rig.html` 的 `CAST` 加一行（敵人加在 `enemies-mc.js` 的 `ENEMIES`、魔女加在 `witches-mc.js` 的 `WITCHES`，預覽頁會自己出現）。參考圖在 `art/pixel/<id>.png`（朱音和光以外的五張目前只在 main 上）。
 
 | 檔案 | 內容 |
 |---|---|
@@ -243,7 +249,7 @@ rig.parts.head.group                 // 任何部位的 Group，要掛東西（�
 | `?panel=0` | 收起按鈕面板 |
 | `?sheet=expr` / `mouth` / `clip` | 一次排一整排（每個表情／嘴形／動作一隻） |
 | `?model=hikari` | 換角色：`akane`（預設）`hikari` `yukino` `momo` `chinatsu` `kaede` `shiori`，`carved` 是朱音的參考圖堆疊版 |
-| `?sheet=cast` | 七個人排一排（可以再加 `&clip=shoot&t=0.2`） |
+| `?sheet=cast` / `enemies` / `witches` | 少女／敵人／魔女整組排一排（可以再加 `&clip=shoot&t=0.2`） |
 
 ## 6. 加新角色
 

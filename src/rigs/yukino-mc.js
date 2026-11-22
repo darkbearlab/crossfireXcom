@@ -59,12 +59,11 @@ export default mcRig({
   thighOut: COAT,
   shin: bands('XWWWWn', { front: ['XXX', 'WTW', 'WWW', 'WWW', 'WWW', 'nnn'], back: ['XXX', 'WUW', 'WUW', 'WUW', 'WUW', 'nnn'] }),   // 白色長靴，後面一條藍線
   gun: {
-    hand: 'R', thick: 2, gr: 1, mr: 1, per: 0.11,
-    rows: ['...gg.........',
-           'GGGGGGGGgggggg',
-           'GGGGGGG...g...',
-           '.GGG......g...',
-           '.GGG..........'],
+    hand: 'R', thick: 2, gc: 4, gr: 1, mr: 1, per: 0.11,
+    rows: ['.....gg...........',
+           'GGGGGGGGGGGggggggg',
+           'GG..GGGGG....g....',
+           '....gGGG.....g....'],
   },
   parts: {
     ...longHair(PAL, { c: 'H', d: 'h', y1: 16, y2: 8 }),

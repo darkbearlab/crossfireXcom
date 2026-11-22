@@ -67,10 +67,10 @@ export default mcRig({
   thigh: bands('DDXXXX'),
   shin: bands('XXBBBb', { front: ['XXX', 'XXX', 'BBB', 'BQB', 'BBB', 'bbb'] }),
   gun: {
-    hand: 'R', thick: 1, gr: 1, mr: 1, per: 1.3,
-    rows: ['...gGGg.........',
-           'GGGGGGGGGggggggg',
-           '.G..G...........'],
+    hand: 'R', thick: 1, gc: 4, gr: 1, mr: 1, per: 1.3,
+    rows: ['.....gGGg..........',
+           'GGGGGGGGGGGgggggggg',
+           'GG..G..............'],
   },
   parts: {
     // 披風：掛在肩膀後面的一整片（會甩），上面一小塊是垂下來的帽子

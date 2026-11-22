@@ -67,6 +67,9 @@ export default mcRig({
   thigh: bands('DDssss'),
   shin: bands('bBBBBK', { front: ['bBb', ...rows(4, 'BBB'), 'KKK'] }),   // 及膝長靴，跟腿一樣粗；靴口前面 V 字
 
+  // 雙槍：一格厚的薄片，握把握在手裡。手垂著時槍口朝下，手臂抬平時槍口朝前
+  gun: { hand: 'both', thick: 1, gc: 0, gr: 0, carry: false, rows: ['NNNNn', 'N....'] },
+
   parts: {
     // 背後的兩條飄帶（會甩）
     ribbon1: {
@@ -74,17 +77,6 @@ export default mcRig({
       dangle: { k: 40, damp: 5, gain: 0.04, limit: 0.5 },
       build(v) { v.box(-3, -2, 4, 12, -4, -4, PAL.D).box(1, 2, 3, 12, -4, -4, PAL.D).box(-3, -3, 4, 5, -4, -4, PAL.r).box(2, 2, 3, 4, -4, -4, PAL.r); },
     },
-    // 雙槍：一格厚的薄片（像 Minecraft 手上拿的東西）。手垂著時槍口朝下，手臂抬平時槍口朝前
-    gunL: {
-      parent: 'lowerArmL', pivot: [5, 12, 0],
-      build(v) { v.box(5, 5, 6, 11, 0, 0, PAL.N).box(5, 5, 6, 11, 1, 1, PAL.n).box(5, 5, 10, 11, -2, -1, PAL.N).dot(5, 6, 0, '#111116'); },
-    },
-    flashL: {
-      parent: 'gunL', pivot: [5, 6, 0.5], hidden: true,
-      build(v) { v.box(5, 5, 3, 5, 0, 1, PAL.F[0], 'e').box(5, 5, 4, 4, -1, 2, PAL.F[0], 'e').box(4, 6, 4, 4, 0, 1, PAL.F[0], 'e').box(5, 5, 4, 4, 0, 1, PAL.f[0], 'e').box(5, 5, 1, 2, 0, 1, PAL.F[0], 'e'); },
-    },
-    gunR: { mirror: 'gunL' },
-    flashR: { mirror: 'flashL' },
     // 高馬尾：兩節方塊，會甩
     pony1: {
       parent: 'head', pivot: [-0.5, 33.5, -3],
@@ -100,8 +92,7 @@ export default mcRig({
       },
     },
   },
-  // 站姿：槍垂直朝下
-  rest: { gunL: { z: -0.1 }, gunR: { z: 0.1 }, ribbon1: { x: 0.15 } },
+  rest: { ribbon1: { x: 0.15 } },
 
   // 臉：表情和嘴形的貼圖用 mc-base.js 的預設（要改她自己的，在這裡的 face.layers 放同名的貼圖蓋掉）
   //   例：face: { layers: { eyes: { variants: { open: ['.kk..kk.', '.wr..rw.', '.qR..Rq.'] } } } }

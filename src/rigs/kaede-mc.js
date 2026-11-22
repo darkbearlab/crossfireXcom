@@ -53,11 +53,10 @@ export default mcRig({
   thigh: bands('PPPPPp', { left: ['PPP', 'PPP', 'PpP', 'PpP', 'PPP', 'ppp'] }),   // 側邊的大口袋
   shin: bands('PPpBBb', { front: ['PPP', 'PPP', 'ppp', 'BOB', 'BOB', 'bbb'] }),   // 褲腳塞進靴子、橘色鞋帶
   gun: {
-    hand: 'R', thick: 2, gr: 1, mr: 1, per: 1.0,
-    rows: ['.GGGGGGGg',
-           'GOOOGGGGg',
-           'GOOOGGGGg',
-           '.G.......'],
+    hand: 'R', thick: 2, gc: 3, gr: 1, mr: 1, per: 1.0,
+    rows: ['...GGGGGGGg',
+           'GGGGOOOGGGg',
+           'G..G.OOO...'],
   },
   // 她平常就是露齒笑
   expressions: { normal: { eyes: 'open', brows: 'none', mouth: 'grin' } },

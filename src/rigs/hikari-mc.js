@@ -56,11 +56,11 @@ export default mcRig({
   thigh: bands('WWssKW'),            // 裙底、露一截腿、過膝襪的粉紅襪口
   shin: bands('WGWWWk'),             // 白靴、金邊、粉紅鞋底
   gun: {
-    hand: 'R', thick: 2, gr: 1, mr: 1, per: 0.16,
-    rows: ['NNNNNNM.....',
-           'NNNNNNNNnnnn',
-           '.nN.n.......',
-           '.n..........'],
+    hand: 'R', thick: 2, gc: 4, gr: 1, mr: 1, per: 0.16,
+    rows: ['.....nNNM.......',
+           'NNNNNNNNNNNnnnnn',
+           'NN..n.Nn........',
+           '....n.n.........'],
   },
   parts: {
     ...longHair(PAL, { c: 'P', d: 'p', y1: 16, y2: 9 }),

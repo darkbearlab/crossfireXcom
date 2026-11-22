@@ -30,7 +30,9 @@
 <div id="top"><b>可動方塊模型</b>：<span id="who">朱音</span>　拖曳旋轉、雙指／滾輪縮放</div>
 <div id="bubble"></div>
 <div id="panel">
-  <div class="row" id="r-model"><span>模型</span></div>
+  <div class="row" id="r-model"><span>少女</span></div>
+  <div class="row" id="r-enemy"><span>敵人</span></div>
+  <div class="row" id="r-witch"><span>魔女</span></div>
   <div class="row" id="r-clip"><span>動作</span></div>
   <div class="row" id="r-expr"><span>表情</span></div>
   <div class="row" id="r-mouth"><span>嘴形</span></div>
@@ -49,6 +51,8 @@ import momoMc from './src/rigs/momo-mc.js';
 import chinatsuMc from './src/rigs/chinatsu-mc.js';
 import kaedeMc from './src/rigs/kaede-mc.js';
 import shioriMc from './src/rigs/shiori-mc.js';
+import { ENEMIES } from './src/rigs/enemies-mc.js';
+import { WITCHES } from './src/rigs/witches-mc.js';
 
 // 網址參數（截圖用：面板在背景時 rAF 會被節流，用參數把姿勢固定住）
 //   ?clip=walk&t=0.4  動作和時間（有 t 就凍結）   ?expr=smile  ?mouth=big   ?angle=0.6（弧度）
@@ -57,10 +61,11 @@ import shioriMc from './src/rigs/shiori-mc.js';
 const qs = new URLSearchParams(location.search);
 // ?model=akane（預設）｜hikari｜yukino｜momo｜chinatsu｜kaede｜shiori：方塊人；carved：朱音從參考圖堆出來的那一版
 const CAST = { akane: akaneMc, hikari: hikariMc, yukino: yukinoMc, momo: momoMc, chinatsu: chinatsuMc, kaede: kaedeMc, shiori: shioriMc };
-const MODELS = { ...CAST, carved: akaneCarved };
+const MODELS = { ...CAST, ...ENEMIES, ...WITCHES, carved: akaneCarved };
+const GROUPS = { cast: CAST, enemies: ENEMIES, witches: WITCHES };   // ?sheet=cast｜enemies｜witches：整組排一排
 const modelKey = MODELS[qs.get('model')] ? qs.get('model') : 'akane';
 const DEF = MODELS[modelKey];
-document.getElementById('who').textContent = qs.get('sheet') === 'cast' ? '全員' : DEF.name;
+document.getElementById('who').textContent = ({ cast: '少女', enemies: '敵人', witches: '魔女' })[qs.get('sheet')] || DEF.name;
 
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -102,15 +107,15 @@ let sheetItems = null;
 if (sheet === 'expr') sheetItems = Object.keys(DEF.expressions).map(k => [k, EXPR_ZH[k] || k]);
 else if (sheet === 'mouth') sheetItems = Object.keys(DEF.visemes).map(k => [k, MOUTH_ZH[k] || k]);
 else if (sheet === 'clip') sheetItems = Object.keys(CLIP_ZH).map(k => [k, CLIP_ZH[k]]);
-else if (sheet === 'cast') sheetItems = Object.entries(CAST).map(([k, d]) => [k, d.name]);
+else if (GROUPS[sheet]) sheetItems = Object.entries(GROUPS[sheet]).map(([k, d]) => [k, d.name]);
 if (sheetItems) {
-  const gap = sheet === 'clip' ? 1.5 : sheet === 'cast' ? 1.25 : 0.72;
+  const gap = sheet === 'clip' ? 1.5 : GROUPS[sheet] ? 1.25 : 0.72;
   sheetItems.forEach(([k, zh], i) => {
-    const r = addRig((i - (sheetItems.length - 1) / 2) * gap, zh, sheet === 'cast' ? CAST[k] : DEF);
+    const r = addRig((i - (sheetItems.length - 1) / 2) * gap, zh, GROUPS[sheet] ? GROUPS[sheet][k] : DEF);
     r.autoBlink = false;
     if (sheet === 'expr') r.setExpression(k);
     if (sheet === 'mouth') r.mouthOverride = k;
-    if (sheet === 'cast' && qs.has('clip')) r.play(qs.get('clip'), { fade: 0 });
+    if (GROUPS[sheet] && qs.has('clip')) r.play(qs.get('clip'), { fade: 0 });
     if (sheet === 'clip') { r.play(k, { fade: 0 }); if (k === 'down') r.object.position.z -= 0.6; }
   });
 } else addRig(0);
@@ -163,7 +168,7 @@ function resize() {
   cam.updateProjectionMatrix();
   // 一整排的時候，照畫面寬度算鏡頭要退多遠才放得下
   if (sheetItems) {
-    const gap = sheet === 'clip' ? 1.5 : sheet === 'cast' ? 1.25 : 0.72, halfW = sheetItems.length * gap / 2 + (sheet === 'clip' ? 0.2 : 0.05);
+    const gap = sheet === 'clip' ? 1.5 : GROUPS[sheet] ? 1.25 : 0.72, halfW = sheetItems.length * gap / 2 + (sheet === 'clip' ? 0.2 : 0.05);
     const d = halfW / (Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * cam.aspect);
     const dir = cam.position.clone().sub(controls.target).normalize();
     cam.position.copy(controls.target).addScaledVector(dir, Math.max(d, camMode === 'face' ? 1.6 : 3) / zoom);
@@ -187,6 +192,9 @@ function btnRow(rowId, items, onClick, isOn) {
 const refreshers = [];
 const refreshAll = () => refreshers.forEach(f => f());
 let loopClip = 'idle', walkCircle = false, spin = false;
+const goModel = k => { const u = new URL(location.href); u.searchParams.set('model', k); location.href = u; };
+btnRow('r-enemy', Object.entries(ENEMIES).map(([k, d]) => [k, d.name]), goModel, k => k === modelKey);
+btnRow('r-witch', Object.entries(WITCHES).map(([k, d]) => [k, d.name]), goModel, k => k === modelKey);
 btnRow('r-model', [...Object.entries(CAST).map(([k, d]) => [k, d.name]), ['carved', '朱音（堆疊版）']], k => { const u = new URL(location.href); u.searchParams.set('model', k); location.href = u; }, k => k === modelKey);
 btnRow('r-clip', Object.entries(CLIP_ZH), k => {
   if (walkCircle && k !== 'walk' && k !== 'run') walkCircle = false;

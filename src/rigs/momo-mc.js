@@ -46,10 +46,11 @@ export default mcRig({
   thigh: bands('yyssss'),
   shin: bands('ssBBBb', { front: ['sss', 'sss', 'lBl', 'BBB', 'BBB', 'bbb'] }),   // 短靴
   gun: {
-    hand: 'R', thick: 3, gr: 1, mr: 1, per: 0.9,
-    rows: ['AGGGAGGGAg',
-           'AGGGAGGGAg',
-           'AGGGAGGGAg'],
+    hand: 'R', thick: 3, gc: 3, gr: 2, mr: 1, per: 0.9,
+    rows: ['AGGGAGGGAGGg',
+           'AGGGAGGGAGGg',
+           'AGGGAGGGAGGg',
+           '...G........'],
   },
   parts: {
     // 雙馬尾：往兩邊炸開的一大叢（會甩），髮根是發光的髮球
