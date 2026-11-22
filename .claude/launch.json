@@ -4,32 +4,56 @@
     {
       "name": "game",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["serve.py", "8123"],
+      "runtimeArgs": [
+        "serve.py",
+        "8123"
+      ],
       "port": 8123
     },
     {
       "name": "test",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["serve.py", "8124"],
+      "runtimeArgs": [
+        "serve.py",
+        "8124"
+      ],
       "port": 8124
     },
     {
       "name": "test2",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["serve.py", "8125"],
+      "runtimeArgs": [
+        "serve.py",
+        "8125"
+      ],
       "port": 8125
     },
     {
       "name": "test3",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["serve.py", "8126"],
+      "runtimeArgs": [
+        "serve.py",
+        "8126"
+      ],
       "port": 8126
     },
     {
       "name": "rig",
       "runtimeExecutable": "python",
-      "runtimeArgs": ["serve.py", "8128"],
+      "runtimeArgs": [
+        "serve.py",
+        "8128"
+      ],
       "port": 8128
+    },
+    {
+      "name": "models",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "serve.py",
+        "8127"
+      ],
+      "port": 8127
     }
   ]
 }
