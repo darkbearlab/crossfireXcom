@@ -1,0 +1,20 @@
+GIMP Palette
+Name: momo_front_q15
+Columns: 16
+#
+255   0 255	00 transparent
+ 48  35  26	01 fixed
+ 64  48  37	02 fixed
+ 83  61  46	03 fixed
+133  67  14	04 fixed
+107  83  67	05 fixed
+179  72  10	06 fixed
+169 101  34	07 fixed
+194 125  65	08 fixed
+237 108  11	09 fixed
+202 131  18	10 fixed
+224 152 101	11 fixed
+227 158  20	12 fixed
+247 182  20	13 fixed
+248 185 135	14 fixed
+252 227  93	15 fixed

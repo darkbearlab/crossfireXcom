@@ -1,0 +1,39 @@
+{
+  "tool": {
+    "name": "merge-palette",
+    "version": "1.5.0"
+  },
+  "sources": [
+    {
+      "file": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\q_info\\chinatsu_back_q15.qa.json",
+      "name": "chinatsu_back_q15.qa",
+      "entries": 15
+    },
+    {
+      "file": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\q_info\\chinatsu_front_q15.qa.json",
+      "name": "chinatsu_front_q15.qa",
+      "entries": 15
+    },
+    {
+      "file": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\q_info\\chinatsu_side_q15.qa.json",
+      "name": "chinatsu_side_q15.qa",
+      "entries": 15
+    }
+  ],
+  "input_colours": 45,
+  "requested": 15,
+  "produced": 15,
+  "space": "oklab",
+  "seed": 0,
+  "converged": true,
+  "iterations": 2,
+  "fit_to_sources": {
+    "mean_delta_e76": 1.4181,
+    "max_delta_e76": 15.4663,
+    "share_over_delta_e76_10": 0.00421
+  },
+  "output": {
+    "gpl": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\palettes\\chinatsu.gpl",
+    "entries_including_transparent": 16
+  }
+}

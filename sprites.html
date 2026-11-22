@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>像素精靈試作</title>
+  <style>
+    html, body { margin: 0; background: #1b1d24; color: #ccd; font: 13px sans-serif; }
+    header { padding: 8px 12px; }
+    header b { color: #8fd3ff; }
+    #btns { display: flex; gap: 6px; flex-wrap: wrap; padding: 0 12px 8px; }
+    #btns button { padding: 8px 12px; background: #1d3448; color: #dfefff; border: 1px solid #4fd6ff88; border-radius: 5px; font-size: 14px; }
+    #btns button.on { background: #2f5a7a; }
+    canvas { display: block; margin: 0 auto; image-rendering: pixelated; image-rendering: crisp-edges; max-width: 100%; }
+    h3 { margin: 14px 12px 6px; color: #dfefff; font-size: 14px; }
+    #gallery { display: flex; flex-wrap: wrap; gap: 10px; padding: 0 12px 20px; }
+    .card { background: #252833; border-radius: 6px; padding: 6px; text-align: center; }
+    .card canvas { margin: 0; }
+  </style>
+</head>
+<body>
+<header>像素精靈試作：七名少女的三視圖去背、每人 15 色，拼成<b>正面｜右側｜背面｜左側</b>四格（<code>assets/sprites/girls/*.png</code>）。點地圖上的格子轉方向。</header>
+<div id="btns">
+  <span style="align-self:center">放大</span>
+  <button data-z="1">1×</button><button data-z="2">2×</button><button data-z="3" class="on">3×</button><button data-z="4">4×</button>
+  <button id="b-turn">全部轉向</button>
+</div>
+<canvas id="board"></canvas>
+<h3>四個方向（4×）</h3>
+<div id="gallery"></div>
+<script type="module">
+const meta = await (await fetch('assets/sprites/girls.json')).json();
+const names = Object.keys(meta.girls);
+const imgs = {};
+await Promise.all(names.map(n => new Promise(ok => { const im = new Image(); im.onload = ok; im.src = 'assets/sprites/' + meta.girls[n].file; imgs[n] = im; })));
+
+// 地圖：每格 32 像素（原尺寸），少女站在格子中間
+const T = 32, COLS = 7, ROWS = 4;
+const units = names.map((n, i) => ({ n, x: i, y: 1 + (i % 2), dir: 0 }));
+let zoom = 3;
+const board = document.getElementById('board');
+const bx = board.getContext('2d');
+function fitZoom() { // 手機直向：放不下就自動縮
+  const max = Math.floor((innerWidth - 8) / (COLS * T));
+  return Math.max(1, Math.min(zoom, max));
+}
+function draw() {
+  const z = fitZoom();
+  board.width = COLS * T; board.height = ROWS * T + 40;
+  board.style.width = board.width * z + 'px'; board.style.height = board.height * z + 'px';
+  bx.imageSmoothingEnabled = false;
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+    bx.fillStyle = (x + y) % 2 ? '#3a3f4a' : '#424856';
+    bx.fillRect(x * T, 40 + y * T, T, T);
+  }
+  // 牆（掩體）示意
+  bx.fillStyle = '#5a5246'; bx.fillRect(0, 40 + 3 * T, COLS * T, 6);
+  for (const u of [...units].sort((a, b) => a.y - b.y)) {
+    const g = meta.girls[u.n], [cw, ch] = g.cell;
+    const fx = u.x * T + T / 2, fy = 40 + u.y * T + T - 4; // 腳底
+    bx.fillStyle = '#0006'; bx.beginPath(); bx.ellipse(fx, fy, 9, 3, 0, 0, 7); bx.fill();
+    bx.drawImage(imgs[u.n], u.dir * cw, 0, cw, ch, Math.round(fx - cw / 2), fy - ch, cw, ch);
+  }
+}
+board.addEventListener('click', e => {
+  const r = board.getBoundingClientRect();
+  const x = Math.floor((e.clientX - r.left) / r.width * board.width / T);
+  const y = Math.floor(((e.clientY - r.top) / r.height * board.height - 40) / T);
+  // 點腳下的格子或上面一格（頭部）都算
+  const u = units.find(u => u.x === x && (u.y === y || u.y === y + 1));
+  if (u) { u.dir = (u.dir + 1) % 4; draw(); }
+});
+for (const b of document.querySelectorAll('[data-z]')) b.onclick = () => {
+  zoom = +b.dataset.z;
+  document.querySelectorAll('[data-z]').forEach(x => x.classList.toggle('on', x === b));
+  draw();
+};
+document.getElementById('b-turn').onclick = () => { for (const u of units) u.dir = (u.dir + 1) % 4; draw(); };
+addEventListener('resize', draw);
+// ?dir=2：一開始全部朝某個方向（截圖用）
+const qd = new URLSearchParams(location.search).get('dir');
+if (qd) for (const u of units) u.dir = +qd % 4;
+draw();
+
+const gal = document.getElementById('gallery');
+for (const n of names) {
+  const g = meta.girls[n], [cw, ch] = g.cell;
+  const c = document.createElement('canvas'); c.width = cw * 4 + 12; c.height = ch;
+  const x = c.getContext('2d');
+  for (let d = 0; d < 4; d++) x.drawImage(imgs[n], d * cw, 0, cw, ch, d * (cw + 4), 0, cw, ch);
+  c.style.width = c.width * 4 + 'px'; c.style.height = c.height * 4 + 'px';
+  const card = document.createElement('div'); card.className = 'card';
+  card.append(c, Object.assign(document.createElement('div'), { textContent: n }));
+  gal.append(card);
+}
+</script>
+</body>
+</html>

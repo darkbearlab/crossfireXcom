@@ -1,0 +1,648 @@
+{
+  "schema_version": 1,
+  "tool": {
+    "name": "sprite-quantize",
+    "version": "1.5.0",
+    "numpy": "2.5.2",
+    "scipy": "1.18.1",
+    "pillow": "12.2.0",
+    "python": "3.14.3"
+  },
+  "source": {
+    "path": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\views\\akane_back.png",
+    "sha256": "e52fbeb7df8a10e79e0cdee90231c9e5078a7b34a889c5ccfd4bf108458fc2cc",
+    "width": 445,
+    "height": 960,
+    "had_alpha": false,
+    "upstream": {
+      "generator": "unknown",
+      "info_path": null,
+      "png_text_key": null,
+      "prompt": null,
+      "model": null,
+      "seed": null
+    }
+  },
+  "params": {
+    "bg": "floodfill",
+    "bg_tolerance": 12.0,
+    "bg_variance_threshold": 15.0,
+    "bg_seed": "border",
+    "alpha_threshold": 128,
+    "min_island_px": 12,
+    "edge": "decontaminate",
+    "erode_px": 1,
+    "decontam_iters": 2,
+    "decontam_cut": true,
+    "colors": 15,
+    "palette_mode": "fixed",
+    "color_space": "oklab",
+    "seed": 0,
+    "kmeans_iters": 100,
+    "kmeans_tol": 1e-06,
+    "protect_highlights": true,
+    "protect_slots": 2,
+    "protect_delta_e": 12.0,
+    "protect_min_px": 8,
+    "rgb555": false,
+    "transparent_rgb": [
+      255,
+      0,
+      255
+    ],
+    "scale": null,
+    "target_size": [
+      30,
+      64
+    ],
+    "target_long_edge": null,
+    "downsample": "dominant",
+    "alpha_majority": 0.5,
+    "order": "downsample-first"
+  },
+  "params_sha256": "ccfdd20893170385d24530e27a99aac4a6bd8ae897768980b85161b209511d12",
+  "output": {
+    "png": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\q\\akane_back_q15.png",
+    "palette_gpl": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\q\\akane_back_q15.gpl",
+    "preview_png": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\q\\akane_back_q15_preview.png",
+    "width": 30,
+    "height": 64,
+    "palette_entries": 16,
+    "transparent_index": 0,
+    "bit_depth": 4,
+    "png_sha256": "4a82fe31478e0ff10fe3ea564a817dde858b95fdcb8b06f150abaec0940876f8"
+  },
+  "background": {
+    "method_requested": "floodfill",
+    "method_used": "floodfill",
+    "fallback_triggered": false,
+    "fallback_reason": null,
+    "border_mean_rgb": [
+      196,
+      195,
+      195
+    ],
+    "border_delta_e_std": 0.4273,
+    "variance_threshold": 15.0,
+    "tolerance": 12.0,
+    "rembg": null,
+    "bg_ref_rgb": [
+      196,
+      195,
+      195
+    ],
+    "islands_removed": 0,
+    "island_px_removed": 0,
+    "holes_closed": 0,
+    "hole_px_closed": 0,
+    "alpha_threshold": 128,
+    "min_island_px": 12,
+    "opaque_pixels": 167910,
+    "transparent_pixels": 259290,
+    "coverage_ratio": 0.393048,
+    "bbox": [
+      13,
+      12,
+      431,
+      946
+    ]
+  },
+  "edge": {
+    "mode": "decontaminate",
+    "erode_px": 0,
+    "decontam_iters": 2,
+    "alpha_source": "projection",
+    "edge_pixels_before": 6031,
+    "pixels_modified": 4494,
+    "mean_edge_delta_e_to_interior_before": 19.6993,
+    "mean_edge_delta_e_to_interior_after": 5.7386,
+    "residual_bg_suspect_pixels": 0,
+    "decontam": {
+      "pixels_modified": 4494,
+      "skipped_no_interior": 19,
+      "skipped_low_contrast": 0,
+      "skipped_low_alpha": 54,
+      "skipped_already_opaque": 6955,
+      "skipped_model_misfit": 233,
+      "local_backdrop_share": 1.0,
+      "mean_alpha_recovered": 0.7033,
+      "pixels_cut": 54,
+      "cut_applied": true
+    },
+    "opaque_after": 167856,
+    "edge_pixels_after": 6064,
+    "residual_bg_suspect_share": 0.0
+  },
+  "quantization": {
+    "space": "oklab",
+    "mode": "fixed",
+    "requested_colors": 15,
+    "final_colors": 15,
+    "main_clusters": 15,
+    "main_clusters_requested": 15,
+    "deduped_entries": 0,
+    "seed": 0,
+    "hist_bits": 6,
+    "hist_samples": 0,
+    "iterations_run": 0,
+    "converged": true,
+    "inertia": 0.0,
+    "protect": {
+      "enabled": false,
+      "slots": 0,
+      "candidates": 0,
+      "slots_used": 0,
+      "slots_returned": 0,
+      "picked": [],
+      "note": "not applicable in fixed mode"
+    },
+    "rgb555": {
+      "enabled": false,
+      "collapsed_entries": 0,
+      "off_lattice_entries": 0
+    },
+    "palette": [
+      {
+        "index": 0,
+        "role": "transparent",
+        "rgb": [
+          255,
+          0,
+          255
+        ],
+        "hex": "#FF00FF",
+        "pixels": 0,
+        "share": 0.0
+      },
+      {
+        "index": 1,
+        "role": "fixed",
+        "rgb": [
+          34,
+          10,
+          10
+        ],
+        "hex": "#220A0A",
+        "cielab": [
+          5.232,
+          11.167,
+          3.935
+        ],
+        "oklab": [
+          0.18453,
+          0.03843,
+          0.01549
+        ],
+        "pixels": 14,
+        "share": 0.018373
+      },
+      {
+        "index": 2,
+        "role": "fixed",
+        "rgb": [
+          32,
+          28,
+          27
+        ],
+        "hex": "#201C1B",
+        "cielab": [
+          10.68,
+          1.707,
+          1.395
+        ],
+        "oklab": [
+          0.23065,
+          0.00541,
+          0.00369
+        ],
+        "pixels": 17,
+        "share": 0.02231
+      },
+      {
+        "index": 3,
+        "role": "fixed",
+        "rgb": [
+          69,
+          13,
+          17
+        ],
+        "hex": "#450D11",
+        "cielab": [
+          13.193,
+          26.722,
+          12.796
+        ],
+        "oklab": [
+          0.26202,
+          0.0787,
+          0.03106
+        ],
+        "pixels": 67,
+        "share": 0.087927
+      },
+      {
+        "index": 4,
+        "role": "fixed",
+        "rgb": [
+          90,
+          17,
+          22
+        ],
+        "hex": "#5A1116",
+        "cielab": [
+          18.511,
+          32.959,
+          17.245
+        ],
+        "oklab": [
+          0.31029,
+          0.09661,
+          0.03983
+        ],
+        "pixels": 69,
+        "share": 0.090551
+      },
+      {
+        "index": 5,
+        "role": "fixed",
+        "rgb": [
+          98,
+          19,
+          24
+        ],
+        "hex": "#621318",
+        "cielab": [
+          20.554,
+          35.074,
+          18.743
+        ],
+        "oklab": [
+          0.32872,
+          0.10264,
+          0.0431
+        ],
+        "pixels": 99,
+        "share": 0.129921
+      },
+      {
+        "index": 6,
+        "role": "fixed",
+        "rgb": [
+          61,
+          54,
+          51
+        ],
+        "hex": "#3D3633",
+        "cielab": [
+          23.235,
+          2.466,
+          3.008
+        ],
+        "oklab": [
+          0.33917,
+          0.00799,
+          0.0079
+        ],
+        "pixels": 24,
+        "share": 0.031496
+      },
+      {
+        "index": 7,
+        "role": "fixed",
+        "rgb": [
+          118,
+          12,
+          18
+        ],
+        "hex": "#760C12",
+        "cielab": [
+          24.192,
+          43.229,
+          27.851
+        ],
+        "oklab": [
+          0.36326,
+          0.12427,
+          0.05957
+        ],
+        "pixels": 48,
+        "share": 0.062992
+      },
+      {
+        "index": 8,
+        "role": "fixed",
+        "rgb": [
+          137,
+          16,
+          22
+        ],
+        "hex": "#891016",
+        "cielab": [
+          28.769,
+          48.064,
+          31.385
+        ],
+        "oklab": [
+          0.40459,
+          0.13802,
+          0.06691
+        ],
+        "pixels": 111,
+        "share": 0.145669
+      },
+      {
+        "index": 9,
+        "role": "fixed",
+        "rgb": [
+          160,
+          26,
+          30
+        ],
+        "hex": "#A01A1E",
+        "cielab": [
+          34.617,
+          52.639,
+          34.182
+        ],
+        "oklab": [
+          0.45675,
+          0.15135,
+          0.07375
+        ],
+        "pixels": 62,
+        "share": 0.081365
+      },
+      {
+        "index": 10,
+        "role": "fixed",
+        "rgb": [
+          179,
+          34,
+          37
+        ],
+        "hex": "#B32225",
+        "cielab": [
+          39.351,
+          56.306,
+          36.258
+        ],
+        "oklab": [
+          0.49896,
+          0.16211,
+          0.07893
+        ],
+        "pixels": 39,
+        "share": 0.051181
+      },
+      {
+        "index": 11,
+        "role": "fixed",
+        "rgb": [
+          200,
+          27,
+          39
+        ],
+        "hex": "#C81B27",
+        "cielab": [
+          43.084,
+          63.887,
+          40.307
+        ],
+        "oklab": [
+          0.53415,
+          0.18396,
+          0.08656
+        ],
+        "pixels": 57,
+        "share": 0.074803
+      },
+      {
+        "index": 12,
+        "role": "fixed",
+        "rgb": [
+          159,
+          102,
+          79
+        ],
+        "hex": "#9F664F",
+        "cielab": [
+          48.81,
+          20.315,
+          22.465
+        ],
+        "oklab": [
+          0.56633,
+          0.05998,
+          0.05532
+        ],
+        "pixels": 27,
+        "share": 0.035433
+      },
+      {
+        "index": 13,
+        "role": "fixed",
+        "rgb": [
+          196,
+          136,
+          104
+        ],
+        "hex": "#C48868",
+        "cielab": [
+          61.952,
+          19.179,
+          26.375
+        ],
+        "oklab": [
+          0.67917,
+          0.05688,
+          0.06516
+        ],
+        "pixels": 35,
+        "share": 0.045932
+      },
+      {
+        "index": 14,
+        "role": "fixed",
+        "rgb": [
+          217,
+          173,
+          139
+        ],
+        "hex": "#D9AD8B",
+        "cielab": [
+          73.872,
+          11.4,
+          23.582
+        ],
+        "oklab": [
+          0.77904,
+          0.03542,
+          0.05946
+        ],
+        "pixels": 36,
+        "share": 0.047244
+      },
+      {
+        "index": 15,
+        "role": "fixed",
+        "rgb": [
+          250,
+          197,
+          154
+        ],
+        "hex": "#FAC59A",
+        "cielab": [
+          83.228,
+          13.318,
+          28.79
+        ],
+        "oklab": [
+          0.8604,
+          0.04091,
+          0.0721
+        ],
+        "pixels": 57,
+        "share": 0.074803
+      }
+    ],
+    "error": {
+      "mean_delta_e_euclid_oklab": 0.0176,
+      "mean_delta_e_2000": 2.3905,
+      "p95_delta_e_2000": 6.48,
+      "max_delta_e_2000": 17.122,
+      "share_over_delta_e_2000_5": 0.09055,
+      "aa_transition_residual": {
+        "definition": "opaque interior pixels whose CIELAB L gradient magnitude is at least the threshold below, in L units per pixel",
+        "gradient_threshold_l_per_px": 12.0,
+        "pixel_share": 0.11155,
+        "pixels": 85,
+        "mean_l_gradient": 20.2826,
+        "mean_delta_e_2000": 4.4472,
+        "p95_delta_e_2000": 12.4697,
+        "share_over_delta_e_2000_5": 0.32941,
+        "distinct_palette_indices": 11
+      },
+      "luminance_bands": [
+        {
+          "l_range": [
+            0,
+            20
+          ],
+          "pixel_share": 0.23753,
+          "mean_delta_e_2000": 2.3836
+        },
+        {
+          "l_range": [
+            20,
+            40
+          ],
+          "pixel_share": 0.47507,
+          "mean_delta_e_2000": 2.0714
+        },
+        {
+          "l_range": [
+            40,
+            60
+          ],
+          "pixel_share": 0.13123,
+          "mean_delta_e_2000": 3.0276
+        },
+        {
+          "l_range": [
+            60,
+            80
+          ],
+          "pixel_share": 0.08924,
+          "mean_delta_e_2000": 4.345
+        },
+        {
+          "l_range": [
+            80,
+            100
+          ],
+          "pixel_share": 0.06693,
+          "mean_delta_e_2000": 0.8246
+        }
+      ],
+      "worst_luminance_band": {
+        "l_range": [
+          60,
+          80
+        ],
+        "pixel_share": 0.08924,
+        "mean_delta_e_2000": 4.345
+      }
+    },
+    "fixed_palette_fit": {
+      "palette_file": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\palettes\\akane.gpl",
+      "palette_name": "akane",
+      "palette_sha256": "adf3820e3615958a4a6a2f4fe9adebb3abc009aa005a25e8c9e8c712ce68b06e",
+      "entries_total": 15,
+      "entries_used": 15,
+      "entries_unused": [],
+      "mean_delta_e76": 4.3111,
+      "p95_delta_e76": 11.5732,
+      "max_delta_e76": 30.8799,
+      "share_over_delta_e76_10": 0.06037
+    }
+  },
+  "downsample": {
+    "applied": true,
+    "method": "area-average",
+    "order": "downsample-first",
+    "in": [
+      445,
+      960
+    ],
+    "out": [
+      30,
+      64
+    ],
+    "factor": 14.8333,
+    "alpha_majority": 0.5,
+    "mean_cell_purity": null,
+    "cells_below_purity_0_5": null,
+    "purity_note": "cell purity is defined on palette indices; it does not apply when quantisation runs after downsampling",
+    "final_opaque_pixels": 762,
+    "index_histogram": [
+      14,
+      17,
+      67,
+      69,
+      99,
+      24,
+      48,
+      111,
+      62,
+      39,
+      57,
+      27,
+      35,
+      36,
+      57
+    ],
+    "indices_lost": [],
+    "effective_colors": 15
+  },
+  "warnings": [
+    {
+      "code": "AA_TRANSITION_UNDERSERVED",
+      "severity": "info",
+      "message": "the antialiased ramps (11.2% of the sprite, 85 px) average dE2000 4.45 against 2.39 overall, across 11 palette entries. Reducing to the target size before quantising is what helps here, not more slots"
+    }
+  ],
+  "nondeterministic": {
+    "created": "20261122_120631",
+    "created_epoch": 1795320391,
+    "host": "DESKTOP-E0J5QFE",
+    "timing_ms": {
+      "load": 80.1,
+      "background": 23.6,
+      "edge": 174.5,
+      "downsample": 25.4,
+      "quantize": 1.3,
+      "metrics": 1.6,
+      "total": 320.7
+    }
+  }
+}

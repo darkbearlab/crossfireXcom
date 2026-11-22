@@ -1,0 +1,663 @@
+{
+  "schema_version": 1,
+  "tool": {
+    "name": "sprite-quantize",
+    "version": "1.5.0",
+    "numpy": "2.5.2",
+    "scipy": "1.18.1",
+    "pillow": "12.2.0",
+    "python": "3.14.3"
+  },
+  "source": {
+    "path": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\views\\chinatsu_back.png",
+    "sha256": "61e6267a60cc5262168b72f6d20e64019d7803089fe3f32f2f7992828a86476c",
+    "width": 486,
+    "height": 901,
+    "had_alpha": false,
+    "upstream": {
+      "generator": "unknown",
+      "info_path": null,
+      "png_text_key": null,
+      "prompt": null,
+      "model": null,
+      "seed": null
+    }
+  },
+  "params": {
+    "bg": "floodfill",
+    "bg_tolerance": 12.0,
+    "bg_variance_threshold": 15.0,
+    "bg_seed": "border",
+    "alpha_threshold": 128,
+    "min_island_px": 12,
+    "edge": "decontaminate",
+    "erode_px": 1,
+    "decontam_iters": 2,
+    "decontam_cut": true,
+    "colors": 15,
+    "palette_mode": "fixed",
+    "color_space": "oklab",
+    "seed": 0,
+    "kmeans_iters": 100,
+    "kmeans_tol": 1e-06,
+    "protect_highlights": true,
+    "protect_slots": 2,
+    "protect_delta_e": 12.0,
+    "protect_min_px": 8,
+    "rgb555": false,
+    "transparent_rgb": [
+      255,
+      0,
+      255
+    ],
+    "scale": null,
+    "target_size": [
+      35,
+      64
+    ],
+    "target_long_edge": null,
+    "downsample": "dominant",
+    "alpha_majority": 0.5,
+    "order": "downsample-first"
+  },
+  "params_sha256": "690c53a2ed2850e814b3c3eeebc2071509d11c532a297284d57e7fed1a19a1a8",
+  "output": {
+    "png": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\q\\chinatsu_back_q15.png",
+    "palette_gpl": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\q\\chinatsu_back_q15.gpl",
+    "preview_png": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\q\\chinatsu_back_q15_preview.png",
+    "width": 35,
+    "height": 64,
+    "palette_entries": 16,
+    "transparent_index": 0,
+    "bit_depth": 4,
+    "png_sha256": "9f0c4829b368d47ff8b505c8367ae772533545d9ff1a64a8e0f516c3954bd218"
+  },
+  "background": {
+    "method_requested": "floodfill",
+    "method_used": "floodfill",
+    "fallback_triggered": false,
+    "fallback_reason": null,
+    "border_mean_rgb": [
+      206,
+      205,
+      205
+    ],
+    "border_delta_e_std": 0.4003,
+    "variance_threshold": 15.0,
+    "tolerance": 12.0,
+    "rembg": null,
+    "bg_ref_rgb": [
+      206,
+      205,
+      205
+    ],
+    "islands_removed": 0,
+    "island_px_removed": 0,
+    "holes_closed": 0,
+    "hole_px_closed": 0,
+    "alpha_threshold": 128,
+    "min_island_px": 12,
+    "opaque_pixels": 223390,
+    "transparent_pixels": 214496,
+    "coverage_ratio": 0.510156,
+    "bbox": [
+      13,
+      19,
+      472,
+      887
+    ]
+  },
+  "edge": {
+    "mode": "decontaminate",
+    "erode_px": 0,
+    "decontam_iters": 2,
+    "alpha_source": "projection",
+    "edge_pixels_before": 4003,
+    "pixels_modified": 3497,
+    "mean_edge_delta_e_to_interior_before": 30.466,
+    "mean_edge_delta_e_to_interior_after": 2.0117,
+    "residual_bg_suspect_pixels": 0,
+    "decontam": {
+      "pixels_modified": 3497,
+      "skipped_no_interior": 6,
+      "skipped_low_contrast": 0,
+      "skipped_low_alpha": 16,
+      "skipped_already_opaque": 4335,
+      "skipped_model_misfit": 0,
+      "local_backdrop_share": 1.0,
+      "mean_alpha_recovered": 0.5976,
+      "pixels_cut": 16,
+      "cut_applied": true
+    },
+    "opaque_after": 223374,
+    "edge_pixels_after": 4008,
+    "residual_bg_suspect_share": 0.0
+  },
+  "quantization": {
+    "space": "oklab",
+    "mode": "fixed",
+    "requested_colors": 15,
+    "final_colors": 15,
+    "main_clusters": 15,
+    "main_clusters_requested": 15,
+    "deduped_entries": 0,
+    "seed": 0,
+    "hist_bits": 6,
+    "hist_samples": 0,
+    "iterations_run": 0,
+    "converged": true,
+    "inertia": 0.0,
+    "protect": {
+      "enabled": false,
+      "slots": 0,
+      "candidates": 0,
+      "slots_used": 0,
+      "slots_returned": 0,
+      "picked": [],
+      "note": "not applicable in fixed mode"
+    },
+    "rgb555": {
+      "enabled": false,
+      "collapsed_entries": 0,
+      "off_lattice_entries": 0
+    },
+    "palette": [
+      {
+        "index": 0,
+        "role": "transparent",
+        "rgb": [
+          255,
+          0,
+          255
+        ],
+        "hex": "#FF00FF",
+        "pixels": 0,
+        "share": 0.0
+      },
+      {
+        "index": 1,
+        "role": "fixed",
+        "rgb": [
+          16,
+          20,
+          19
+        ],
+        "hex": "#101413",
+        "cielab": [
+          5.939,
+          -1.784,
+          0.052
+        ],
+        "oklab": [
+          0.18651,
+          -0.00656,
+          0.00013
+        ],
+        "pixels": 23,
+        "share": 0.019948
+      },
+      {
+        "index": 2,
+        "role": "fixed",
+        "rgb": [
+          24,
+          29,
+          26
+        ],
+        "hex": "#181D1A",
+        "cielab": [
+          10.164,
+          -3.125,
+          1.284
+        ],
+        "oklab": [
+          0.2244,
+          -0.00881,
+          0.00334
+        ],
+        "pixels": 53,
+        "share": 0.045967
+      },
+      {
+        "index": 3,
+        "role": "fixed",
+        "rgb": [
+          27,
+          32,
+          25
+        ],
+        "hex": "#1B2019",
+        "cielab": [
+          11.526,
+          -4.064,
+          4.0
+        ],
+        "oklab": [
+          0.23583,
+          -0.01096,
+          0.01032
+        ],
+        "pixels": 45,
+        "share": 0.039029
+      },
+      {
+        "index": 4,
+        "role": "fixed",
+        "rgb": [
+          30,
+          37,
+          32
+        ],
+        "hex": "#1E2520",
+        "cielab": [
+          13.847,
+          -4.426,
+          2.288
+        ],
+        "oklab": [
+          0.25568,
+          -0.01233,
+          0.00594
+        ],
+        "pixels": 104,
+        "share": 0.090199
+      },
+      {
+        "index": 5,
+        "role": "fixed",
+        "rgb": [
+          37,
+          44,
+          39
+        ],
+        "hex": "#252C27",
+        "cielab": [
+          17.184,
+          -4.316,
+          2.218
+        ],
+        "oklab": [
+          0.28449,
+          -0.01204,
+          0.00577
+        ],
+        "pixels": 135,
+        "share": 0.117086
+      },
+      {
+        "index": 6,
+        "role": "fixed",
+        "rgb": [
+          40,
+          53,
+          46
+        ],
+        "hex": "#28352E",
+        "cielab": [
+          20.807,
+          -7.203,
+          2.642
+        ],
+        "oklab": [
+          0.31466,
+          -0.02028,
+          0.00685
+        ],
+        "pixels": 163,
+        "share": 0.14137
+      },
+      {
+        "index": 7,
+        "role": "fixed",
+        "rgb": [
+          66,
+          51,
+          37
+        ],
+        "hex": "#423325",
+        "cielab": [
+          22.513,
+          4.434,
+          11.453
+        ],
+        "oklab": [
+          0.33367,
+          0.01371,
+          0.02864
+        ],
+        "pixels": 55,
+        "share": 0.047702
+      },
+      {
+        "index": 8,
+        "role": "fixed",
+        "rgb": [
+          48,
+          63,
+          53
+        ],
+        "hex": "#303F35",
+        "cielab": [
+          25.077,
+          -8.537,
+          4.155
+        ],
+        "oklab": [
+          0.351,
+          -0.02376,
+          0.01075
+        ],
+        "pixels": 202,
+        "share": 0.175195
+      },
+      {
+        "index": 9,
+        "role": "fixed",
+        "rgb": [
+          55,
+          68,
+          57
+        ],
+        "hex": "#374439",
+        "cielab": [
+          27.413,
+          -7.851,
+          4.936
+        ],
+        "oklab": [
+          0.37139,
+          -0.02164,
+          0.01278
+        ],
+        "pixels": 266,
+        "share": 0.230703
+      },
+      {
+        "index": 10,
+        "role": "fixed",
+        "rgb": [
+          72,
+          79,
+          62
+        ],
+        "hex": "#484F3E",
+        "cielab": [
+          32.519,
+          -6.379,
+          9.122
+        ],
+        "oklab": [
+          0.41597,
+          -0.01688,
+          0.02337
+        ],
+        "pixels": 71,
+        "share": 0.061578
+      },
+      {
+        "index": 11,
+        "role": "fixed",
+        "rgb": [
+          104,
+          101,
+          79
+        ],
+        "hex": "#68654F",
+        "cielab": [
+          42.483,
+          -2.836,
+          12.916
+        ],
+        "oklab": [
+          0.50317,
+          -0.00642,
+          0.03289
+        ],
+        "pixels": 36,
+        "share": 0.031223
+      },
+      {
+        "index": 12,
+        "role": "fixed",
+        "rgb": [
+          115,
+          156,
+          130
+        ],
+        "hex": "#739C82",
+        "cielab": [
+          60.81,
+          -19.561,
+          9.14
+        ],
+        "oklab": [
+          0.65508,
+          -0.05437,
+          0.02359
+        ],
+        "pixels": 0,
+        "share": 0.0
+      },
+      {
+        "index": 13,
+        "role": "fixed",
+        "rgb": [
+          176,
+          157,
+          136
+        ],
+        "hex": "#B09D88",
+        "cielab": [
+          65.844,
+          3.566,
+          13.543
+        ],
+        "oklab": [
+          0.70692,
+          0.01273,
+          0.0349
+        ],
+        "pixels": 0,
+        "share": 0.0
+      },
+      {
+        "index": 14,
+        "role": "fixed",
+        "rgb": [
+          185,
+          187,
+          158
+        ],
+        "hex": "#B9BB9E",
+        "cielab": [
+          75.029,
+          -5.726,
+          14.483
+        ],
+        "oklab": [
+          0.78268,
+          -0.01397,
+          0.03733
+        ],
+        "pixels": 0,
+        "share": 0.0
+      },
+      {
+        "index": 15,
+        "role": "fixed",
+        "rgb": [
+          224,
+          202,
+          176
+        ],
+        "hex": "#E0CAB0",
+        "cielab": [
+          82.499,
+          3.63,
+          15.795
+        ],
+        "oklab": [
+          0.85053,
+          0.01337,
+          0.04075
+        ],
+        "pixels": 0,
+        "share": 0.0
+      }
+    ],
+    "error": {
+      "mean_delta_e_euclid_oklab": 0.01307,
+      "mean_delta_e_2000": 3.1332,
+      "p95_delta_e_2000": 9.1308,
+      "max_delta_e_2000": 12.2157,
+      "share_over_delta_e_2000_5": 0.19428,
+      "aa_transition_residual": {
+        "definition": "opaque interior pixels whose CIELAB L gradient magnitude is at least the threshold below, in L units per pixel",
+        "gradient_threshold_l_per_px": 12.0,
+        "pixel_share": 0.00434,
+        "pixels": 5,
+        "mean_l_gradient": 13.683,
+        "mean_delta_e_2000": 4.8871,
+        "p95_delta_e_2000": 5.5006,
+        "share_over_delta_e_2000_5": 0.4,
+        "distinct_palette_indices": 2
+      },
+      "luminance_bands": [
+        {
+          "l_range": [
+            0,
+            20
+          ],
+          "pixel_share": 0.35559,
+          "mean_delta_e_2000": 4.751
+        },
+        {
+          "l_range": [
+            20,
+            40
+          ],
+          "pixel_share": 0.62879,
+          "mean_delta_e_2000": 2.195
+        },
+        {
+          "l_range": [
+            40,
+            60
+          ],
+          "pixel_share": 0.01561,
+          "mean_delta_e_2000": 4.0747
+        },
+        {
+          "l_range": [
+            60,
+            80
+          ],
+          "pixel_share": 0.0,
+          "mean_delta_e_2000": null
+        },
+        {
+          "l_range": [
+            80,
+            100
+          ],
+          "pixel_share": 0.0,
+          "mean_delta_e_2000": null
+        }
+      ],
+      "worst_luminance_band": {
+        "l_range": [
+          0,
+          20
+        ],
+        "pixel_share": 0.35559,
+        "mean_delta_e_2000": 4.751
+      }
+    },
+    "fixed_palette_fit": {
+      "palette_file": "C:\\claude_project\\mini_xcom_clone\\art\\pixel\\palettes\\chinatsu.gpl",
+      "palette_name": "chinatsu",
+      "palette_sha256": "46404ecdfb650db6441e7b8b1099827d05f0a6b3186f7fc104ea1294db7f0239",
+      "entries_total": 15,
+      "entries_used": 11,
+      "entries_unused": [
+        12,
+        13,
+        14,
+        15
+      ],
+      "mean_delta_e76": 3.2999,
+      "p95_delta_e76": 8.3359,
+      "max_delta_e76": 12.2401,
+      "share_over_delta_e76_10": 0.01561
+    }
+  },
+  "downsample": {
+    "applied": true,
+    "method": "area-average",
+    "order": "downsample-first",
+    "in": [
+      486,
+      901
+    ],
+    "out": [
+      35,
+      64
+    ],
+    "factor": 13.8857,
+    "alpha_majority": 0.5,
+    "mean_cell_purity": null,
+    "cells_below_purity_0_5": null,
+    "purity_note": "cell purity is defined on palette indices; it does not apply when quantisation runs after downsampling",
+    "final_opaque_pixels": 1153,
+    "index_histogram": [
+      23,
+      53,
+      45,
+      104,
+      135,
+      163,
+      55,
+      202,
+      266,
+      71,
+      36,
+      0,
+      0,
+      0,
+      0
+    ],
+    "indices_lost": [
+      12,
+      13,
+      14,
+      15
+    ],
+    "effective_colors": 11
+  },
+  "warnings": [
+    {
+      "code": "AA_TRANSITION_UNDERSERVED",
+      "severity": "info",
+      "message": "the antialiased ramps (0.4% of the sprite, 5 px) average dE2000 4.89 against 3.13 overall, across 2 palette entries. Reducing to the target size before quantising is what helps here, not more slots"
+    },
+    {
+      "code": "PALETTE_ENTRY_UNUSED",
+      "severity": "info",
+      "message": "palette indices [12, 13, 14, 15] are unused by this asset. Normal in fixed mode -- the palette serves the whole project"
+    }
+  ],
+  "nondeterministic": {
+    "created": "20261122_120634",
+    "created_epoch": 1795320394,
+    "host": "DESKTOP-E0J5QFE",
+    "timing_ms": {
+      "load": 72.5,
+      "background": 20.1,
+      "edge": 156.6,
+      "downsample": 19.6,
+      "quantize": 1.1,
+      "metrics": 1.8,
+      "total": 287.6
+    }
+  }
+}
