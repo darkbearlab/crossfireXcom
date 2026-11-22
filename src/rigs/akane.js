@@ -13,10 +13,15 @@ const FLASH = '#ffe066', FLASH_C = '#fffbe0';
 
 import CARVED from './akane.carved.js';   // art/rig_carve.py 從參考圖堆出來的部位
 
-// 臉的字元圖小工具：只寫角色右眼（畫面左邊）那 6 格，左眼自動鏡像，中間隔 5 格 → 17 格寬
-const EYES = (...rows) => rows.map(r => r + '.....' + [...r].reverse().join(''));
-// 嘴巴只寫中間 7 格，兩邊各補 5 格
-const MOUTH = (...rows) => rows.map(r => '.....' + r + '.....');
+// 臉的字元圖小工具。臉的貼片用比頭再細一倍的格子（頭一格 = 2×2 片）
+// REF：直接從參考圖搬過來的那一層（art/rig_carve.py 的 face），頭抬高了 4 格（= 8 片）所以 y 加 8
+const REF = name => ({ ...CARVED.face[name], y: CARVED.face[name].y + 8 });
+// UP2：手畫的排列用頭的格子畫，每格放大成 2×2 片
+const UP2 = rows => rows.flatMap(r => { const d = [...r].map(c => c + c).join(''); return [d, d]; });
+// EYES：只寫角色右眼（畫面左邊）那 6 格，左眼自動鏡像，中間隔 5 格 → 17 格寬
+const EYES = (...rows) => UP2(rows.map(r => r + '.....' + [...r].reverse().join('')));
+// MOUTH：嘴巴只寫中間 7 格，兩邊各補 5 格
+const MOUTH = (...rows) => UP2(rows.map(r => '.....' + r + '.....'));
 
 export default {
   id: 'akane',
@@ -113,7 +118,7 @@ export default {
     head: {
       parent: 'torso', pivot: [0, 41, -1], fine: 2,
       build(v) {
-        v.put(CARVED.head).move(0, 4, 0);
+        v.put(CARVED.head).flatten(-10, 10, 80, 90, 6).move(0, 4, 0);        // 臉補成平面
         v.box(-2, 5, 104, 108, -10, -4, SCRUNCH).box(-4, 7, 104, 106, -8, -6, SCRUNCH);   // 髮圈
       },
     },
@@ -157,43 +162,45 @@ export default {
     ribbon1: { x: 0.25 }, ribbon2: { x: 0.1 },
   },
 
-  // 臉：貼在 head 上的薄片（座標跟 head 一樣是細格子）。每一層的每一種排列是一組字元圖，最上面一列在 y
-  // x0＝字元圖最左一格的 x；z＝貼在哪個面（臉的表面在 6.5）
-  // 比例照參考圖：臉寬 15 格，一隻眼睛 6 寬 × 5 高（x -8..-3 和 3..8），兩眼中間隔 5 格
+  // 臉：貼在 head 上的薄片，一片 = 頭的格子的一半（fine: 4）。每一層的每一種排列是一組字元圖，最上面一列在 y
+  // 「普通」表情的眼睛、鼻子、嘴巴是直接從參考圖搬過來的（REF）；其他排列是手畫的（EYES／MOUTH）
+  // x0＝手畫排列最左一片的 x；z＝貼在哪個面（臉的表面在 13）
   face: {
-    part: 'head', x0: -8, z: 6.5,
+    part: 'head', fine: 4, x0: -16.5, z: 13, depth: 0.12,
     colors: {
-      k: '#3a0a12', r: '#c01018', q: '#e8404a', R: '#5a0008', w: '#ffffff',
-      b: '#5a0a12', m: '#7a1f2a', t: '#e06070', W: '#ffffff', p: '#ff9aa6',
+      k: '#1c0408', r: '#b01020', q: '#e8404a', R: '#3c0008', w: '#ffffff',
+      b: '#5a0a12', m: '#a0522c', t: '#e06070', W: '#ffffff', p: '#ff9aa6',
     },
     blinkEyes: 'closed',
     layers: {
       eyes: {
-        y: 92,
+        y: 185,
         variants: {
-          open:   EYES('.kkkk.', 'kwwRrk', 'kwRRrk', 'krRRrk', '.rqqr.'),
+          open:   REF('eyes'),
           happy:  EYES('......', '.kkkk.', 'kk..kk', 'k....k', '......'),
           closed: EYES('......', '......', '......', 'k....k', '.kkkk.'),
-          angry:  EYES('kk....', 'kkkkk.', 'kwwRkk', 'krRRrk', '.rqqr.'),
+          angry:  EYES('kk....', 'kkkkk.', 'kwwRkk', 'kwRRrk', '.rqqr.'),
           wide:   EYES('.kkkk.', 'kwwwwk', 'kwRRwk', 'kwwwwk', '.kkkk.'),
           pain:   EYES('kk....', '..kk..', '....kk', '..kk..', 'kk....'),
           ko:     EYES('k...k.', '.k.k..', '..k...', '.k.k..', 'k...k.'),
         },
       },
-      // 眉毛貼在瀏海前面（瀏海表面在 8.5），所以從臉一路厚到 8.6
+      // 眉毛貼在瀏海前面（瀏海表面在 17），所以從臉一路厚到 17.2
       brows: {
-        z: 6.5, depth: 2.1,
+        z: 13, depth: 4.2,
         variants: {
-          normal: { y: 94, rows: EYES('.bbbb.') },
-          angry:  { y: 95, rows: EYES('bbb...', '..bbbb') },
-          up:     { y: 95, rows: EYES('.bbbb.') },
-          sad:    { y: 95, rows: EYES('...bbb', 'bbb...') },
+          none:   { y: 189, rows: ['.'] },
+          normal: { y: 189, rows: EYES('.bbbb.') },
+          angry:  { y: 191, rows: EYES('bbb...', '..bbbb') },
+          up:     { y: 191, rows: EYES('.bbbb.') },
+          sad:    { y: 191, rows: EYES('...bbb', 'bbb...') },
         },
       },
+      nose: { variants: { on: REF('nose') } },
       mouth: {
-        y: 86,
+        y: 173,
         variants: {
-          rest:   MOUTH('.......', '..mmm..', '.......'),
+          rest:   REF('mouth'),
           smile:  MOUTH('m.....m', '.mmmmm.', '.......'),
           frown:  MOUTH('.mmmmm.', 'm.....m', '.......'),
           small:  MOUTH('..mmm..', '..mtm..', '.......'),
@@ -204,13 +211,13 @@ export default {
           wavy:   MOUTH('.......', 'm.m.m.m', '.m.m.m.'),
         },
       },
-      blush: { y: 87, variants: { on: EYES('.ppp..', '..pp..') } },
+      blush: { y: 175, variants: { on: EYES('.ppp..', '..pp..') } },
     },
   },
 
   // 表情＝每一層要用哪一種排列。blink:false 的表情不會自動眨眼
   expressions: {
-    normal:    { eyes: 'open', brows: 'normal', mouth: 'rest' },
+    normal:    { eyes: 'open', brows: 'none', mouth: 'rest' },   // 參考圖的眼睛沒有另外畫眉毛
     smile:     { eyes: 'happy', brows: 'normal', mouth: 'smile', blush: 'on', blink: false },
     angry:     { eyes: 'angry', brows: 'angry', mouth: 'frown' },
     surprised: { eyes: 'wide', brows: 'up', mouth: 'u' },

@@ -35,6 +35,15 @@ export function voxelBuilder() {
       }
       return B;
     },
+    // 把這個範圍每一格 (x,y) 最前面的方塊往前補到 z（同顏色）：把臉補成一個平面，才不會有台階
+    flatten(x0, x1, y0, y1, z) {
+      for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) {
+        let top = null;
+        for (let zz = z; zz >= z - 6; zz--) { top = cells.get(`${x},${y},${zz}`); if (top) break; }
+        if (top) for (let zz = top.z + 1; zz <= z; zz++) set(x, y, zz, top.c, top.m);
+      }
+      return B;
+    },
     // 整包平移
     move(dx, dy, dz) {
       const all = [...cells.values()]; cells.clear();
@@ -288,12 +297,13 @@ export class VoxelRig {
         const cells = [];
         rows.forEach((row, r) => [...row].forEach((ch, c) => {
           if (ch === '.' || ch === ' ') return;
-          const col = F.colors[ch]; if (!col) throw new Error(`臉的顏色 ${ch} 沒定義`);
+          const col = (V.colors || F.colors)[ch]; if (!col) throw new Error(`臉的顏色 ${ch} 沒定義`);
           cells.push({ x: x0 + c, y: y0 - r, z: 0, c: Array.isArray(col) ? col[0] : col, m: Array.isArray(col) ? col[1] : 'n' });
         }));
-        const z = L.z ?? F.z, d = L.depth ?? 0.2;
-        const fine = head.fine || 1;
+        const z = L.z ?? F.z, d = L.depth ?? F.depth ?? 0.2;
+        const fine = F.fine || head.fine || 1;   // 臉的貼片可以比頭的格子更細
         const g = meshCells(cells, head.pivot.map(v => v * fine), this.s / fine, { zc: z + d / 2, zd: d });
+        g.traverse(m => { m.castShadow = false; });   // 貼片不投影子（不然臉上會有一圈錯位的陰影）
         g.visible = false; g.name = `${lname}:${vname}`;
         head.group.add(g);
         layer.meshes[vname] = g;
@@ -441,5 +451,7 @@ export class VoxelRig {
     }
     if (this.mouthOverride) mouth = this.def.visemes[this.mouthOverride] || this.mouthOverride;
     this.setLayer('eyes', eyes); this.setLayer('brows', E.brows); this.setLayer('mouth', mouth); this.setLayer('blush', E.blush || null);
+    // 其他的層（鼻子之類）：表情沒指定就用 on
+    for (const l of Object.keys(this.face)) if (!['eyes', 'brows', 'mouth', 'blush'].includes(l)) this.setLayer(l, E[l] === undefined ? 'on' : E[l]);
   }
 }

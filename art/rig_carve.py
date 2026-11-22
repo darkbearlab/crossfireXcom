@@ -125,12 +125,12 @@ def carve(name, P):
                 if any(a <= y <= b and z > zm for a, b, zm in P.get('cap', [])): continue
                 cells[(x, y, z)] = None
 
-    def pick(view, h, y, lo, hi, off):
+    def pick(view, h, y, lo, hi, off, allow=None):
         """這一格的顏色；類別不對就往兩邊找同一列最近的"""
         for d in range(0, hi - lo + 2):
             for hh in ([h] if d == 0 else [h - d, h + d]):
                 k, c = sample(view, hh + off, y)
-                if c is not None and k in ccls: return c
+                if c is not None and k in (allow or ccls): return c
         return None
 
     skin = P.get('skin', [])
@@ -142,7 +142,8 @@ def carve(name, P):
         side = (x - 1, y, z) not in cells or (x + 1, y, z) not in cells
         c = None
         if front:
-            if any(a <= x <= b and c0 <= y <= d for a, b, c0, d in skin): c = 'SKIN'
+            # 臉上要貼貼片的地方：改抓同一列最近的膚色（陰影也跟著，不會留下一塊亮亮的方框）
+            if any(a <= x <= b and c0 <= y <= d for a, b, c0, d in skin): c = pick('front', x, y, x0, x1, fo, 's') or 'SKIN'
             else: c = pick('front', x, y, x0, x1, fo)
         elif back: c = pick('back', x, y, x0, x1, fo)
         elif side: c = pick('side', z, y, z0, z1, so)
@@ -156,7 +157,43 @@ def carve(name, P):
     return {'palette': pal, 'cells': flat}
 
 
+def face_tiles(F):
+    """臉的貼片：框裡「跟膚色差很多」的像素原樣搬過來（眼睛、鼻子、嘴巴），一個像素一片
+    回傳 { 層: { x, y, rows:[字元圖], colors:{字元: 顏色} } }，座標是 fine 倍的細格子"""
+    cell = CELL / F['fine']
+    letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'
+    q = F.get('quant', 24)
+    def colour(x, y):
+        x0, y0 = spec['front'] + (x - 0.5) * cell, FEET - (y + 1) * cell
+        cs = sorted((px[int(x0 + (i + 0.5) * cell / 3), int(y0 + (j + 0.5) * cell / 3)] for i in range(3) for j in range(3)), key=sum)
+        return cs[4]
+    skin = tuple(int(F['skin'][i:i + 2], 16) for i in (1, 3, 5))
+    res = {}
+    def skinlike(c):   # 皮膚的陰影（偏橘的淺色）不算五官
+        r, g, b = c
+        return r > 150 and 0.55 < g / r < 0.9 and 0.38 < b / r < 0.75
+    for lname, L in F['layers'].items():
+        boxes = L['boxes']
+        x0 = min(b[0] for b in boxes); x1 = max(b[1] for b in boxes); y0 = min(b[2] for b in boxes); y1 = max(b[3] for b in boxes)
+        pal, rows = {}, []
+        for y in range(y1, y0 - 1, -1):
+            row = ''
+            for x in range(x0, x1 + 1):
+                c = colour(x, y)
+                inside = any(a <= x <= b and c0 <= y <= d for a, b, c0, d in boxes)
+                if not inside or sum(abs(a - b) for a, b in zip(c, skin)) < L.get('threshold', F.get('threshold', 60)) or (L.get('noSkin') and skinlike(c)): row += '.'; continue
+                h = '#%02x%02x%02x' % tuple(min(255, (v // q) * q + q // 2) for v in c)
+                if h not in pal: pal[h] = letters[len(pal)]
+                row += pal[h]
+            rows.append(row)
+        res[lname] = {'x': x0, 'y': y1, 'rows': rows, 'colors': {v: k for k, v in pal.items()}}
+        print(f'臉 {lname:6s} {x1 - x0 + 1}x{y1 - y0 + 1}  {len(pal)} 色')
+        for r in rows: print('   ', r)
+    return res
+
+
 out = {name: carve(name, P) for name, P in spec['parts'].items()}
+if 'face' in spec: out['face'] = face_tiles(spec['face'])
 with open(spec['out'], 'w', encoding='utf8') as f:
     f.write(f"// 由 art/rig_carve.py 從 {spec['image']} 依 {sys.argv[1]} 的部位框堆出來的，不要手改（改規格重跑）\n")
     f.write('export default ' + json.dumps(out, separators=(',', ':')) + ';\n')
