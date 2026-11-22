@@ -24,6 +24,7 @@
     skin: [[x0,x1,y0,y1], ...]  正面這幾塊強制塗膚色（臉：眼睛嘴巴改用貼片）
     cap: [[y0,y1,zmax], ...]    這幾列的 z 不超過 zmax（把臉削平，貼片才貼得上）
     palette: ["#..", ...]  只用這幾個顏色（取最接近的）；省略＝照參考圖的顏色
+    fine: 2                這個部位的格子細幾倍（頭用 2）；y/x/z/cap/skin/dome 都用細格子的座標
     default: "#d8222c"     找不到顏色時用的顏色
   } }
 類別：. 背景  s 皮膚  R 紅  D 深紅  k 黑線  y 金  C 青  G 槍灰  w 白
@@ -55,9 +56,9 @@ def cls(c):
 
 
 _cache = {}
-def sample(view, h, y):
+def sample_px(view, h, y, CELL=CELL):
     """view 的 (h, y) 那一格（h＝x 或 z，可以是小數）→ (類別, 顏色)。背面視圖左右相反。"""
-    key = (view, round(h * 4), y)
+    key = (view, round(h * 4), y, CELL)
     if key in _cache: return _cache[key]
     cx = spec[view]
     x0 = cx + (h - 0.5) * CELL if view != 'back' else cx - (h + 0.5) * CELL
@@ -97,6 +98,9 @@ def carve(name, P):
     ok = lambda k, allow: k != '.' and (allow == '*' or k in allow)
     cells = {}
     offs = {}
+    cell = CELL / P.get('fine', 1)      # 這個部位用比較細的格子（頭）
+
+    sample = lambda view, h, y: sample_px(view, h, y, cell)
     for y in range(y0, y1 + 1):
         t = (y1 - y) / (y1 - y0) if y1 > y0 else 0
         fo, so = lerp(fx, t), lerp(sz, t)

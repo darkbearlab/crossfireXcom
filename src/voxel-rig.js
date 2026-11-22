@@ -35,6 +35,12 @@ export function voxelBuilder() {
       }
       return B;
     },
+    // 整包平移
+    move(dx, dy, dz) {
+      const all = [...cells.values()]; cells.clear();
+      for (const v of all) set(v.x + dx, v.y + dy, v.z + dz, v.c, v.m);
+      return B;
+    },
     // 只補空的格子（不蓋掉已經有的）
     under(x0, x1, y0, y1, z0, z1, c, m) {
       for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) for (let z = z0; z <= z1; z++) if (!cells.has(`${x},${y},${z}`)) set(x, y, z, c, m);
@@ -247,10 +253,12 @@ export class VoxelRig {
       const g = new THREE.Group(); g.name = name; g.rotation.order = 'YXZ';
       const rest = new THREE.Vector3(...p.pivot.map((v, i) => (v - parent.pivot[i]) * s));
       g.position.copy(rest);
-      g.add(meshCells(p.cells(), p.pivot, s));
+      // fine：這個部位的格子比身體細幾倍（頭用 2）。build 裡的座標是細格子，pivot 還是身體的格子
+      const fine = p.fine || 1;
+      g.add(meshCells(p.cells(), p.pivot.map(v => v * fine), s / fine));
       if (p.hidden) g.visible = false;
       parent.group.add(g);
-      const part = this.parts[name] = { name, group: g, pivot: p.pivot, rest, hidden: !!p.hidden };
+      const part = this.parts[name] = { name, group: g, pivot: p.pivot, rest, hidden: !!p.hidden, fine };
       if (p.dangle) part.dangle = { k: 60, damp: 7, gain: 0.03, grav: 900, limit: 0.9, maxAcc: 500, ...p.dangle, ax: 0, az: 0, vx: 0, vz: 0, prev: null, vel: null };
     }
     this.buildFace();
@@ -284,7 +292,8 @@ export class VoxelRig {
           cells.push({ x: x0 + c, y: y0 - r, z: 0, c: Array.isArray(col) ? col[0] : col, m: Array.isArray(col) ? col[1] : 'n' });
         }));
         const z = L.z ?? F.z, d = L.depth ?? 0.2;
-        const g = meshCells(cells, head.pivot, this.s, { zc: z + d / 2, zd: d });
+        const fine = head.fine || 1;
+        const g = meshCells(cells, head.pivot.map(v => v * fine), this.s / fine, { zc: z + d / 2, zd: d });
         g.visible = false; g.name = `${lname}:${vname}`;
         head.group.add(g);
         layer.meshes[vname] = g;
