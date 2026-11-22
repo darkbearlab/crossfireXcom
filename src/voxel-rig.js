@@ -304,7 +304,7 @@ export function buildRig(def, height = 1.35) {
 export class VoxelRig {
   constructor(def, height = 1.35) {
     this.def = def;
-    const s = this.s = height / def.unit;
+    const s = this.s = height * (def.scale || 1) / def.unit;   // scale：個子（小桃 0.88）
     this.clips = { ...CLIPS, ...(def.clips || {}) };
     this.object = new THREE.Group();          // 外面拿來放到場上的
     const root = new THREE.Group(); root.name = 'root';
