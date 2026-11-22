@@ -1,4 +1,4 @@
-// 朱音的「方塊人」版：Minecraft 比例（頭 8×8×8、身體 8×12×4、手 3×12×4、腳 4×12×4），一格 = 皮膚的一個像素
+// 朱音的「方塊人」版：Minecraft 比例但手腳比較細（頭 8×8×8、身體 8×12×4、手 2×12×3、腳 3×12×3），一格 = 皮膚的一個像素
 // 每個部位是一個盒子，六個面各一張字元圖（皮膚），分內層和外層：
 //   內層＝盒子本身；外層＝貼在外面多凸一格，只有畫了的地方才有方塊（頭髮、裙子、靴子）
 // 皮膚照 art/pixel/akane.png 設計：紅色刺刺頭髮＋高馬尾、紅色無袖上衣金邊、胸前發光的青色蝴蝶結、百褶短裙、及膝長靴、雙槍
@@ -44,28 +44,27 @@ const BODY_IN = {
   bottom: rows(4, 'DDDDDDDD'),
 };
 const SKIRT = 'RrRrRrRr';
-const BODY_OUT = {           // 外層只有裙子（最下面三列），背後中間是蝴蝶結的結
+const BODY_OUT = {           // 身體的外層：裙子上半（最下面三列），背後中間是蝴蝶結的結
   front: [...rows(9, '........'), SKIRT, SKIRT, SKIRT],
   back:  [...rows(9, '........'), 'RrRDDrRr', 'RrRDDrRr', SKIRT],
   side:  [...rows(9, '....'), 'RrRr', 'RrRr', 'RrRr'],
 };
+// 裙子下半：獨立一個部位（一圈外層，裡面是空的），兩腿在裡面各自擺動
+const SKIRT_LOW = { front: [SKIRT, SKIRT], back: [SKIRT, SKIRT], side: ['RrRr', 'RrRr'] };
 
-// ───── 手（細手臂 3 格寬，無袖）─────
-const ARM_UP = { fill: 's', front: rows(6, 'sss'), back: rows(6, 'sss'), side: rows(6, 'ssss'), top: rows(4, 'sss') };
-const ARM_LO = { fill: 's', front: [...rows(5, 'sss'), 'ddd'], back: [...rows(5, 'sss'), 'ddd'], side: [...rows(5, 'ssss'), 'dddd'], bottom: rows(4, 'ddd') };
+// ───── 手（2 格寬、3 格深，無袖）─────
+const ARM_UP = { fill: 's', front: rows(6, 'ss'), back: rows(6, 'ss'), side: rows(6, 'sss'), top: rows(3, 'ss') };
+const ARM_LO = { fill: 's', front: [...rows(5, 'ss'), 'dd'], back: [...rows(5, 'ss'), 'dd'], side: [...rows(5, 'sss'), 'ddd'], bottom: rows(3, 'dd') };
 
-// ───── 腳（左腳；右腳鏡像）─────
+// ───── 腳（3 格寬、3 格深。左腳；右腳鏡像。兩腿中間空兩格）─────
 const THIGH_IN = {
   fill: 's',
-  front: ['DDDD', 'DDDD', 'ssss', 'ssss', 'ssss', 'ssss'], back: ['DDDD', 'DDDD', 'ssss', 'ssss', 'ssss', 'ssss'],
-  side:  ['DDDD', 'DDDD', 'ssss', 'ssss', 'ssss', 'ssss'], top: rows(4, 'DDDD'),
+  front: ['DDD', 'DDD', 'sss', 'sss', 'sss', 'sss'], back: ['DDD', 'DDD', 'sss', 'sss', 'sss', 'sss'],
+  side:  ['DDD', 'DDD', 'sss', 'sss', 'sss', 'sss'], top: rows(3, 'DDD'),
 };
-const THIGH_OUT = {          // 裙子下半（上面兩列）；兩腿中間那一面沒有裙子
-  front: ['RrRr', 'RrRr'], back: ['RrRr', 'RrRr'], left: ['RrRr', 'RrRr'],
-};
-const SHIN_IN = { fill: 'B', front: ['bBBb', ...rows(4, 'BBBB'), 'KKKK'], back: ['bbbb', ...rows(4, 'BBBB'), 'KKKK'], side: ['bbbb', ...rows(4, 'BBBB'), 'KKKK'], bottom: rows(4, 'KKKK') };
-const SHIN_OUT = {           // 靴子比腿粗一圈（兩腿中間那一面不加，兩隻靴子才分得開），靴口外翻、前面 V 字
-  front: ['b..b', 'BBBB', 'BBBB', 'BBBB', 'BBBB', 'KKKK'], back: ['bbbb', ...rows(4, 'BBBB'), 'KKKK'], left: ['bbbb', ...rows(4, 'BBBB'), 'KKKK'],
+const SHIN_IN = { fill: 'B', front: ['bBb', ...rows(4, 'BBB'), 'KKK'], back: ['bbb', ...rows(4, 'BBB'), 'KKK'], side: ['bbb', ...rows(4, 'BBB'), 'KKK'], bottom: rows(3, 'KKK') };
+const SHIN_OUT = {           // 靴子比腿粗一圈，靴口外翻、前面 V 字
+  front: ['b.b', 'BBB', 'BBB', 'BBB', 'BBB', 'KKK'], back: ['bbb', ...rows(4, 'BBB'), 'KKK'], side: ['bbb', ...rows(4, 'BBB'), 'KKK'],
 };
 
 export default {
@@ -76,10 +75,11 @@ export default {
 
   parts: {
     hips: { pivot: [-0.5, 12, -0.5], build() {} },                       // 只是關節
-    thighL: { parent: 'hips', pivot: [1.5, 12, -0.5], build(v) { skinBox(v, [0, 6, -2, 4, 6, 4], THIGH_IN, PAL); skinBox(v, [0, 6, -2, 4, 6, 4], THIGH_OUT, PAL, true); } },
-    shinL: { parent: 'thighL', pivot: [1.5, 6, -0.5], build(v) { skinBox(v, [0, 0, -2, 4, 6, 4], SHIN_IN, PAL); skinBox(v, [0, 0, -2, 4, 6, 4], SHIN_OUT, PAL, true); } },
+    thighL: { parent: 'hips', pivot: [2, 12, 0], build(v) { skinBox(v, [1, 6, -1, 3, 6, 3], THIGH_IN, PAL); } },
+    shinL: { parent: 'thighL', pivot: [2, 6, 0], build(v) { skinBox(v, [1, 0, -1, 3, 6, 3], SHIN_IN, PAL); skinBox(v, [1, 0, -1, 3, 6, 3], SHIN_OUT, PAL, true); } },
     thighR: { mirror: 'thighL' },
     shinR: { mirror: 'shinL' },
+    skirt: { parent: 'hips', pivot: [-0.5, 12, -0.5], build(v) { skinBox(v, [-4, 10, -2, 8, 2, 4], SKIRT_LOW, PAL, true); } },
     // 背後的兩條飄帶（會甩）
     ribbon1: {
       parent: 'hips', pivot: [-0.5, 13, -3.5],
@@ -87,11 +87,11 @@ export default {
       build(v) { v.box(-3, -2, 4, 12, -4, -4, PAL.D).box(1, 2, 3, 12, -4, -4, PAL.D).box(-3, -3, 4, 5, -4, -4, PAL.r).box(2, 2, 3, 4, -4, -4, PAL.r); },
     },
     torso: { parent: 'hips', pivot: [-0.5, 12, -0.5], build(v) { skinBox(v, [-4, 12, -2, 8, 12, 4], BODY_IN, PAL); skinBox(v, [-4, 12, -2, 8, 12, 4], BODY_OUT, PAL, true); } },
-    upperArmL: { parent: 'torso', pivot: [5, 22.5, -0.5], build(v) { skinBox(v, [4, 18, -2, 3, 6, 4], ARM_UP, PAL); } },
-    lowerArmL: { parent: 'upperArmL', pivot: [5, 18, -0.5], build(v) { skinBox(v, [4, 12, -2, 3, 6, 4], ARM_LO, PAL); } },
+    upperArmL: { parent: 'torso', pivot: [4.5, 22.5, 0], build(v) { skinBox(v, [4, 18, -1, 2, 6, 3], ARM_UP, PAL); } },
+    lowerArmL: { parent: 'upperArmL', pivot: [4.5, 18, 0], build(v) { skinBox(v, [4, 12, -1, 2, 6, 3], ARM_LO, PAL); } },
     // 手槍：一格厚的薄片（像 Minecraft 手上拿的東西）。手垂著時槍口朝下，手臂抬平時槍口朝前
     gunL: {
-      parent: 'lowerArmL', pivot: [5, 12, -0.5],
+      parent: 'lowerArmL', pivot: [5, 12, 0],
       build(v) { v.box(5, 5, 6, 11, 0, 0, PAL.N).box(5, 5, 6, 11, 1, 1, PAL.n).box(5, 5, 10, 11, -2, -1, PAL.N).dot(5, 6, 0, '#111116'); },
     },
     flashL: {
@@ -135,7 +135,13 @@ export default {
     ribbon1: { x: 0.15 },
   },
 
-  // 臉：8 格寬的貼片，貼在頭的正面（表面在 z=3.5）。眼睛在第 1–2、5–6 欄
+  // ───── 臉（表情和嘴形都是貼圖，要改就改下面的字元圖）─────
+  // 臉是貼在頭正面的薄片，8 格寬（跟頭一樣寬），分四層：eyes 眼睛、brows 眉毛、mouth 嘴巴、blush 臉紅
+  // 每一層有好幾張「貼圖」（variants），一次只顯示一張；一個字元＝一格，'.' 是透明，顏色看 colors
+  //   y＝這張貼圖最上面一列在第幾格高（頭是 24–31）；左到右對應頭的 8 格（第 0 欄是角色的右臉）
+  //   眼睛：三列（睫毛、瞳孔上、瞳孔下），在第 1–2、5–6 欄；嘴巴：兩列，在第 2–5 欄
+  // 要加新的：在那一層加一張貼圖，再到 expressions 把它編進某個表情，或到 visemes 指定給某個嘴形
+  // 改完重新整理預覽頁（voxel-rig.html）就看得到；「看臉」按鈕可以拉近
   face: {
     part: 'head', x0: -4, z: 3.5,
     colors: {
