@@ -44,6 +44,29 @@ export function voxelBuilder() {
       }
       return B;
     },
+    // 只留下靠近這些「刺」的格子，其他削掉。rays: [[起點], [終點], 根部半徑, 尖端半徑]
+    // 兩張剪影交出來的馬尾是一整塊，用這個削成一根一根（輪廓還是參考圖的）
+    keepNear(rays) {
+      for (const [k, v] of [...cells]) {
+        let ok = false;
+        for (const [a, b, r0, r1] of rays) {
+          const d = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], p = [v.x - a[0], v.y + 0.5 - a[1], v.z - a[2]];
+          const t = Math.max(0, Math.min(1, (p[0] * d[0] + p[1] * d[1] + p[2] * d[2]) / (d[0] * d[0] + d[1] * d[1] + d[2] * d[2])));
+          const q = [p[0] - d[0] * t, p[1] - d[1] * t, p[2] - d[2] * t], r = r0 + (r1 - r0) * t;
+          if (q[0] * q[0] + q[1] * q[1] + q[2] * q[2] <= r * r) { ok = true; break; }
+        }
+        if (!ok) cells.delete(k);
+      }
+      return B;
+    },
+    // 左右鏡像複製一份（只堆了一邊的部位，例如兩條飄帶）
+    mirrorX() {
+      for (const v of [...cells.values()]) {
+        set(-v.x, v.y, v.z, v.c, v.m);
+        if (v.mask !== undefined) cells.get(`${-v.x},${v.y},${v.z}`).mask = (v.mask & ~3) | (v.mask & 1) << 1 | (v.mask & 2) >> 1;
+      }
+      return B;
+    },
     // 整包平移
     move(dx, dy, dz) {
       const all = [...cells.values()]; cells.clear();
@@ -154,6 +177,7 @@ function restPose(P, rig) {
   for (const [name, r] of Object.entries(rig.def.rest || {})) Object.assign(P(name), r);
 }
 export const CLIPS = {
+  rest: { loop: true, fn() {} },      // 純站姿（疊圖檢查用）
   idle: {
     loop: true,
     fn(t, P) {
@@ -419,7 +443,9 @@ export class VoxelRig {
       g.parent.getWorldQuaternion(q).invert();
       a.applyQuaternion(q);                                     // 換到上層的座標
       gl.set(0, -1, 0).applyQuaternion(q);                      // 重力在上層座標裡的方向
-      const fx = a.x - D.grav * (gl.x), fz = a.z - D.grav * (gl.z);
+      // 重力只算「跟站著的時候比，多出來的那一部分」：站姿本來就斜的部位（往外張的飄帶）才不會被重力越拉越開
+      if (!D.g0) D.g0 = gl.clone();
+      const fx = a.x - D.grav * (gl.x - D.g0.x), fz = a.z - D.grav * (gl.z - D.g0.z);
       const n = Math.max(1, Math.ceil(h / (1 / 120))), sh = h / n;
       for (let i = 0; i < n; i++) {
         D.vx += (-D.k * D.ax - D.damp * D.vx - D.gain * fz) * sh;

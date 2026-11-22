@@ -16,14 +16,16 @@
     x: [x0, x1], z: [z0, z1]  搜尋範圍（模型座標，扳直之後）
     fx: [上, 下]           正面視圖要平移幾格才對到參考圖（上＝y1 那列、下＝y0 那列，中間線性）
     sz: [上, 下]           側面視圖同理
-    f: "sR"  s: "*"        正面／側面哪些類別算這個部位（* ＝不是背景都算）
+    f: "sR"  s: "*"        正面／側面哪些類別算這個部位（* ＝不是背景都算；f 寫 all ＝正面被擋住看不到，x 範圍整個算）
     c: "sR"                上色可以用哪些類別（不在裡面的像素改抓同一列最近的，可省略＝跟 f 一樣）
     round: 2.5             截面修圓的指數（越大越方，省略＝不修）
     dome: [y起, y頂]       從 y起 往上把截面慢慢縮小（配合 round，頭頂變圓）
     fill: true             每一列把最左到最右之間填滿
+    solid: true            存實心的（預設只存表面）；要在 build 裡再削形狀的部位用
     skin: [[x0,x1,y0,y1], ...]  正面這幾塊強制塗膚色（臉：眼睛嘴巴改用貼片）
     cap: [[y0,y1,zmax], ...]    這幾列的 z 不超過 zmax（把臉削平，貼片才貼得上）
-    xcap: [[y0,y1,xmax], ...]   這幾列的 |x| 不超過 xmax（削肩）
+    xcap: [[y0,y1,xmax], ...]   這幾列的 |x| 不超過 xmax（削肩；頭頂旁邊有馬尾時把馬尾切掉）
+    zmin: [[y0,y1,zmin], ...]   這幾列的 z 不小於 zmin（後腦跟馬尾分開）
     palette: ["#..", ...]  只用這幾個顏色（取最接近的）；省略＝照參考圖的顏色
     fine: 2                這個部位的格子細幾倍（頭用 2）；y/x/z/cap/skin/dome 都用細格子的座標
     default: "#d8222c"     找不到顏色時用的顏色
@@ -110,7 +112,7 @@ def carve(name, P):
         t = (y1 - y) / (y1 - y0) if y1 > y0 else 0
         fo, so = lerp(fx, t), lerp(sz, t)
         offs[y] = (fo, so)
-        xs = [x for x in range(x0, x1 + 1) if ok(sample('front', x + fo, y)[0], fcls)]
+        xs = [x for x in range(x0, x1 + 1) if fcls == 'all' or ok(sample('front', x + fo, y)[0], fcls)]
         zs = [z for z in range(z0, z1 + 1) if ok(sample('side', z + so, y)[0], scls)]
         if not xs or not zs: continue
         for a, b, m in P.get('xcap', []):      # 這幾列左右不超過 ±m（削肩）
@@ -131,6 +133,7 @@ def carve(name, P):
                     dx, dz = max(0, abs(x - cxm) - 0.5) / max(hx - 0.5, 0.5), max(0, abs(z - czm) - 0.5) / max(hz - 0.5, 0.5)
                     if dx ** n + dz ** n > 1.0: continue
                 if any(a <= y <= b and z > zm for a, b, zm in P.get('cap', [])): continue
+                if any(a <= y <= b and z < zm for a, b, zm in P.get('zmin', [])): continue
                 cells[(x, y, z)] = None
 
     def pick(view, h, y, lo, hi, off, allow=None):
@@ -144,7 +147,7 @@ def carve(name, P):
     skin = P.get('skin', [])
     default = P.get('default', '#d8222c')
     for (x, y, z) in cells:
-        if all((x + dx, y + dy, z + dz) in cells for dx, dy, dz in NB): continue   # 裡面的不用上色
+        if not P.get('solid') and all((x + dx, y + dy, z + dz) in cells for dx, dy, dz in NB): continue   # 裡面的不用上色
         fo, so = offs[y]
         front = (x, y, z + 1) not in cells
         back = (x, y, z - 1) not in cells
@@ -159,6 +162,13 @@ def carve(name, P):
         else: c = pick('front', x, y, x0, x1, fo)   # 只有上下露出來的
         cells[(x, y, z)] = P.get('skinColor', '#f6cdb0') if c == 'SKIN' else hexc(c, P.get('palette')) if c else default
     # 只存表面的方塊，每格多存一個數字記哪幾面露在外面（+x -x +y -y +z -z 各一個 bit），裡面是空的
+    if P.get('solid'):      # 實心：之後還要在 build 裡削形狀（馬尾削成一根一根），裡面也要有顏色
+        pal, idx, flat = [], {}, []
+        for (x, y, z), c in sorted(cells.items(), key=lambda kv: (kv[0][1], kv[0][0], kv[0][2])):
+            if c not in idx: idx[c] = len(pal); pal.append(c)
+            flat += [x, y, z, idx[c]]
+        print(f'{name:10s} {len(cells):6d} 格（實心）  {len(pal):3d} 色')
+        return {'palette': pal, 'cells': flat}
     pal, idx, flat, n = [], {}, [], 0
     for (x, y, z), c in sorted(cells.items(), key=lambda kv: (kv[0][1], kv[0][0], kv[0][2])):
         mask = sum(1 << i for i, (dx, dy, dz) in enumerate(NB) if (x + dx, y + dy, z + dz) not in cells)

@@ -55,7 +55,10 @@ renderer.shadowMap.enabled = true;
 document.body.prepend(renderer.domElement);
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x2a2d36);
-const cam = new THREE.PerspectiveCamera(30, 1, 0.05, 100);
+// ?overlay=front|side|back：正交鏡頭＋把參考圖半透明疊上去（?op=0.5 透明度、?ovy=中心高度、?ovh=畫面涵蓋的高度）
+const overlay = qs.get('overlay');
+const OV = { h: +(qs.get('ovh') || 2.1), y: +(qs.get('ovy') || 0.98) };
+const cam = overlay ? new THREE.OrthographicCamera(-1, 1, 1, -1, 0.05, 100) : new THREE.PerspectiveCamera(30, 1, 0.05, 100);
 scene.add(new THREE.HemisphereLight(0xdde6ff, 0x3a3040, 1.4));
 const sun = new THREE.DirectionalLight(0xfff0dd, 2.2);
 sun.position.set(3, 6, 4); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
@@ -111,11 +114,31 @@ function setCam(mode) {
   if (qs.has('y')) { controls.target.y = +qs.get('y'); cam.position.y = +qs.get('y') + 0.3; }
 }
 setCam(camMode);
+let ovImg = null;
+if (overlay) {
+  ovImg = document.createElement('img');
+  ovImg.src = DEF.ref.image;
+  Object.assign(ovImg.style, { position: 'fixed', opacity: qs.get('op') || 0.5, pointerEvents: 'none', imageRendering: 'pixelated' });
+  document.body.appendChild(ovImg);
+  ground.visible = grid.visible = false; scene.background = new THREE.Color(0xc3c2c3);
+  rigs.forEach(r => { r.object.rotation.y = { front: 0, side: Math.PI / 2, back: Math.PI }[overlay]; r.autoBlink = false; r.physics = false; r.play('rest', { fade: 0 }); r.update(0); });
+  controls.enabled = false;
+}
 const panel = document.getElementById('panel');
-if (qs.get('panel') === '0') panel.style.display = 'none';
+if (qs.get('panel') === '0' || overlay) panel.style.display = 'none';
 function resize() {
   const w = innerWidth, h = innerHeight;
   renderer.setSize(w, h);
+  if (overlay) {
+    cam.left = -OV.h * w / h / 2; cam.right = OV.h * w / h / 2; cam.top = OV.h / 2; cam.bottom = -OV.h / 2;
+    cam.position.set(0, OV.y, 10); cam.lookAt(0, OV.y, 0); controls.target.set(0, OV.y, 0);
+    cam.updateProjectionMatrix();
+    // 參考圖：每 cell 像素 = 身體一格；腳底和中線對到世界原點
+    const R = DEF.ref, f = (rig.s / R.cell) * (h / OV.h);
+    const cx = R[overlay], y0 = h * (OV.y + OV.h / 2) / OV.h;
+    Object.assign(ovImg.style, { width: R.width * f + 'px', left: (w / 2 - cx * f) + 'px', top: (y0 - R.feet * f) + 'px' });
+    return;
+  }
   cam.aspect = w / h;
   // 面板蓋住下面一截：畫面往上挪一半，讓角色在看得到的地方置中
   const ph = panel.style.display === 'none' ? 0 : panel.offsetHeight;

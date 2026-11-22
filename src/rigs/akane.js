@@ -14,8 +14,20 @@ const FLASH = '#ffe066', FLASH_C = '#fffbe0';
 import CARVED from './akane.carved.js';   // art/rig_carve.py 從參考圖堆出來的部位
 
 // 臉的字元圖小工具。臉的貼片用比頭再細一倍的格子（頭一格 = 2×2 片）
-// REF：直接從參考圖搬過來的那一層（art/rig_carve.py 的 face），頭抬高了 4 格（= 8 片）所以 y 加 8
-const REF = name => ({ ...CARVED.face[name], y: CARVED.face[name].y + 8 });
+// REF：直接從參考圖搬過來的那一層（art/rig_carve.py 的 face），頭抬高了 UP 細格
+// 馬尾的每一根刺（細格子、參考圖的座標）：[起點, 終點, 根部半徑, 尖端半徑]。尖端的位置是對著正面和側面的剪影抓的
+const PONY = [
+  [[1, 104, -9], [2, 110, -12], 6, 6],           // 髮圈和根部
+  [[2, 108, -12], [12, 125, -24], 5.5, 1.2],     // 往上衝的那根
+  [[2, 108, -13], [22, 115, -34], 5, 1.2],       // 右後上
+  [[2, 107, -13], [21, 105, -30], 4.5, 1.2],     // 右後
+  [[2, 108, -13], [8, 111, -37], 5, 1.5],        // 正後
+  [[1, 108, -13], [-5, 113, -31], 4.5, 1.2],     // 左後
+  [[3, 105, -28], [0, 96, -34], 3.5, 1.2],       // 垂下來的尾端
+  [[1, 101, -16], [0, 85, -28], 3.5, 1.2],       // 另一撮垂下來的
+];
+const UP = 1;   // 頭（和馬尾）比參考圖抬高幾個細格，讓脖子露出來。臉的貼片一片是半個細格，所以加 2*UP
+const REF = name => ({ ...CARVED.face[name], y: CARVED.face[name].y + 2 * UP });
 // UP2：手畫的排列用頭的格子畫，每格放大成 2×2 片
 const UP2 = rows => rows.flatMap(r => { const d = [...r].map(c => c + c).join(''); return [d, d]; });
 // EYES：只寫角色右眼（畫面左邊）那 6 格，左眼自動鏡像，中間隔 5 格 → 17 格寬
@@ -26,6 +38,8 @@ const MOUTH = (...rows) => UP2(rows.map(r => '.....' + r + '.....'));
 export default {
   id: 'akane',
   name: '朱音',
+  // 參考圖怎麼對到模型（預覽頁的疊圖檢查用；數字跟 art/pixel/akane.rig.json 一樣）
+  ref: { image: 'art/pixel/akane.png', width: 1536, cell: 15, feet: 969, front: 313, side: 815, back: 1220 },
   unit: 48,            // 身高格數（決定一格多大：一格＝身高/48）。腳底到頭頂 50 格，馬尾另計
 
   // 部位：寫的順序要「上層先寫」。pivot＝關節位置（跟方塊同一套座標）
@@ -38,44 +52,34 @@ export default {
     thighR: { mirror: 'thighL' },
     shinR: { mirror: 'shinL' },
     skirt: { parent: 'hips', pivot: [0, 27.5, 0], fine: 2, build(v) { v.put(CARVED.skirt); } },
-    // 腰後的大蝴蝶結和兩條飄帶（手排，兩節，會甩）
-    ribbon1: {
-      parent: 'hips', pivot: [0, 26.5, -6.5],
-      dangle: { k: 40, damp: 5, gain: 0.04 },
-      build(v) {
-        v.box(-1, 1, 25, 27, -6, -6, RIB_D).sym(2, 4, 26, 27, -6, -6, RIB).sym(2, 3, 25, 25, -6, -6, RIB_D).sym(4, 4, 28, 28, -6, -6, RIB);
-        v.box(-4, -2, 17, 24, -7, -7, RIB).box(2, 4, 16, 24, -7, -7, RIB).box(-3, -3, 17, 24, -7, -7, RIB_D).box(3, 3, 16, 24, -7, -7, RIB_D);
-      },
+    // 腰後的兩條飄帶：形狀取自側面圖（正面被腿擋住），堆一條、另一條鏡像。各兩節，會甩
+    // 從背面看是往兩邊張開的，張開的角度寫在站姿（rest）裡
+    ribbon1L: {
+      parent: 'hips', pivot: [1, 27.5, -6], fine: 2,
+      dangle: { k: 40, damp: 5, gain: 0.04, limit: 0.5 },
+      build(v) { v.put(CARVED.ribbon1); },
     },
-    ribbon2: {
-      parent: 'ribbon1', pivot: [0, 16.5, -7],
-      dangle: { k: 30, damp: 4, gain: 0.05 },
-      build(v) {
-        v.box(-4, -2, 6, 16, -7, -7, RIB).box(2, 4, 5, 15, -7, -7, RIB).box(-3, -3, 6, 16, -7, -7, RIB_D).box(3, 3, 5, 15, -7, -7, RIB_D);
-        v.box(-5, -5, 5, 7, -7, -7, RIB_D).clear(-3, -3, 6, 6, -7, -7);     // 剪成燕尾
-        v.box(5, 5, 4, 6, -7, -7, RIB_D).clear(3, 3, 5, 5, -7, -7);
-      },
+    ribbon2L: {
+      parent: 'ribbon1L', pivot: [2.5, 20.5, -11], fine: 2,
+      dangle: { k: 30, damp: 4, gain: 0.05, limit: 0.6 },
+      build(v) { v.put(CARVED.ribbon2); },
     },
+    ribbon1R: { mirror: 'ribbon1L' },
+    ribbon2R: { mirror: 'ribbon2L' },
     // 上身：金邊、領子、蝴蝶結都是參考圖上的像素。青色的格子（蝴蝶結）改成發光
     // 肩膀在規格裡削斜（xcap）；脖子是另外補的（頭比參考圖抬高，讓脖子露出來）
     torso: {
       parent: 'hips', pivot: [0, 28, 0], fine: 2,
       build(v) {
         v.put(CARVED.torso).glow(c => { const n = parseInt(c.c.slice(1), 16); return (n >> 16) < 150 && (n >> 8 & 255) > 150 && (n & 255) > 150; });
-        v.box(-2, 2, 78, 83, -4, 1, SKIN_D).box(-2, 2, 78, 83, 1, 1, SKIN);
+        v.box(-1, 1, 78, 80, -4, 0, SKIN_D).box(-1, 1, 78, 80, 0, 0, SKIN);   // 細細短短的一段
       },
     },
     // 手臂比參考圖低一格（肩膀放低）
     upperArmL: { parent: 'torso', pivot: [4.5, 36.5, -2.5], fine: 2, build(v) { v.put(CARVED.upperArmL).move(0, -2, 0); } },
     lowerArmL: { parent: 'upperArmL', pivot: [4.5, 30, -3], fine: 2, build(v) { v.put(CARVED.lowerArmL).move(0, -2, 0); } },
-    // 手槍（手排）：平常槍口朝下（手垂著），手臂抬平時槍口自然朝前。樞紐在手掌
-    gunL: {
-      parent: 'lowerArmL', pivot: [5, 24, -3],
-      build(v) {
-        v.box(6, 7, 18, 26, -3, -3, GUN).box(6, 7, 18, 26, -2, -2, GUN_L).box(6, 7, 22, 26, -5, -4, GUN);
-        v.dot(6, 22, -4, GUN_L).box(6, 7, 18, 18, -3, -3, '#111116').move(0, -1, 0);
-      },
-    },
+    // 手槍：也是從參考圖堆的。平常槍口朝下（手垂著），手臂抬平時槍口自然朝前。樞紐在手掌
+    gunL: { parent: 'lowerArmL', pivot: [5, 24, -3], fine: 2, build(v) { v.put(CARVED.gunL).move(0, -2, 0); } },
     flashL: {
       parent: 'gunL', pivot: [6.5, 17, -2.5], hidden: true,
       build(v) {
@@ -88,43 +92,27 @@ export default {
     lowerArmR: { mirror: 'lowerArmL' },
     gunR: { mirror: 'gunL' },
     flashR: { mirror: 'flashL' },
-    // 頭：用比身體細一倍的格子堆（fine: 2），眼睛才畫得出參考圖的比例。這裡面的座標都是細格子
-    // 臉削平、眼睛嘴巴的位置塗成膚色（規格裡的 cap、skin），改用貼片。整顆頭比參考圖抬高 4 細格，讓脖子露出來
+    // 頭：臉削平、眼睛嘴巴的位置塗成膚色（規格裡的 cap、skin），改用貼片
+    // 整顆頭（和馬尾）比參考圖抬高 UP 細格，讓脖子露出一點
     head: {
-      parent: 'torso', pivot: [0, 41, -1], fine: 2,
-      build(v) {
-        v.put(CARVED.head).flatten(-10, 10, 80, 90, 6).move(0, 4, 0);        // 臉補成平面
-        v.box(-2, 5, 104, 108, -10, -4, SCRUNCH).box(-4, 7, 104, 106, -8, -6, SCRUNCH);   // 髮圈
-      },
+      parent: 'torso', pivot: [0, 39.5, -1], fine: 2,
+      build(v) { v.put(CARVED.head).flatten(-10, 10, 80, 90, 6).move(0, UP, 0); },   // 臉補成平面
     },
-    // 高馬尾（手排，身體的格子）：三節，越後面越軟。從頭頂後面往右後上方衝，再往後、往右散開，尾端垂下來
+    // 高馬尾：也是從參考圖堆的（含髮圈），再用 PONY 削成一根一根；沿前後切成三節，越後面越軟
     pony1: {
-      parent: 'head', pivot: [0.5, 55, -4],
-      dangle: { k: 90, damp: 9, gain: 0.02, grav: 500, limit: 0.35 },
-      build(v) {
-        v.box(-1, 2, 55, 56, -5, -3, H);
-        v.spike(0, 56, -4, 0.5, 1, -0.9, 4, H, 1.6);
-      },
+      parent: 'head', pivot: [1, 53.5, -4.5], fine: 2,
+      dangle: { k: 90, damp: 9, gain: 0.02, grav: 500, limit: 0.3 },
+      build(v) { v.put(CARVED.pony1).keepNear(PONY).move(0, UP, 0); },
     },
     pony2: {
-      parent: 'pony1', pivot: [1.5, 59, -7],
-      dangle: { k: 55, damp: 6, gain: 0.03, grav: 700, limit: 0.5 },
-      build(v) {
-        v.spike(2, 60, -8, 0.5, 1, -0.9, 5, H, 1.5);             // 往上衝的那根
-        v.spike(1, 58, -6, 1, 0.15, -0.4, 9, H, 1.5);            // 往右（正面看得到的那叢）
-        v.spike(1, 59, -7, 0.4, 0.6, -1, 8, H_D, 1.3);           // 往右後上
-        v.spike(1, 58, -7, 0.25, 0.1, -1, 10, H, 1.8);           // 往後
-        v.spike(0, 57, -7, -0.3, -0.05, -1, 9, H_D, 1.4);        // 往左後
-        v.dot(3, 62, -9, H_L).dot(3, 63, -10, H_L).dot(2, 59, -10, H_L).dot(5, 59, -7, H_L);
-      },
+      parent: 'pony1', pivot: [2, 56, -8.5], fine: 2,
+      dangle: { k: 55, damp: 6, gain: 0.03, grav: 700, limit: 0.45 },
+      build(v) { v.put(CARVED.pony2).keepNear(PONY).move(0, UP, 0); },
     },
     pony3: {
-      parent: 'pony2', pivot: [0, 56, -14],
-      dangle: { k: 35, damp: 4, gain: 0.045, grav: 900, limit: 0.7 },
-      build(v) {
-        v.spike(0, 55, -13, 0, -0.8, -0.5, 7, H_D, 1.2);         // 垂下來的尾端
-        v.spike(2, 58, -16, 0.2, -0.1, -1, 3, H, 0.6);
-      },
+      parent: 'pony2', pivot: [3, 55, -13.5], fine: 2,
+      dangle: { k: 35, damp: 4, gain: 0.045, grav: 900, limit: 0.6 },
+      build(v) { v.put(CARVED.pony3).keepNear(PONY).move(0, UP, 0); },
     },
   },
 
@@ -134,7 +122,7 @@ export default {
     upperArmL: { z: 0.39 }, upperArmR: { z: -0.39 },
     lowerArmL: { z: 0.09, x: -0.1 }, lowerArmR: { z: -0.09, x: -0.1 },
     gunL: { z: -0.48, x: 0.1 }, gunR: { z: 0.48, x: 0.1 },
-    ribbon1: { x: 0.25 }, ribbon2: { x: 0.1 },
+    ribbon1L: { z: 0.28 }, ribbon1R: { z: -0.28 },
   },
 
   // 臉：貼在 head 上的薄片，一片 = 頭的格子的一半（fine: 4）。每一層的每一種排列是一組字元圖，最上面一列在 y
@@ -149,7 +137,7 @@ export default {
     blinkEyes: 'closed',
     layers: {
       eyes: {
-        y: 185,
+        y: 177 + 2 * UP,
         variants: {
           open:   REF('eyes'),
           happy:  EYES('......', '.kkkk.', 'kk..kk', 'k....k', '......'),
@@ -164,16 +152,16 @@ export default {
       brows: {
         z: 13, depth: 4.2,
         variants: {
-          none:   { y: 189, rows: ['.'] },
-          normal: { y: 189, rows: EYES('.bbbb.') },
-          angry:  { y: 191, rows: EYES('bbb...', '..bbbb') },
-          up:     { y: 191, rows: EYES('.bbbb.') },
-          sad:    { y: 191, rows: EYES('...bbb', 'bbb...') },
+          none:   { y: 181 + 2 * UP, rows: ['.'] },
+          normal: { y: 181 + 2 * UP, rows: EYES('.bbbb.') },
+          angry:  { y: 183 + 2 * UP, rows: EYES('bbb...', '..bbbb') },
+          up:     { y: 183 + 2 * UP, rows: EYES('.bbbb.') },
+          sad:    { y: 183 + 2 * UP, rows: EYES('...bbb', 'bbb...') },
         },
       },
       nose: { variants: { on: REF('nose') } },
       mouth: {
-        y: 173,
+        y: 165 + 2 * UP,
         variants: {
           rest:   REF('mouth'),
           smile:  MOUTH('m.....m', '.mmmmm.', '.......'),
@@ -186,7 +174,7 @@ export default {
           wavy:   MOUTH('.......', 'm.m.m.m', '.m.m.m.'),
         },
       },
-      blush: { y: 175, variants: { on: EYES('.ppp..', '..pp..') } },
+      blush: { y: 167 + 2 * UP, variants: { on: EYES('.ppp..', '..pp..') } },
     },
   },
 
