@@ -187,6 +187,7 @@ const wait = s => tween(s, () => {});
 const rigOf = u => u && u.mesh && u.mesh.userData.rig;
 function anim(u, name, opt = {}) {
   const r = rigOf(u);
+  if (name === 'idle' && u.suppressed) name = 'crouch';    // 被壓制的人「回到待機」就是回到蹲著
   if (!r || !r.clips[name]) return;
   if (r.clips[name].loop) u.mesh.userData.loop = name;      // 記住現在的常態動作，受傷完要回到它
   r.rate = opt.rate || 1;
@@ -1105,7 +1106,7 @@ async function reactAt(u, plan, i) {
 
 // 回傳 true = 移動成功；false = 被反應射擊命中（行動失敗）
 async function performMove(u, dest) {
-  anim(u, 'run', { rate: 1.6, fade: 0.1 });
+  anim(u, 'run', { rate: 2.3, fade: 0.1 });
   try { return await performMove0(u, dest); }
   finally { if (u.alive) anim(u, 'idle'); }
 }
@@ -1121,13 +1122,15 @@ async function performMove0(u, dest) {
 
   let curT = 0;
   const posAt = t => new THREE.Vector3(start.x + (dest.x - start.x) * t, 0, start.z + (dest.z - start.z) * t);
+  const legs = !!rigOf(u);
   for (let i = 0; i < cells.length; i++) {
     const c = cells[i];
     const a = posAt(curT), b = posAt(c.t);
-    const dur = dest.vault ? 0.45 : Math.max(0.04, (c.t - curT) * len * 0.11);
+    // 方塊人有跑步動作：移動放慢一點配合腳步，也不用每格跳一下（跑步動作自己會上下）
+    const dur = dest.vault ? 0.45 : Math.max(0.04, (c.t - curT) * len * (legs ? 0.16 : 0.11));
     await tween(dur, k => {
       u.mesh.position.lerpVectors(a, b, k);
-      u.mesh.position.y = dest.vault ? Math.sin(k * Math.PI) * 0.5 : Math.abs(Math.sin(k * Math.PI)) * 0.05;
+      u.mesh.position.y = dest.vault ? Math.sin(k * Math.PI) * 0.5 : legs ? 0 : Math.abs(Math.sin(k * Math.PI)) * 0.05;
     });
     curT = c.t;
     u.x = c.x;
@@ -1640,7 +1643,14 @@ function suppress(t, label = '壓制') {
 }
 
 function setSuppressedPose(u, on) {
-  // 被壓制：蹲低
+  // 被壓制：蹲低。方塊人播蹲下的動作；正在後仰（剛被打到）就等後仰完再蹲
+  const r = rigOf(u);
+  if (r) {
+    const name = on ? 'crouch' : 'idle';
+    if (r.clipName === 'hurt') { r.nextClip = name; u.mesh.userData.loop = name; }
+    else if (r.clipName !== 'down' && r.clipName !== name) anim(u, name, { fade: 0.2 });
+    return;
+  }
   const base = u.mesh.userData.baseScale || 1;
   const from = u.mesh.scale.y, to = base * (on ? 0.78 : 1);
   tween(0.2, k => { u.mesh.scale.y = from + (to - from) * k; });
@@ -2493,7 +2503,8 @@ async function reviveDolls() {
     e.stress = 0;
     e.mesh.rotation.x = 0;
     e.mesh.position.y = 0;
-    e.mesh.traverse(o => { if (o.material) { o.material.opacity = 1; o.material.transparent = false; } });
+    const glass = rigOf(e) && rigOf(e).mats.g;      // 方塊人半透明的部位（面紗之類）要變回半透明，不是不透明
+    e.mesh.traverse(o => { if (o.material) { o.material.opacity = o.material === glass ? 0.45 : 1; o.material.transparent = o.material === glass; } });
     anim(e, 'idle', { fade: 0.4 });
     e.label = UI.makeLabel(e);
     if (e.mesh.visible) { focusUnit(e); floatText(e, '提線！', 'crit'); }
@@ -3837,6 +3848,8 @@ function frame(now) {
   if (S.units) for (const u of S.units) {      // 方塊人的動作、頭髮、眨眼（看不到的不算）
     const r = u.mesh && u.mesh.userData.rig;
     if (r && u.mesh.visible && u.mesh.parent) r.update(dt);
+    const wf = r && u.mesh.userData.wingsFx;      // 光變身後的翅膀：慢慢拍
+    if (wf) for (const w of wf) w.rotation.y = -w.userData.side * (0.3 + 0.28 * Math.sin(time * 4.5));
   }
   if (S.units) for (const u of S.units) {
     const imps = u.alive && u.mesh.userData.imps;
@@ -3858,7 +3871,7 @@ function boot() {
 }
 boot();
 requestAnimationFrame(frame);
-window.__game = { S, actions, camera, THREE, scene, zoneMesh, Camp, // 除錯用
+window.__game = { frame, S, actions, camera, THREE, scene, zoneMesh, Camp, // 除錯用
   useItem,
   dbg: { pickTile, strike, melee, dash, giveInitiative, rush, rushStep, pathDistToGirls, actChance, spawnEnemy, segFloor, playerMove, moveOptions, quietSees, enemies, players, weapon, step: updateTweens, magicOptions, execMagic, pushInfo, execPush,
     startMission, enterHQ, transform, spawnWave, bossPhase, performMove, die, aiChoose, lockAfterAttack, enemyInitiative, impulses, reviveDolls } };

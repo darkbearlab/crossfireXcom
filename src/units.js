@@ -519,6 +519,26 @@ export function makeBiteMesh(n = 8) {
 
 // 光變身後的光環＋翅膀
 export function addHalo(mesh) {
+  const rig = mesh.userData.rig;
+  if (rig) {      // 方塊人：光環掛在頭上、翅膀掛在背上，跟著身體一起動；翅膀會拍（main.js 的主迴圈）
+    const s = rig.s, bx = (w, h, d, mat, x, y, z, to) => { const b = new THREE.Mesh(new THREE.BoxGeometry(w * s, h * s, d * s), mat); b.position.set(x * s, y * s, z * s); to.add(b); return b; };
+    const gold = new THREE.MeshStandardMaterial({ color: 0xfff0a0, emissive: 0xffd040, emissiveIntensity: 2 });
+    const halo = new THREE.Group();
+    halo.position.y = 11.5 * s;      // 頭的樞紐在脖子，頭頂是 +9 格
+    for (const [w, d, x, z] of [[7, 1, 0, 3], [7, 1, 0, -3], [1, 5, 3, 0], [1, 5, -3, 0]]) bx(w, 1, d, gold, x, 0, z, halo);
+    halo.rotation.x = 0.12;
+    rig.parts.head.group.add(halo);
+    const feather = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffc0e0, emissiveIntensity: 0.9 });
+    mesh.userData.wingsFx = [1, -1].map(side => {
+      const w = new THREE.Group();
+      w.position.set(2 * side * s, 8 * s, -6.5 * s);        // 身體的樞紐在腰，肩胛骨是 +8 格；要在長頭髮的後面才看得到
+      for (const [len, y, x0] of [[9, 3, 0], [8, 1, 1], [6, -1, 1], [4, -3, 1], [2, -5, 0]]) bx(len, 2, 1, feather, side * (x0 + len / 2), y, 0, w);
+      w.userData.side = side;
+      rig.parts.torso.group.add(w);
+      return w;
+    });
+    return;
+  }
   const m = new THREE.Mesh(new THREE.TorusGeometry(0.17, 0.025, 4, 12),
     new THREE.MeshStandardMaterial({ color: 0xfff0a0, emissive: 0xffd040, emissiveIntensity: 2, flatShading: true }));
   m.rotation.x = Math.PI / 2;

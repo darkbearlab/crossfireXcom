@@ -3,15 +3,18 @@
 //   battle(steps, opts) 戰鬥畫面當背景：上下黑邊、半透明對話框＋胸像，鏡頭可以跟著說話的人
 //   radio(steps)        無線電：左上角小框＋頭像＋文字，不擋操作，自己播完消失
 // 台詞（step）：
-//   { who: 'akane' | 'b_exec' | 'gunman' | { name, color, img }, text: '...', at: 'left'|'center'|'right', name: '顯示名稱' }
+//   { who: 'akane' | 'b_exec' | 'gunman' | { name, color, img }, text: '...', at: 'left'|'center'|'right', name: '顯示名稱',
+//     face: 'normal'|'smile'|'angry'|'surprised'|'pain' }   表情；不寫的話看台詞裡的字自己猜（見 faceFor）
 //   { bg: 'url' | 'city' | 'hq' | 'warehouse' }   換背景（vn）
 //   { exit: 'akane' }                             立繪退場（vn）
 //   { wait: 毫秒 }
 // 頭像、立繪直接用遊戲裡的 3D 模型渲染（不用另外準備圖）；who 給 { img } 就用圖片。
+// 有方塊人的角色，頭像和立繪是「活的」：會呼吸、眨眼，講話時嘴巴跟著字動，表情照 face 換。
 import * as THREE from 'three';
 import { GIRLS, FAMILY, GODMOTHER } from './girls.js';
 import { ENEMY_TYPES } from './config.js';
 import { makeUnitMesh, makeImpMesh, makeScarecrowMesh } from './units.js';
+import { visemeFor } from './voxel-rig.js';
 
 let instant = false;
 export const setInstant = on => { instant = on; };
@@ -63,6 +66,22 @@ function meshOf(sp) {
   if (sp.enemy) { const t = ENEMY_TYPES[sp.enemy]; return makeUnitMesh('enemy', sp.enemy, t.color, 'ar', 1, { boss: !!t.boss, mother: sp.enemy === 'b_mother' }); }
   return null;
 }
+// 把鏡頭對好：胸像對著頭和肩膀，立繪拍全身。回傳畫面的寬高
+function frame(cam, mesh, kind) {
+  mesh.rotation.y = -0.45; // 四分之三側面
+  mesh.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(mesh);
+  const h = box.max.y - box.min.y, cx = (box.max.x + box.min.x) / 2, cz = (box.max.z + box.min.z) / 2;
+  const [W, H] = kind === 'full' ? [360, 720] : [256, 256];
+  cam.aspect = W / H;
+  const viewH = kind === 'full' ? h * 1.08 : Math.max(0.42, h * 0.36);
+  const y = kind === 'full' ? box.min.y + h / 2 : box.max.y - viewH * 0.52;
+  const d = viewH / 2 / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
+  cam.position.set(cx + d * 0.18, y + viewH * 0.06, cz + d);
+  cam.lookAt(cx, y, cz);
+  cam.updateProjectionMatrix();
+  return [W, H];
+}
 // kind: 'bust'（胸像，正方形）或 'full'（全身立繪，直的）
 export function portrait(who, kind = 'bust') {
   const sp = speaker(who);
@@ -74,20 +93,9 @@ export function portrait(who, kind = 'bust') {
     const mesh = meshOf(sp);
     if (!mesh) throw new Error('no mesh');
     const { renderer, scene, cam } = rig();
-    mesh.rotation.y = -0.45; // 四分之三側面
     scene.add(mesh);
-    mesh.updateMatrixWorld(true);
-    const box = new THREE.Box3().setFromObject(mesh);
-    const h = box.max.y - box.min.y, cx = (box.max.x + box.min.x) / 2, cz = (box.max.z + box.min.z) / 2;
-    const [W, H] = kind === 'full' ? [360, 720] : [256, 256];
+    const [W, H] = frame(cam, mesh, kind);
     renderer.setSize(W, H, false);
-    cam.aspect = W / H;
-    const viewH = kind === 'full' ? h * 1.08 : Math.max(0.42, h * 0.36);
-    const y = kind === 'full' ? box.min.y + h / 2 : box.max.y - viewH * 0.52;
-    const d = viewH / 2 / Math.tan(THREE.MathUtils.degToRad(cam.fov / 2));
-    cam.position.set(cx + d * 0.18, y + viewH * 0.06, cz + d);
-    cam.lookAt(cx, y, cz);
-    cam.updateProjectionMatrix();
     renderer.setClearColor(0x000000, 0);
     renderer.render(scene, cam);
     url = renderer.domElement.toDataURL('image/png');
@@ -104,6 +112,103 @@ export function portrait(who, kind = 'bust') {
   shots.set(k, url);
   return url;
 }
+
+// ---------------- 會動的頭像／立繪（方塊人才有） ----------------
+// 每個「誰＋放在哪」留一隻自己的方塊人和一張畫布；畫布掛在畫面上的時候才更新。
+// 全部共用一個渲染器（固定 360×720，胸像只用左下角 256×256），畫完再貼到各自的畫布上。
+const LIVE_W = 360, LIVE_H = 720;
+let LR = null;
+const lives = new Map();
+function liveOf(who, kind, slot) {
+  const sp = speaker(who);
+  if (sp.img) return null;
+  const k = sp.id + ':' + slot;
+  if (lives.has(k)) return lives.get(k);
+  let L = null;
+  try {
+    const mesh = meshOf(sp), rg = mesh && mesh.userData.rig;
+    if (rg) {
+      const cam = new THREE.PerspectiveCamera(22, 1, 0.05, 50);
+      rg.play('rest', { fade: 0 }); rg.update(0);          // 用站姿對鏡頭，每次的構圖才會一樣
+      const [W, H] = frame(cam, mesh, kind);
+      rg.play('idle', { fade: 0 }); rg.resetDangles();
+      const cv = document.createElement('canvas'); cv.width = W; cv.height = H; cv.className = 'scn-live';
+      L = { mesh, rig: rg, cam, cv, ctx: cv.getContext('2d'), W, H, talking: false, acc: 0, n: 0 };
+    }
+  } catch (err) { L = null; }
+  lives.set(k, L);
+  return L;
+}
+function drawLive(L, dt) {
+  if (!LR) {
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setPixelRatio(1); renderer.setSize(LIVE_W, LIVE_H, false);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.setClearColor(0x000000, 0); renderer.setScissorTest(true);
+    const scene = new THREE.Scene();
+    scene.add(new THREE.HemisphereLight(0xeef2ff, 0x40384a, 1.5));
+    const key = new THREE.DirectionalLight(0xfff2e0, 2.2); key.position.set(2, 3, 4); scene.add(key);
+    const rim = new THREE.DirectionalLight(0x9fc8ff, 1.6); rim.position.set(-3, 2, -3); scene.add(rim);
+    LR = { renderer, scene };
+  }
+  const { renderer, scene } = LR;
+  L.rig.update(dt);
+  scene.add(L.mesh);
+  renderer.setViewport(0, 0, L.W, L.H); renderer.setScissor(0, 0, L.W, L.H);
+  renderer.render(scene, L.cam);
+  scene.remove(L.mesh);
+  L.ctx.clearRect(0, 0, L.W, L.H);
+  L.ctx.drawImage(renderer.domElement, 0, LIVE_H - L.H, L.W, L.H, 0, 0, L.W, L.H);
+}
+// 更新所有掛在畫面上的頭像；回傳還有幾張在畫面上。沒在講話的只用 20 fps
+export function tickPortraits(dt) {
+  let n = 0;
+  for (const L of lives.values()) {
+    if (!L || !L.cv.isConnected) continue;
+    n++;
+    L.acc += dt;
+    if (!L.talking && L.acc < 0.05) continue;
+    drawLive(L, Math.min(L.acc, 0.1)); L.acc = 0;
+  }
+  return n;
+}
+let liveRaf = 0, liveLast = 0;
+function liveLoop(now) {
+  const dt = Math.min(0.1, Math.max(0, (now - liveLast) / 1000)); liveLast = now;
+  liveRaf = tickPortraits(dt) ? requestAnimationFrame(liveLoop) : 0;
+}
+// 把 who 的頭像放進 el：有方塊人就放會動的畫布，沒有就用靜態圖當背景。回傳會動的那一份（沒有就是 null）
+function show(el, who, kind, slot = kind) {
+  const L = who ? liveOf(who, kind, slot) : null;
+  if (el._live && el._live !== L) { el._live.cv.remove(); el._live.talking = false; }
+  el._live = L;
+  if (L) {
+    el.style.backgroundImage = 'none';
+    if (L.cv.parentNode !== el) el.appendChild(L.cv);
+    drawLive(L, 0);
+    if (!liveRaf) { liveLast = performance.now(); liveRaf = requestAnimationFrame(liveLoop); }
+  } else el.style.backgroundImage = who ? `url(${portrait(who, kind)})` : 'none';
+  return L;
+}
+// 表情：台詞有寫 face 就用；沒寫就看台詞裡的字猜一個（猜不到就是平常的臉）
+const FACE_HINTS = [
+  ['surprised', /哇|咦|欸|什麼！|！？|？！|被、|有、|請、|怎麼會/],
+  ['angry', /可惡|吵死|少廢話|笨蛋|打趴|打飛|接招|混帳|別留活口|不會讓妳|饒不了/],
+  ['smile', /哈！|哈哈|好啊|太好了|來得好|交給我|可麗餅|嘿嘿|喔。|哎呀|搞定/],
+];
+export function faceFor(st) {
+  if (st.face) return st.face;
+  for (const [f, re] of FACE_HINTS) if (re.test(st.text)) return f;
+  return 'normal';
+}
+// 開始講一句：換表情。打字機每打一個字呼叫 mouth()，講完呼叫 hush()
+function speak(L, st) { if (!L) return; L.rig.setExpression(faceFor(st)); L.talking = true; L.n = 0; }
+function mouth(L, ch) {
+  if (!L) return;
+  if (visemeFor(ch) === null) { L.rig.speakChar(ch); L.n = 0; }      // 標點：閉嘴停一下
+  else if (L.n++ % 3 === 0) L.rig.speakChar(ch);                     // 打字比講話快，三個字換一次嘴形
+}
+function hush(L) { if (!L) return; L.talking = false; L.rig.stopTalk(); }
 
 // ---------------- 程式畫的背景（沒有圖片時用） ----------------
 const bgs = new Map();
@@ -156,6 +261,8 @@ const CSS = `
 .scn .scn-stage { position: absolute; left: 0; right: 0; bottom: 0; height: 88%; pointer-events: none; }
 .scn .scn-actor { position: absolute; bottom: 0; height: 100%; aspect-ratio: 1 / 2; background: center bottom/contain no-repeat;
   transform: translateX(-50%); transition: filter .25s, opacity .35s, transform .35s; filter: brightness(.55) saturate(.7); opacity: 0; }
+.scn-live { display: block; width: 100%; height: 100%; object-fit: cover; }
+.scn .scn-actor .scn-live { object-fit: contain; object-position: center bottom; }
 .scn .scn-actor.in { opacity: 1; } .scn .scn-actor.talk { filter: none; transform: translateX(-50%) scale(1.03); }
 .scn .scn-box { position: absolute; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%);
   width: min(920px, calc(100vw - 24px)); min-height: 120px; box-sizing: border-box; padding: 26px 22px 18px;
@@ -245,29 +352,33 @@ async function dialogue(steps, mode, opts = {}) {
     const sp = speaker(st.who);
     root.style.setProperty('--c', tint(sp.color));
     nameEl.hidden = !st.who; nameEl.textContent = st.name || sp.name;
+    let live = null;
     if (mode === 'vn' && st.who) { // 立繪：第一次出場放到指定位置，說話的人亮起來
       let a = actors.get(sp.id);
       if (!a) {
         a = document.createElement('div'); a.className = 'scn-actor';
-        a.style.backgroundImage = `url(${portrait(st.who, 'full')})`;
+        show(a, st.who, 'full');
         stage.appendChild(a); actors.set(sp.id, a);
         requestAnimationFrame(() => a.classList.add('in'));
       }
       if (st.at || !a.style.left) a.style.left = slotX[st.at || (actors.size === 1 ? 'center' : actors.size === 2 ? 'right' : 'left')] + '%';
       for (const [, o] of actors) o.classList.toggle('talk', o === a);
+      live = a._live;
     }
-    if (mode === 'battle') $('.scn-bust').style.backgroundImage = st.who ? `url(${portrait(st.who, 'bust')})` : 'none';
+    if (mode === 'battle') live = show($('.scn-bust'), st.who, 'bust');
+    speak(live, st);
     if (opts.onLine) opts.onLine(st, sp);
     // 打字機：點一下先把這句顯示完，再點一下才下一句
     next.hidden = true;
     const txt = String(st.text);
     let done = false;
     const typing = (async () => {
-      for (let i = 1; i <= txt.length && !done; i++) { textEl.textContent = txt.slice(0, i); await sleep(26); }
+      for (let i = 1; i <= txt.length && !done; i++) { textEl.textContent = txt.slice(0, i); mouth(live, txt[i - 1]); await sleep(26); }
       textEl.textContent = txt; done = true;
     })();
     await Promise.race([typing, waitTap()]);
     done = true; tap = null; await typing;
+    hush(live);
     if (skip) break;
     next.hidden = false;
     await (auto ? Promise.race([sleep(900 + txt.length * 45), waitTap()]) : waitTap());
@@ -308,14 +419,16 @@ async function radioLoop() {
       if (!st.text) continue;
       const sp = speaker(st.who);
       box.style.setProperty('--c', tint(sp.color));
-      box.querySelector('.r-face').style.backgroundImage = `url(${portrait(st.who, 'bust')})`;
+      const live = show(box.querySelector('.r-face'), st.who, 'bust', 'radio');
+      speak(live, st);
       box.querySelector('b').textContent = st.name || sp.name;
       if (opts.onLine) opts.onLine(st, sp);
       requestAnimationFrame(() => box.classList.add('show'));
       const t = box.querySelector('.r-text'), txt = String(st.text);
       tapped = false;
-      for (let i = 1; i <= txt.length && !tapped; i++) { t.textContent = txt.slice(0, i); await sleep(30); }
+      for (let i = 1; i <= txt.length && !tapped; i++) { t.textContent = txt.slice(0, i); mouth(live, txt[i - 1]); await sleep(30); }
       t.textContent = txt; tapped = false;
+      hush(live);
       for (let ms = 0; ms < 1600 + txt.length * 55 && !tapped; ms += 50) await sleep(50);
     }
     res();

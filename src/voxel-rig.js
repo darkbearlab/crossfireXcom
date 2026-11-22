@@ -244,6 +244,21 @@ export const CLIPS = {
       P('torso').x -= 0.05; P('head').x += 0.05;
     },
   },
+  // 被壓制：單膝跪下、縮著頭（常態動作，會一直維持到起身）
+  crouch: {
+    loop: true, face: 'pain', fade: 0.18,
+    fn(t, P) {
+      const b = Math.sin(t * 2.6), sh = Math.sin(t * 23) * 0.012;
+      P('root').py -= 4.4 - 0.1 * b;
+      P('thighL').x = -1.3; P('shinL').x = 1.3;          // 左腳踩在前面
+      P('thighR').x = 0.2; P('shinR').x = 1.5;           // 右膝著地
+      for (const n of ['thighL', 'thighR', 'shinL', 'shinR']) P(n).z *= 0.3;
+      P('torso').x += 0.38 + 0.02 * b + sh; P('torso').y += 0.1;
+      P('head').x += 0.28 + sh; P('head').y -= 0.1;
+      P('skirt').x -= 0.35;
+      for (const [s, side] of [[1, 'L'], [-1, 'R']]) { P('upperArm' + side).z += 0.08 * s; P('lowerArm' + side).x -= 0.25; }
+    },
+  },
   hurt: {
     dur: 0.6, next: 'idle', face: 'pain', fade: 0.05,
     fn(t, P) {
