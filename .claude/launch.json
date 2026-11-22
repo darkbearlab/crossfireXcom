@@ -24,6 +24,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["serve.py", "8126"],
       "port": 8126
+    },
+    {
+      "name": "rig",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["serve.py", "8128"],
+      "port": 8128
     }
   ]
 }

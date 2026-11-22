@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>可動方塊模型</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #1b1d24; overflow: hidden; font: 14px sans-serif; color: #ccd; touch-action: none; }
+    canvas { display: block; }
+    #top { position: fixed; left: 8px; top: 6px; right: 8px; pointer-events: none; text-shadow: 0 1px 2px #000; }
+    #top b { color: #8fd3ff; }
+    #panel { position: fixed; left: 0; right: 0; bottom: 0; max-height: 46vh; overflow-y: auto; padding: 6px 8px 10px;
+             background: #12141acc; border-top: 1px solid #3a5a78; touch-action: pan-y; }
+    .row { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 4px 0; }
+    .row > span { width: 2.6em; color: #8fa8c0; font-size: 13px; flex: none; }
+    button { min-height: 36px; min-width: 44px; padding: 4px 10px; background: #1d3448; color: #dfefff; border: 1px solid #4fd6ff66;
+             border-radius: 6px; font: 14px sans-serif; touch-action: manipulation; }
+    button.on { background: #2f6f9a; border-color: #8fe6ff; color: #fff; }
+    #line { flex: 1; min-width: 8em; min-height: 32px; padding: 2px 8px; background: #0d1016; color: #fff; border: 1px solid #4fd6ff55; border-radius: 6px; font: 15px sans-serif; }
+    #bubble { position: fixed; left: 50%; transform: translateX(-50%); top: 34px; max-width: 88vw; padding: 6px 12px; background: #fff; color: #222;
+              border-radius: 10px; font: 16px sans-serif; display: none; pointer-events: none; }
+    .tag { position: fixed; color: #fff; font: bold 13px sans-serif; text-shadow: 0 1px 3px #000; transform: translateX(-50%); pointer-events: none; white-space: nowrap; }
+  </style>
+  <script type="importmap">
+  { "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+                 "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/" } }
+  </script>
+</head>
+<body>
+<div id="top"><b>可動方塊模型</b>：朱音　拖曳旋轉、雙指／滾輪縮放</div>
+<div id="bubble"></div>
+<div id="panel">
+  <div class="row" id="r-clip"><span>動作</span></div>
+  <div class="row" id="r-expr"><span>表情</span></div>
+  <div class="row" id="r-mouth"><span>嘴形</span></div>
+  <div class="row"><span>講話</span><input id="line" value="哼，魔女黑手黨？全部給我趴下！"><button id="b-say">說</button></div>
+  <div class="row" id="r-opt"><span>其他</span></div>
+</div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { buildRig } from './src/voxel-rig.js';
+import akane from './src/rigs/akane.js';
+
+// 網址參數（截圖用：面板在背景時 rAF 會被節流，用參數把姿勢固定住）
+//   ?clip=walk&t=0.4  動作和時間（有 t 就凍結）   ?expr=smile  ?mouth=big   ?angle=0.6（弧度）
+//   ?cam=face 看臉  ?board 地圖視角  ?zoom=1.5  ?panel=0 收起面板
+//   ?sheet=expr|mouth|clip 一次排一整排（每個表情／嘴形／動作一隻）
+const qs = new URLSearchParams(location.search);
+const DEF = akane;
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x2a2d36);
+const cam = new THREE.PerspectiveCamera(30, 1, 0.05, 100);
+scene.add(new THREE.HemisphereLight(0xdde6ff, 0x3a3040, 1.4));
+const sun = new THREE.DirectionalLight(0xfff0dd, 2.2);
+sun.position.set(3, 6, 4); sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+Object.assign(sun.shadow.camera, { left: -6, right: 6, top: 6, bottom: -6 });
+scene.add(sun);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(40, 40), new THREE.MeshStandardMaterial({ color: 0x3a3f4a }));
+ground.rotation.x = -Math.PI / 2; ground.receiveShadow = true; scene.add(ground);
+const grid = new THREE.GridHelper(12, 12, 0x556070, 0x404855); grid.position.y = 0.002; scene.add(grid);
+const controls = new OrbitControls(cam, renderer.domElement);
+controls.enableDamping = true;
+
+// ───── 角色 ─────
+const sheet = qs.get('sheet');
+const rigs = [];
+const tags = [];
+function addRig(x, label) {
+  const r = buildRig(DEF, 1.35);
+  r.object.position.x = x;
+  scene.add(r.object);
+  rigs.push(r);
+  if (label) { const d = document.createElement('div'); d.className = 'tag'; d.textContent = label; document.body.appendChild(d); tags.push({ d, r }); }
+  return r;
+}
+const EXPR_ZH = { normal: '普通', smile: '笑', angry: '生氣', surprised: '驚訝', pain: '痛', blink: '閉眼', ko: '昏倒' };
+const MOUTH_ZH = { closed: '閉', small: '小開', big: '大開', i: 'ㄧ', u: 'ㄨ' };
+const CLIP_ZH = { idle: '待機', walk: '走路', run: '跑步', shoot: '射擊', hurt: '受傷', down: '倒地' };
+let sheetItems = null;
+if (sheet === 'expr') sheetItems = Object.keys(DEF.expressions).map(k => [k, EXPR_ZH[k] || k]);
+else if (sheet === 'mouth') sheetItems = Object.keys(DEF.visemes).map(k => [k, MOUTH_ZH[k] || k]);
+else if (sheet === 'clip') sheetItems = Object.keys(CLIP_ZH).map(k => [k, CLIP_ZH[k]]);
+if (sheetItems) {
+  const gap = sheet === 'clip' ? 1.5 : 0.72;
+  sheetItems.forEach(([k, zh], i) => {
+    const r = addRig((i - (sheetItems.length - 1) / 2) * gap, zh);
+    r.autoBlink = false;
+    if (sheet === 'expr') r.setExpression(k);
+    if (sheet === 'mouth') r.mouthOverride = k;
+    if (sheet === 'clip') { r.play(k, { fade: 0 }); if (k === 'down') r.object.position.z -= 0.6; }
+  });
+} else addRig(0);
+const rig = rigs[0];
+window.rigs = rigs;
+
+// ───── 鏡頭 ─────
+let camMode = qs.get('cam') || (qs.has('board') ? 'board' : sheet === 'expr' || sheet === 'mouth' ? 'face' : 'full');
+const zoom = +(qs.get('zoom') || 1);
+function setCam(mode) {
+  camMode = mode;
+  const wide = sheetItems ? Math.max(1, sheetItems.length * (sheet === 'clip' ? 0.3 : 0.28)) : 1;
+  if (mode === 'face') { controls.target.set(0, sheetItems ? 1.0 : 1.22, 0); cam.position.set(0, 1.27, (sheetItems ? 2.4 : 3) * wide / zoom); }
+  else if (mode === 'board') { controls.target.set(0, 0.3, 0); cam.position.set(5, 6.5, 7.5); }
+  else { controls.target.set(0, 0.95, 0); cam.position.set(0, 1.3, 6 * wide / zoom); }
+  if (qs.has('y')) { controls.target.y = +qs.get('y'); cam.position.y = +qs.get('y') + 0.3; }
+}
+setCam(camMode);
+const panel = document.getElementById('panel');
+if (qs.get('panel') === '0') panel.style.display = 'none';
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setSize(w, h);
+  cam.aspect = w / h;
+  // 面板蓋住下面一截：畫面往上挪一半，讓角色在看得到的地方置中
+  const ph = panel.style.display === 'none' ? 0 : panel.offsetHeight;
+  cam.setViewOffset(w, h, 0, ph / 2, w, h);
+  // 直向手機畫面窄：拉遠一點
+  cam.fov = w < h ? 30 * Math.min(1.7, h / w * 0.85) : 30;
+  cam.updateProjectionMatrix();
+  // 一整排的時候，照畫面寬度算鏡頭要退多遠才放得下
+  if (sheetItems) {
+    const gap = sheet === 'clip' ? 1.5 : 0.72, halfW = sheetItems.length * gap / 2 + (sheet === 'clip' ? 0.2 : 0.05);
+    const d = halfW / (Math.tan(THREE.MathUtils.degToRad(cam.fov / 2)) * cam.aspect);
+    const dir = cam.position.clone().sub(controls.target).normalize();
+    cam.position.copy(controls.target).addScaledVector(dir, Math.max(d, camMode === 'face' ? 1.6 : 3) / zoom);
+  }
+}
+addEventListener('resize', resize);
+
+// ───── 按鈕 ─────
+function btnRow(rowId, items, onClick, isOn) {
+  const row = document.getElementById(rowId);
+  const btns = items.map(([k, label]) => {
+    const b = document.createElement('button');
+    b.textContent = label; b.dataset.k = k;
+    b.onclick = () => { onClick(k); refresh(); };
+    row.appendChild(b); return b;
+  });
+  const refresh = () => btns.forEach(b => b.classList.toggle('on', isOn(b.dataset.k)));
+  refreshers.push(refresh);
+  return btns;
+}
+const refreshers = [];
+const refreshAll = () => refreshers.forEach(f => f());
+let loopClip = 'idle', walkCircle = false, spin = false;
+btnRow('r-clip', Object.entries(CLIP_ZH), k => {
+  if (walkCircle && k !== 'walk' && k !== 'run') walkCircle = false;
+  if (rig.clips[k].loop) loopClip = k;
+  for (const r of rigs) r.play(k, { next: loopClip });
+}, k => rig.clipName === k);
+btnRow('r-expr', Object.entries(EXPR_ZH), k => rigs.forEach(r => r.setExpression(k)), k => rig.expression === k);
+btnRow('r-mouth', [['auto', '跟表情'], ...Object.entries(MOUTH_ZH)], k => rigs.forEach(r => r.mouthOverride = k === 'auto' ? null : k),
+  k => (rig.mouthOverride || 'auto') === k);
+btnRow('r-opt', [['spin', '自轉'], ['circle', '繞圈走'], ['face', '看臉'], ['board', '地圖視角'], ['blink', '自動眨眼'], ['phys', '頭髮物理']], k => {
+  if (k === 'spin') spin = !spin;
+  if (k === 'circle') { walkCircle = !walkCircle; rigs.forEach(r => r.play(walkCircle ? 'walk' : 'idle')); if (!walkCircle) { rig.object.position.set(0, 0, 0); rig.object.rotation.y = 0; } }
+  if (k === 'face') setCam(camMode === 'face' ? 'full' : 'face');
+  if (k === 'board') setCam(camMode === 'board' ? 'full' : 'board');
+  if (k === 'blink') rigs.forEach(r => r.autoBlink = !r.autoBlink);
+  if (k === 'phys') rigs.forEach(r => { r.physics = !r.physics; r.resetDangles(); });
+}, k => ({ spin, circle: walkCircle, face: camMode === 'face', board: camMode === 'board', blink: rig.autoBlink, phys: rig.physics })[k]);
+
+// 講話：跟 scene.js 的打字機一樣一個字一個字出來，每出一個字呼叫 speakChar
+const bubble = document.getElementById('bubble');
+let typing = null;
+document.getElementById('b-say').onclick = () => {
+  const text = document.getElementById('line').value;
+  typing = { text: [...text], i: 0, acc: 0 };
+  bubble.textContent = ''; bubble.style.display = 'block';
+  for (const r of rigs) r.mouthOverride = null;
+  refreshAll();
+};
+function stepTyping(dt) {
+  if (!typing) return;
+  typing.acc += dt;
+  const cps = 9;
+  while (typing.acc >= 1 / cps && typing.i < typing.text.length) {
+    typing.acc -= 1 / cps;
+    const ch = typing.text[typing.i++];
+    bubble.textContent += ch;
+    for (const r of rigs) r.speakChar(ch);
+    if (/[，。！？、…]/.test(ch)) typing.acc -= 1.5 / cps;  // 標點停一下
+  }
+  if (typing.i >= typing.text.length && typing.acc > 1.5) { typing = null; bubble.style.display = 'none'; }
+}
+
+// ───── 套用網址參數 ─────
+if (qs.has('expr')) rigs.forEach(r => r.setExpression(qs.get('expr')));
+if (qs.has('mouth')) rigs.forEach(r => r.mouthOverride = qs.get('mouth'));
+if (qs.has('clip') && !sheetItems) { rig.play(qs.get('clip'), { fade: 0 }); }
+const angle = qs.has('angle') ? +qs.get('angle') : null;
+if (angle !== null) rigs.forEach(r => r.object.rotation.y = angle);
+const frozen = qs.has('t');
+if (frozen) {
+  // 從頭模擬到 t（頭髮物理才會對），之後就不動
+  for (const r of rigs) { r.autoBlink = false; r.resetDangles(); r.time = 0; }
+  // 一排動作時，受傷和倒地用比較好看的時間點
+  const SHEET_T = { shoot: 0.37, hurt: 0.1, down: 1.8 };
+  rigs.forEach((r, i) => {
+    const T = sheet === 'clip' ? SHEET_T[sheetItems[i][0]] ?? +qs.get('t') : +qs.get('t');
+    for (let k = 0; k < Math.round(T * 60); k++) r.update(1 / 60);
+  });
+}
+refreshAll();
+resize();
+requestAnimationFrame(resize);
+
+// ───── 主迴圈 ─────
+const clock = new THREE.Clock();
+let circleA = 0;
+const v = new THREE.Vector3();
+renderer.setAnimationLoop(() => {
+  const dt = Math.min(clock.getDelta(), 1 / 20);
+  if (!frozen) {
+    if (walkCircle) {
+      const speed = rig.clipName === 'run' ? 1.7 : 0.75, rad = 1.3;
+      circleA += dt * speed / rad;
+      rig.object.position.set(Math.cos(circleA) * rad, 0, Math.sin(circleA) * rad);
+      rig.object.rotation.y = -circleA + Math.PI;   // 面向前進方向（逆時針）
+    } else if (spin) for (const r of rigs) r.object.rotation.y += dt * 0.8;
+    stepTyping(dt);
+    for (const r of rigs) r.update(dt);
+  }
+  controls.update();
+  renderer.render(scene, cam);
+  for (const { d, r } of tags) {
+    v.set(r.object.position.x, -0.12, r.object.position.z).project(cam);
+    d.style.left = ((v.x + 1) / 2 * innerWidth) + 'px';
+    d.style.top = ((1 - v.y) / 2 * innerHeight) + 'px';
+  }
+  refreshAll();
+});
+</script>
+</body>
+</html>
