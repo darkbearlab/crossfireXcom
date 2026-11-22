@@ -9,19 +9,23 @@
 | `src/rigs/akane.js` | 朱音的資料：部位、站姿、臉的排列、表情、嘴形對照 |
 | `voxel-rig.html` | 預覽頁（手機直向可用） |
 
-## 1. 拆法
+## 1. 比例和拆法
+
+比例直接從參考圖量：把 `art/pixel/akane.png` 的正面、側面、背面切成每 15 像素一格的字元圖，腳底在 0、頭頂大約在 50 格，模型就照這張格子圖排。
+結果大約 4 頭身，腿佔身高將近一半（靴子 0–11、大腿 12–22、裙子 22–28、上身 29–36、頭 38–51、馬尾到 62）。
+`unit: 48` 表示一格＝身高的 1/48（第一版 Q 版是 32，這一版細一階）。
 
 ```
 root（腳底，整隻角色）
-└ hips 骨盆（y=12）
-  ├ thighL ─ shinL（膝蓋 y=8，含靴子）       thighR ─ shinR（鏡像）
-  ├ skirt 裙子（腰 y=14）
-  ├ ribbon1 ─ ribbon2  背後飄帶（會甩）
-  └ torso 上身（腰 y=15）
+└ hips 骨盆（y=24）
+  ├ thighL ─ shinL（髖 y=23、膝蓋 y=13，含靴子）   thighR ─ shinR（鏡像）
+  ├ skirt 裙子（腰 y=28.5）
+  ├ ribbon1 ─ ribbon2  腰後的大蝴蝶結和兩條飄帶（會甩）
+  └ torso 上身（腰 y=29）
     ├ bow 胸前蝴蝶結（發光）
-    ├ upperArmL ─ lowerArmL ─ gunL ─ flashL（槍口火光，平常藏著）
+    ├ upperArmL ─ lowerArmL ─ gunL ─ flashL（肩 y=36.5、肘 y=30、槍的樞紐在手掌；flash 是槍口火光，平常藏著）
     ├ upperArmR ─ lowerArmR ─ gunR ─ flashR（鏡像）
-    └ head 頭（脖子 y=22，含頭髮、鬢角、耳朵、髮圈）
+    └ head 頭（脖子 y=38，含頭髮、鬢角、耳朵、髮圈）
       ├ 臉的貼片：eyes / brows / mouth / blush 各種排列
       └ pony1 ─ pony2 ─ pony3  馬尾三節（會甩，越後面越軟）
 ```
@@ -35,7 +39,7 @@ root（腳底，整隻角色）
 ```js
 export default {
   id: 'akane', name: '朱音',
-  unit: 32,                     // 身高幾格（決定一格多大：s = 身高 / unit）
+  unit: 48,                     // 身高幾格（決定一格多大：s = 身高 / unit）
   parts: {                      // 上層要寫在下層前面
     thighL: {
       parent: 'hips',           // 不寫＝掛在 root
@@ -52,7 +56,9 @@ export default {
 };
 ```
 
-**座標**：`+x`＝角色的左手邊、`+y` 往上（0＝腳底）、`+z`＝臉朝的方向。方塊 `(x,y,z)` 佔 `x±0.5、y..y+1、z±0.5`。身體中線在 `x=0, z=-0.5`。
+**座標**：`+x`＝角色的左手邊、`+y` 往上（0＝腳底）、`+z`＝臉朝的方向。方塊 `(x,y,z)` 佔 `x±0.5、y..y+1、z±0.5`。朱音的身體中線在 `x=0, z=0`。
+
+**解析度不同的角色可以共用動作**：動作裡的位移（`px/py/pz`）和頭髮物理的參數都是用「32 格身高」寫的，程式會依 `unit` 自動換算，所以 48 格的朱音和之後 32 格或 64 格的角色用同一套動作和 `dangle` 參數。
 
 **排方塊工具**（`build(v)` 的 `v`）：
 `box(x0,x1,y0,y1,z0,z1,顏色,模式)`、`sym(...)` 左右對稱、`dot(x,y,z,...)`、`clear(...)`、`spike(x,y,z, dx,dy,dz, 步數, 顏色, 粗細)` 往尖端變細的刺（頭髮用）。
@@ -71,14 +77,14 @@ face: {
   colors: { k: '#3a0a12', r: '#c01018', w: '#ffffff', m: '#7a1f2a', ... },
   blinkEyes: 'closed',                      // 眨眼時換成哪一種眼睛
   layers: {
-    eyes: { y: 28, variants: {              // y＝第一列在哪一格高
+    eyes: { y: 44, variants: {              // y＝第一列在哪一格高
       open:  ['.kk...kk.', '.wr...wr.', '.rR...rR.', '.qq...qq.'],
       happy: ['.........', '.kk...kk.', 'k..k.k..k', '.........'],
       ...
     }},
-    brows: { z: 3.5, depth: 1.1, variants: { angry: { y: 30, rows: [...] }, ... } }, // 眉毛疊在瀏海前面
-    mouth: { y: 24, variants: { rest: [...], big: [...], ... } },
-    blush: { y: 24, variants: { on: ['pp.....pp'] } },
+    brows: { z: 3.5, depth: 1.1, variants: { angry: { y: 46, rows: [...] }, ... } }, // 眉毛疊在瀏海前面
+    mouth: { y: 40, variants: { rest: [...], big: [...], ... } },
+    blush: { y: 40, variants: { on: ['pp.....pp'] } },
   },
 },
 expressions: {                               // 表情＝每層用哪一種
@@ -163,11 +169,11 @@ rig.parts.head.group                 // 任何部位的 Group，要掛東西（�
    頭髮物理是看世界加速度算的，所以只要整個 mesh 在移動，馬尾就會自己甩。
 3. **劇情對話**：`src/scene.js` 的打字機每打一個字呼叫 `rig.speakChar(ch)`；角色立繪如果改成從這個模型即時算（而不是事先渲染好的圖），表情可以跟台詞資料走（例如每句台詞加 `face: 'angry'`）。
 
-效能：每隻約 40 個 draw call，戰場上十幾隻還可以；之後如果手機吃力，可以把同材質的部位合併到一個 `SkinnedMesh`（每個部位一根骨頭），一隻就降到 2～3 個 draw call，資料格式不用變。
+效能：每隻約 40 個 draw call（解析度提高只會讓頂點變多，draw call 不變），戰場上十幾隻還可以；之後如果手機吃力，可以把同材質的部位合併到一個 `SkinnedMesh`（每個部位一根骨頭），一隻就降到 2～3 個 draw call，資料格式不用變。
 
 ## 7. 已知限制／之後可以做
 
 - 倒地時馬尾和飄帶會穿進地板（沒有碰撞）。
 - 臉只有正面有，側面、背面看不到表情（Q 版正常）。
 - 對嘴是隨機嘴形，不是真的照發音；要更準可以接注音／拼音表。
-- 手臂只有一格寬，從正面看細；如果覺得太細可以改成 2 格（只要改 `upperArmL`、`lowerArmL` 的 `build`）。
+- 參考圖的格子圖是用程式切的（每 15 像素一格），要再細一階可以改成每 10 像素一格、`unit: 72`，部位的座標乘 1.5 重排。

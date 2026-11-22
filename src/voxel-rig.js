@@ -313,6 +313,9 @@ export class VoxelRig {
     const P = n => pose[n] ??= blank();
     restPose(P, this);
     this.clips[name].fn(t, P, this);
+    // 動作裡的位移是用「32 格身高」寫的，換成這個角色的格子
+    const u = this.def.unit / 32;
+    if (u !== 1) for (const e of Object.values(pose)) { e.px *= u; e.py *= u; e.pz *= u; }
     return pose;
   }
 
@@ -358,7 +361,7 @@ export class VoxelRig {
     const h = Math.min(dt, 1 / 20);
     for (const part of list) {
       const D = part.dangle, g = part.group;
-      g.getWorldPosition(wp); wp.divideScalar(this.s);       // 換成「格」
+      g.getWorldPosition(wp); wp.divideScalar(this.s * this.def.unit / 32);   // 換成「32 格身高」的格，參數不用跟著解析度改
       if (!D.prev || h <= 0) { D.prev = wp.clone(); D.vel = new THREE.Vector3(); a.set(0, 0, 0); }
       else {
         const v = wp.clone().sub(D.prev).divideScalar(h);
