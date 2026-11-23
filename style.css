@@ -288,3 +288,12 @@ html, body, button, #hud, #hud * { touch-action: manipulation; }
 #watch-cap .wc-log { font-size: 12px; color: #b8c4d0; white-space: pre-wrap; margin-top: 2px; }
 #watch-cap .wc-why:empty, #watch-cap .wc-cmd:empty, #watch-cap .wc-log:empty { display: none; }
 @media (max-width: 600px) { #watch-cap { bottom: auto; top: 56px; font-size: 13px; } #watch-cap .wc-why { font-size: 14px; } }
+/* 射擊結果分階、移動後的交火預覽 */
+.tiers { display: flex; flex-wrap: wrap; gap: 3px; margin: 3px 0; }
+.tier { font-size: 11px; padding: 1px 5px; border-radius: 3px; background: #2a3440; color: #c8d4e0; white-space: nowrap; }
+.tier.hi { background: #1f5a34; color: #d8ffe2; }
+.tier.mid { background: #5a4a1a; color: #fff0c0; }
+.tier.lo { background: #4a2626; color: #ffd0d0; }
+.tier.no { opacity: .5; }
+.duel { margin-top: 4px; padding-top: 4px; border-top: 1px solid #ffffff22; font-size: 12px; line-height: 1.5; }
+.duel b.bad { color: #ff8080; } .duel b.warn { color: #ffd060; }

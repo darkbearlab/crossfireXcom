@@ -77,11 +77,11 @@ export function updateHUD(S) {
     const st = [];
     if (u.alive && u.suppressed) st.push('<span class="sup">壓制中</span>');
     else if (u.alive && u.pinned) st.push('<span class="sup">受阻</span>');
-    else if (u.alive && u.steady) st.push('<span>穩住：這次主動權不會被壓制</span>');
-    if (u.alive && u.locked) st.push('<span class="sup">被人偶纏住：這次主動權不能再行動</span>');
-    if (u.alive && u.bitten && u.bitten.alive) st.push(`<span class="sup">被 ${u.bitten.hp} 隻使魔咬住：敵方交出主動權時每隻 ${RULES.BITE_CHANCE}% 咬傷她，隊友朝她開槍可以打掉</span>`);
-    if (u.alive && u.crowLocked) st.push('<span class="sup">被烏鴉纏住：隊友朝她開槍打掉烏鴉，或打中稻草人</span>');
-    if (u.alive && u.crowAimed) st.push(`<span class="sup">⚠ ${u.crowAimed.name}的烏鴉瞄準她：敵方一行動就會放出${u.crowAimedLast ? '（只剩她能行動，被纏住就輸）' : ''}</span>`);
+    else if (u.alive && u.steady) st.push('<span>穩住</span>');
+    if (u.alive && u.locked) st.push('<span class="sup">被人偶纏住</span>');
+    if (u.alive && u.bitten && u.bitten.alive) st.push(`<span class="sup">被 ${u.bitten.hp} 隻使魔咬住（每隻 ${RULES.BITE_CHANCE}%）</span>`);
+    if (u.alive && u.crowLocked) st.push('<span class="sup">被烏鴉纏住</span>');
+    if (u.alive && u.crowAimed) st.push(`<span class="sup">⚠ 烏鴉瞄準她${u.crowAimedLast ? '（被纏住就輸）' : ''}</span>`);
     if (u.alive && u.firedOut) st.push('<span class="dim">不能再開槍</span>');
     if (u.alive && u.transformed) st.push('<span class="mg">變身中</span>');
     if (u.alive && u.raised) st.push('<span class="ice">冰上</span>');
@@ -129,15 +129,16 @@ export function updateHUD(S) {
 export function showTargeting(list, idx, triple = null) {
   const el = $('target-panel');
   el.hidden = false;
-  el.innerHTML = `<div class="tp-title">選擇目標 <small>Tab 切換 · 點擊敵人也可</small></div>` +
+  el.innerHTML = `<div class="tp-title">選擇目標</div>` +
     list.map((t, i) => {
       const a = t.armor ?? (t.unit.armor || 0), n = triple ? t.odds.dice * 2 : t.odds.dice, eff = effHit(t.odds, a, n);
-      const arm = a ? `<br><small class="${eff ? 'warn' : 'bad'}">裝甲 ${a}：要中 ${a + 1} 顆才有效${eff ? '' : '，這槍不可能有效'}（至少中一顆 ${effHit(t.odds, 0, n)}%）</small>` : '';
+      const arm = a ? `<br><small class="${eff ? 'warn' : 'bad'}">裝甲 ${a}${eff ? '' : '：這槍不可能有效'}</small>` : '';
+      const tiers = t.unit.kind === 'scarecrow' ? '' : `<div class="tiers">${tiersHtml(outcomeTiers(t.unit, t.odds, a, n, t.floor || 0))}</div>`;
       return `
       <div class="tgt ${i === idx ? 'on' : ''}" data-i="${i}">
-        <div><b>${t.unit.name}</b> <small>生命 ${t.unit.hp}/${t.unit.maxHp} · ${t.unit.flying ? (t.unit.attached ? `纏在${t.unit.attached.name}身上，每中一顆打掉一隻（不會傷到她）` : '在空中（沒有掩體），每中一顆打掉一隻') : t.unit.kind === 'scarecrow' ? `打中一顆，烏鴉就傳送回它身上${t.unit.flock ? '（現在有烏鴉在外面）' : ''}` : t.unit.unflinching ? '不會受阻／壓制，每中一顆受 1 傷' : '累積 ' + stressPips(t.unit)}${t.unit.alerted ? '' : ' · 未察覺'}</small></div>
+        <div><b>${t.unit.name}</b> <small>生命 ${t.unit.hp}/${t.unit.maxHp}${t.unit.flying || t.unit.unflinching || t.unit.kind === 'scarecrow' ? '' : ' · 累積 ' + stressPips(t.unit)}${t.unit.alerted ? '' : ' · 未察覺'}</small></div>
         <div class="hit">${a ? eff : t.odds.hit}%</div>
-        <small>${diceLine(t.odds, triple)} · ${coverName(t.odds)} · 距離 ${t.odds.dist.toFixed(1)}${t.odds.sweet ? ' · 甜蜜距離' : ''}</small>${arm}${t.unit.lockOnHit ? `<br><small class="warn">⛓ 沒打倒的話，這次主動權她不能再行動（主動攻擊人偶每顆骰 +${t.unit.bigTarget}%）</small>` : ''}
+        ${tiers}<small>${diceLine(t.odds, triple)} · ${coverName(t.odds)} · 距離 ${t.odds.dist.toFixed(1)}${t.odds.sweet ? ' · 甜蜜距離' : ''}</small>${arm}${t.unit.lockOnHit ? `<br><small class="warn">⛓ 沒打倒的話這次主動權不能再行動</small>` : ''}
       </div>`;
     }).join('') +
     (triple === null ? '' : `<button id="tp-triple" class="${triple ? 'on' : ''}">三管齊發：${triple ? '開' : '關'}（耗 3 發、骰數加倍）</button>`) +
@@ -178,6 +179,29 @@ export function effHit(o, armor = 0, n = o.dice) {
   }
   return Math.max(0, Math.round((1 - miss) * 100));
 }
+
+// 這一槍的結果分階：命中數的分佈（扣掉裝甲）→ 至少受阻／壓制／受傷／打倒的機率
+// floor：這一下最多扣到哪（頭目一段、少女一顆心），打到 floor 算「打掉這段」
+export function outcomeTiers(t, o, armor = 0, n = o.dice, floor = 0) {
+  const p = o.die / 100;
+  const pk = []; let c = 1; // P(中 k 顆)
+  for (let k = 0; k <= n; k++) { pk.push(c * Math.pow(p, k) * Math.pow(1 - p, n - k)); c = c * (n - k) / (k + 1); }
+  const direct = t.unflinching || t.fragile;
+  const s0 = t.stress || 0;
+  const at = need => Math.round(pk.reduce((a, v, k) => a + (Math.max(0, k - armor) >= need ? v : 0), 0) * 100);
+  const out = [];
+  if (!direct && !t.flying && !t.steady) {
+    if (s0 < 1 && !t.pinned && !t.suppressed) out.push(['受阻', at(1 - s0)]);
+    if (s0 < 2 && !t.suppressed) out.push(['壓制', at(2 - s0)]);
+  }
+  const toWound = direct ? 1 : Math.max(1, 3 - s0);   // 中幾顆才開始受傷
+  const unit = t.heartHp || 1;
+  const left = Math.ceil((t.hp - floor) / unit);       // 還要受傷幾次才打倒（或打掉這段）
+  if (left > 1) out.push([t.heartHp ? '掉心' : '受傷', at(toWound)]);
+  out.push([floor > 0 ? '打掉這段' : t.flying || t.summon ? '全滅' : '打倒', at(toWound + left - 1)]);
+  return out;
+}
+export const tiersHtml = tiers => tiers.map(([k, v]) => `<span class="tier${v >= 70 ? ' hi' : v >= 35 ? ' mid' : v > 0 ? ' lo' : ' no'}">${k} ${v}%</span>`).join('');
 
 // 累積命中：● 已累積 ○ 未累積（滿了之後每下受傷）
 export function stressPips(u) {

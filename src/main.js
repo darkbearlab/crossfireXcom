@@ -1813,7 +1813,8 @@ function updateHover() {
     else if (weapon(u).ammo <= 0) showTip(`<b>${occ.name}</b><br><small>彈匣空了</small>${info}`);
     else if (sees(u, occ)) {
       const o = oddsVs(u, occ);
-      showTip(`<b>${occ.name}</b> ${o.dice} 骰×${o.die}%：至少中一顆 <b>${o.hit}%</b>${occ.armor ? `<br>裝甲 ${occ.armor}：要中 ${occ.armor + 1} 顆才有效 <b>${UI.effHit(o, occ.armor)}%</b>` : ''}<br><small>${UI.coverName(o)}${occ.suppressed ? ' · 壓制中' : occ.pinned ? ' · 受阻' : ''} · 點敵人瞄準</small>${info}`);
+      const arm = u.apNext ? 0 : Math.max(0, (occ.armor || 0) - (weapon(u).pierce || 0));
+      showTip(`<b>${occ.name}</b> ${o.dice} 骰×${o.die}%：有效 <b>${arm ? UI.effHit(o, arm) : o.hit}%</b>${arm ? `（裝甲 ${arm}）` : ''}<div class="tiers">${UI.tiersHtml(UI.outcomeTiers(occ, o, arm, o.dice, segFloor(occ)))}</div><small>${UI.coverName(o)}${occ.suppressed ? ' · 壓制中' : occ.pinned ? ' · 受阻' : ''}</small>${info}`);
     } else showTip(`<b>${occ.name}</b><br><small>無視線</small>${info}`);
     return;
   }
@@ -1839,7 +1840,36 @@ function updateHover() {
   const head = (mv.vault ? '翻越' : `移動 ${dist(u, mv).toFixed(1)} 格`) + (extra.length ? `（${extra.join('・')}）` : '') + confirmHint();
   const sc = scouters(t).filter(e => e.mesh.visible).length; // 只算看得到的使魔，不洩漏迷霧
   const scRow = sc ? `<br><span class="warn">偵查：${sc} 隻使魔看得到這裡，${scoutOdds(sc)}% 搶走主動權</span>` : '';
-  showTip(`<b>${head}</b>${spotRow(spot)}${riskRows(u, plan)}${scRow}`);
+  showTip(`<b>${head}</b>${spotRow(spot)}${riskRows(u, plan)}${scRow}${duelRows(u, t)}`);
+}
+
+// 移動預覽：站到 p 之後，看得到的敵人「我打他／他打我」的機率（只算已經看得到的敵人）
+// 我打他：移動後（瞄準鏡、千夏的鷹眼都沒了）；他打我：敵方主動權時他正常開槍
+function duelRows(u, p) {
+  const me = Object.create(u);
+  me.x = p.x; me.z = p.z; me.movedInit = S.initNo;
+  const rows = [];
+  for (const e of enemies()) {
+    if (!e.mesh.visible || e.flying || e.kind === 'scarecrow') continue;
+    const iSee = sees(me, e), heSees = !e.noGun && sees(e, me);
+    if (!iSee && !heSees) continue;
+    let mine = '—';
+    if (iSee) {
+      const o = oddsVs(me, e);
+      const arm = u.apNext ? 0 : Math.max(0, (e.armor || 0) - (weapon(u).pierce || 0));
+      mine = `${arm ? UI.effHit(o, arm) : o.hit}%`;
+    }
+    let his = '—', hisN = 0;
+    if (heSees) {
+      const o = oddsVs(e, me);
+      hisN = UI.effHit(o, 0);
+      his = `${hisN}%${o.cover === 0 ? '（沒掩體）' : ''}`;
+    }
+    rows.push({ e, txt: `${e.name}${e.alerted ? '' : '<small>（未察覺）</small>'}：我打他 <b>${mine}</b>・他打我 <b class="${hisN >= 50 ? 'bad' : hisN >= 25 ? 'warn' : ''}">${his}</b>`, k: hisN });
+  }
+  if (!rows.length) return '<br><small>到了那裡：沒有已知敵人能互相看到</small>';
+  rows.sort((a, b) => b.k - a.k);
+  return `<div class="duel"><b>到了那裡</b><br>${rows.slice(0, 5).map(r => r.txt).join('<br>')}${rows.length > 5 ? `<br><small>還有 ${rows.length - 5} 個</small>` : ''}</div>`;
 }
 
 function magicHover(u, t) {
@@ -1966,7 +1996,7 @@ function enterTargetMode(pref) {
   const ts = visibleTargets(u);
   if (!ts.length) { UI.toast('沒有視線內的目標'); return; }
   S.mode = 'target';
-  S.targets = ts.map(t => ({ ...t, armor: u.apNext ? 0 : Math.max(0, (t.unit.armor || 0) - (weapon(u).pierce || 0)) })); // 裝了穿甲彈就不算裝甲；榴彈無視 1～2 點
+  S.targets = ts.map(t => ({ ...t, floor: segFloor(t.unit), armor: u.apNext ? 0 : Math.max(0, (t.unit.armor || 0) - (weapon(u).pierce || 0)) })); // 裝了穿甲彈就不算裝甲；榴彈無視 1～2 點
   S.targetIdx = Math.max(0, ts.findIndex(t => t.unit === pref));
   S.moves = null;
   drawRange();

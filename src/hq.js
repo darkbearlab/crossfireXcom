@@ -97,7 +97,7 @@ export function showHQ(onGo, notes = []) {
 
 function opDesc(op) {
   const story = Camp.C.mode === 'story';
-  if (op.kind === 'facility') return story ? '家族的設施（不知道是誰的；她可能親自現身）。打贏得到情報：翻開一張蓋著的反制' : (op.member ? `${FAMILY_BY_ID[op.member].title}・${FAMILY_BY_ID[op.member].name} 的設施` : '隨機設施');
+  if (op.kind === 'facility') return story ? '家族的設施（成員可能現身）・打贏翻開一張反制' : (op.member ? `${FAMILY_BY_ID[op.member].title}・${FAMILY_BY_ID[op.member].name} 的設施` : '隨機設施');
   if (op.kind === 'boss') return `她的據點：三段生命的頭目戰。打倒她，拔掉「${FAMILY_BY_ID[op.member].buff}」`;
   if (op.kind === 'manor') return '削弱增援產能；也許會有成員在場';
   if (op.kind === 'stop') return `打贏就取消這張反制：${COUNTERS[op.card].desc}（家族嚴加看守：難度 +2）`;
@@ -138,12 +138,11 @@ function render() {
       const left = m.alive && C.phase === 'field' ? (m.repels >= RULES.REPELS ? ' · 找到據點了' : ` · 擊退 ${m.repels}/${RULES.REPELS}`) + (m.boost ? ` · 強化 +${m.boost} 骰` : '') : '';
       return `<div class="fam ${m.alive ? '' : 'down'}"><b>${d.title}・${d.name}</b>${left}<br><small>${d.buff}：${d.desc}</small></div>`;
     }).join('');
-    if (C.phase === 'field') fam += `<div class="fam note"><small>成員會在自己的設施偶爾現身，擊退 ${RULES.REPELS} 次就找到她的據點。打倒 ${Camp.manorAt()} 名成員後家族退守莊園，剩下的成員會和教母一起出現。</small></div>`;
     const cards = C.cards.map(c => c.revealed
       ? `<div class="fam card"><b>${COUNTERS[c.id].name}</b> · ${c.left} 回合後生效<br><small>${COUNTERS[c.id].desc}</small></div>`
-      : `<div class="fam card hidden"><b>？？？</b> · ${c.left} 回合後生效<br><small>蓋著的反制。打贏設施作戰可以翻開</small></div>`).join('');
+      : `<div class="fam card hidden"><b>？？？</b> · ${c.left} 回合後生效</div>`).join('');
     const done = Object.entries(C.mods || {}).filter(([, n]) => n > 0).map(([k, n]) => `${COUNTERS[k].name}${n > 1 ? '×' + n : ''}`).join('、');
-    fam = `<div class="fam threat"><b>家族威脅 ${C.threat}</b><br><small>每生效一張反制 +1，難度跟著上升${done ? `。已生效：${done}` : ''}</small></div>` + cards + fam;
+    fam = `<div class="fam threat"><b>家族威脅 ${C.threat}</b>${done ? `<br><small>已生效：${done}</small>` : ''}</div>` + cards + fam;
     if (C.phase === 'manor') fam += `<div class="fam prod"><b>莊園增援產能 ${C.production}</b><br><small>決戰時的增援波數</small></div>`;
   } else {
     const counts = {};
@@ -207,8 +206,7 @@ function render() {
   const marketHtml = C.phase === 'done' ? '' : `<div class="sec">黑市 · 戰利品 ${loot}</div><div class="market">
     ${mk.buy.map((o, i) => `<button class="mk-buy" data-i="${i}" ${o.sold || loot < o.price ? 'disabled' : ''} title="${ITEMS[o.item].desc}">${o.sold ? '（已買）' : ''}${ITEMS[o.item].name}：${o.price} 戰利品</button>`).join('')}
     ${mk.trades.map((t, i) => `<button class="mk-trade" data-i="${i}" ${t.done || (C.stash[t.give] || 0) < t.n ? 'disabled' : ''} title="${ITEMS[t.get].desc}">${t.done ? '（已換）' : ''}${ITEMS[t.give].name}×${t.n} → ${ITEMS[t.get].name}</button>`).join('')}
-    ${stashList.length ? `<select class="mk-sell"><option value="">賣掉倉庫的東西…</option>${stashList.map(([k, n]) => `<option value="${k}">${ITEMS[k].name}（${n}）→ ${Camp.sellPrice(k)} 戰利品</option>`).join('')}</select>` : ''}
-    <small class="dim">黑市每回合換貨；戰利品打贏 3、打輸 1，每打倒 2 名敵人再 +1。買賣不花回合</small></div>`;
+    ${stashList.length ? `<select class="mk-sell"><option value="">賣掉倉庫的東西…</option>${stashList.map(([k, n]) => `<option value="${k}">${ITEMS[k].name}（${n}）→ ${Camp.sellPrice(k)} 戰利品</option>`).join('')}</select>` : ''}</div>`;
   const stashHtml = stashList.length ? stashList.map(([k, n]) => `<span title="${ITEMS[k].desc}">${ITEMS[k].name}×${n}</span>`).join('、') : '<span class="dim">空的</span>';
   const notes = [...st.notes, ...st.recalled.map(id => `${GIRL_BY(id).name} 提前歸隊（至少 2/3 血）`)];
 
