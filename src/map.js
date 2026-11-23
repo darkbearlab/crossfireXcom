@@ -1,6 +1,14 @@
 // 小地圖程序生成：責任區、建築、掩體、隱蔽區、散佈的敵人崗哨、任務目標、補給箱。
 import { T, MAPGEN, enemyGroups, mapScale } from './config.js';
 import { coverSides, coverAt, hasLOS, dist } from './grid.js';
+import { LAYOUTS } from './layouts.js';
+
+// 掩體的「樣子」：格局標上去，畫面照它挑模型（同一個 tag 在不同場景組可以長得不一樣）。0 = 沒標，用場景組的預設
+export const TAGS = ['', 'wall', 'bldg', 'pillar', 'crate', 'rubble', 'shop', 'counter', 'stall', 'kiosk', 'scooter', 'bin',
+  'container', 'carpile', 'kennel', 'pallet', 'barrel', 'train', 'platform', 'station', 'bench', 'warehouse',
+  'car', 'table', 'seat', 'slot', 'ropes', 'vault', 'cash', 'partition', 'desk', 'shelf', 'machine', 'cauldron', 'vat',
+  'hedge', 'tree', 'fountain', 'grave', 'flowerbed', 'manor', 'church', 'tower', 'statue', 'doghouse', 'tire', 'cart', 'rack', 'sandbag', 'rock'];
+const TAG_ID = Object.fromEntries(TAGS.map((t, i) => [t, i]));
 
 export class GameMap {
   constructor(w, h) {
@@ -10,7 +18,13 @@ export class GameMap {
     this.conceal = new Uint8Array(w * h); // 隱蔽區（草叢、陰影…）
     this.zone = new Int16Array(w * h);    // 責任區編號；0 = 部署帶，沒有人負責
     this.fog = new Uint8Array(w * h);     // 迷霧（卡蜜拉的「迷香」）：擋視線，站在裡面只有相鄰的人看得到
+    this.tag = new Uint8Array(w * h);     // 掩體的樣子（TAGS 的編號）
+    this.floor = new Uint8Array(w * h);   // 地面種類：0 主要、1 第二種（人行道、走道）、2 特殊（鐵軌、室內、舞台）
   }
+  tagAt(x, z) { return this.inB(x, z) ? TAGS[this.tag[z * this.w + x]] || '' : ''; }
+  setTag(x, z, t) { if (this.inB(x, z)) this.tag[z * this.w + x] = TAG_ID[t] || 0; }
+  floorAt(x, z) { return this.inB(x, z) ? this.floor[z * this.w + x] : 0; }
+  setFloor(x, z, v) { if (this.inB(x, z)) this.floor[z * this.w + x] = v; }
   inB(x, z) { return x >= 0 && z >= 0 && x < this.w && z < this.h; }
   get(x, z) { return this.inB(x, z) ? this.tiles[z * this.w + x] : T.FULL; }
   set(x, z, v) { if (this.inB(x, z)) this.tiles[z * this.w + x] = v; }
@@ -167,66 +181,12 @@ function tryGenerate(level, opts) {
     m.setZone(x, z, 1 + ci * rows + rI);
   }
 
-  // ---- 建築：外牆是全掩體，有門；有些是廢墟，破牆變半掩體。室內是自己的責任區 ----
-  const nb = ri(2, 3) + big;
-  for (let b = 0; b < nb; b++) {
-    const bw = ri(3, 5), bh = ri(3, 5);
-    const x0 = ri(DC + 2, w - bw - 1), z0 = ri(0, h - bh);
-    const ruined = Math.random() < 0.5;
-    const perim = [];
-    for (let x = x0; x < x0 + bw; x++) {
-      for (let z = z0; z < z0 + bh; z++) {
-        const ex = x === x0 || x === x0 + bw - 1;
-        const ez = z === z0 || z === z0 + bh - 1;
-        m.setConceal(x, z, 0);
-        if (!ex && !ez) { m.set(x, z, T.FLOOR); m.setZone(x, z, 20 + b); continue; }
-        m.set(x, z, T.FULL);
-        if (!(ex && ez)) perim.push([x, z]);
-      }
-    }
-    shuffle(perim);
-    const doors = ri(2, 3);
-    perim.forEach(([x, z], i) => {
-      if (i < doors) { m.set(x, z, T.FLOOR); m.setZone(x, z, 20 + b); }
-      else if (ruined && Math.random() < 0.35) m.set(x, z, T.HALF);
-    });
-  }
-
-  // ---- 柱子 / 樹 ----
-  const np = ri(3, 6) + big * 2;
-  for (let i = 0; i < np; i++) {
-    const x = ri(DC, w - 2), z = ri(0, h - 1);
-    if (m.get(x, z) === T.FLOOR) m.set(x, z, T.FULL);
-  }
-
-  // ---- 半掩體群 ----
-  const nh = Math.round(w * h * 0.045);
-  for (let i = 0; i < nh; i++) {
-    let x = ri(1, w - 2), z = ri(0, h - 1);
-    const horiz = Math.random() < 0.5;
-    const len = ri(1, 3);
-    for (let j = 0; j < len; j++) {
-      if (m.get(x, z) === T.FLOOR) m.set(x, z, T.HALF);
-      if (horiz) x++; else z++;
-    }
-  }
-
-  // ---- 隱蔽區：幾團隨機漫步的區塊 ----
-  const nc = ri(4, 6) + big * 2;
-  for (let i = 0; i < nc; i++) {
-    let x = ri(DC, w - 2), z = ri(0, h - 1);
-    const len = ri(5, 9);
-    for (let j = 0; j < len; j++) {
-      if (m.get(x, z) === T.FLOOR && m.zoneAt(x, z) < 20) m.setConceal(x, z, 1);
-      const [dx, dz] = [[1, 0], [-1, 0], [0, 1], [0, -1]][ri(0, 3)];
-      x = Math.max(DC, Math.min(w - 1, x + dx));
-      z = Math.max(0, Math.min(h - 1, z + dz));
-    }
-  }
+  // ---- 格局：建築、掩體、隱蔽區（layouts.js；場景組決定用哪一種）----
+  (LAYOUTS[opts.layout] || LAYOUTS.field)(m, { w, h, DC, big, p: opts.params || {} });
 
   // ---- 玩家出生區（左側） ----
   const zc = ri(1, h - 4);
-  for (let x = 0; x < DC; x++) for (let z = zc - 1; z <= zc + 3; z++) { m.set(x, z, T.FLOOR); m.setConceal(x, z, 0); }
+  for (let x = 0; x < DC; x++) for (let z = zc - 1; z <= zc + 3; z++) { m.set(x, z, T.FLOOR); m.setTag(x, z, ''); m.setConceal(x, z, 0); }
   if (m.get(DC, zc + 1) === T.FLOOR && Math.random() < 0.7) m.set(DC, zc + 1, T.HALF);
   const playerSpawns = [{ x: 1, z: zc }, { x: 1, z: zc + 2 }, { x: 0, z: zc + 1 }];
   const spawnC = { x: 1, z: zc + 1 };

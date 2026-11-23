@@ -20,6 +20,7 @@ python serve.py
 | `src/girls.js` | 四名魔法少女、成長樹、家族成員與加持、設施名稱、故事台詞 |
 | `src/campaign.js` | 戰役狀態：作戰選擇、後送、獎章、家族/莊園進度、無盡模式、存檔（localStorage） |
 | `src/hq.js` | 標題畫面、開新戰役的名單選擇、作戰室（選作戰、點成長樹、選出擊的人） |
+| `src/sites.js`、`src/layouts.js`、`src/props.js`、`src/pixtex.js` | 場景：任務地點 → 場景組（格局、道具、地面、燈光、白天晚上），方塊道具加像素貼圖。見 [docs/map-redesign.md](docs/map-redesign.md) |
 | `src/scene.js` | 劇情演出：文字冒險（自訂背景＋立繪）、戰鬥畫面當背景的對話、左上角無線電。頭像用 3D 模型渲染。見 [docs/story-scenes.md](docs/story-scenes.md) |
 | `src/map.js` | 小地圖程序生成（責任區、建築、掩體、隱蔽區、散佈的崗哨、任務目標、補給箱） |
 | `src/grid.js` | 直線移動、視線（含未警戒視線）、掩體判定、骰數與每顆骰命中率 |

@@ -55,7 +55,8 @@ function weaponLine(u) {
 }
 
 export function updateHUD(S) {
-  $('mission').textContent = `${S.opName}｜${S.theme.name}`;
+  // 設施的名稱就是地點：只顯示白天／夜晚；據點、莊園這類名稱才把地點寫出來
+  $('mission').textContent = `${S.opName}｜${S.theme.place && S.opName.includes(S.theme.place) ? S.theme.time : S.theme.name}`;
   $('objective').textContent = S.mission ? missionText(S.mission) : '';
   const t = $('turn');
   t.textContent = S.side === 'deploy' ? '部署階段' : `主動權：${S.side === 'player' ? '我方' : '敵方'} · 第 ${S.initNo} 輪`;

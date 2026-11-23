@@ -11,7 +11,7 @@
 // - 魔法少女：7 人池子挑 5 人、每張地圖出 3 人；每人一個被動、一個魔法（每圖一次），兩條成長樹。
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { ITEMS, T, RULES, THEMES, ENEMY_TYPES, WEAPONS } from './config.js';
+import { ITEMS, T, RULES, ENEMY_TYPES, WEAPONS } from './config.js';
 import { generateMap, ri, GameMap } from './map.js';
 import { hasLOS, quietLOS, coverSides, coverAt, shotOdds, key, dist, clearMove, lineCells, vaultTargets, ORTH } from './grid.js';
 import { makeUnitMesh, makeScarecrowMesh, makeCrowMesh, makeImpMesh, makeBiteMesh, makeNestMesh, addHalo, heartShape } from './units.js';
@@ -21,6 +21,8 @@ import * as HQ from './hq.js';
 import * as Rec from './stats.js';
 import * as TextUI from './textui.js';
 import * as Scene from './scene.js';
+import { buildSite, cellMesh, applyLighting } from './props.js';
+import { siteFor, themeOf, legacySite } from './sites.js';
 import { GIRL, FAMILY, FAMILY_BY_ID, STORY } from './girls.js';
 
 // ================= 場景 =================
@@ -49,7 +51,8 @@ controls.maxPolarAngle = 1.2;
 // 觸控：單指留給點擊/平移；雙指只縮放不旋轉（旋轉用 ⟲ ⟳ 按鈕，每次 45°）
 controls.touches = { ONE: null, TWO: THREE.TOUCH.DOLLY_PAN }; // enablePan=false → 只剩縮放
 
-scene.add(new THREE.HemisphereLight(0xd6e6ff, 0x3a3025, 1.1));
+const hemi = new THREE.HemisphereLight(0xd6e6ff, 0x3a3025, 1.1);
+scene.add(hemi);
 const sun = new THREE.DirectionalLight(0xfff0d8, 2.4);
 sun.castShadow = true;
 sun.shadow.mapSize.set(2048, 2048);
@@ -127,7 +130,7 @@ const ICE_H = 0.8;
 
 // ================= 狀態 =================
 const S = {
-  level: 1, initNo: 1, side: 'player', map: null, theme: THEMES[0],
+  level: 1, initNo: 1, side: 'player', map: null, theme: themeOf(legacySite(0)),
   units: [], selected: null, mode: 'move', targets: [], targetIdx: 0,
   busy: false, moves: null, hover: null, roster: null, gameOver: false,
   mission: null, crates: [], objMesh: null, confirm: null,
@@ -249,40 +252,11 @@ function buildWorld() {
   world.clear();
   const { map, theme: th } = S;
   const { w, h } = map;
-  scene.background = new THREE.Color(th.sky);
-  scene.fog = new THREE.Fog(th.sky, 28, 60);
-
   const cx = (w - 1) / 2, cz = (h - 1) / 2;
-  const ground = new THREE.Mesh(new THREE.PlaneGeometry(w + 40, h + 40),
-    new THREE.MeshStandardMaterial({ color: new THREE.Color(th.floor).multiplyScalar(0.55), roughness: 1 }));
-  ground.rotation.x = -Math.PI / 2;
-  ground.position.set(cx, -0.1, cz);
-  ground.receiveShadow = true;
-  world.add(ground);
-
-  const tiles = new THREE.InstancedMesh(new THREE.BoxGeometry(0.97, 0.1, 0.97),
-    new THREE.MeshStandardMaterial({ roughness: 0.95 }), w * h);
-  tiles.receiveShadow = true;
-  tiles.frustumCulled = false;
-  const m4 = new THREE.Matrix4(), c = new THREE.Color();
-  const cA = new THREE.Color(th.floor), cB = new THREE.Color(th.floorAlt);
-  let n = 0;
-  for (let z = 0; z < h; z++) for (let x = 0; x < w; x++) {
-    m4.makeTranslation(x, -0.05, z);
-    tiles.setMatrixAt(n, m4);
-    c.copy((x + z) % 2 ? cA : cB).multiplyScalar(0.94 + Math.random() * 0.1);
-    if (map.isConceal(x, z)) c.lerp(new THREE.Color(th.conceal), 0.35).multiplyScalar(0.8);
-    tiles.setColorAt(n, c);
-    n++;
-  }
-  world.add(tiles);
-
-  S.cellMesh = new Map(); // 每格掩體的模型（楓炸掉掩體時換掉）
-  for (let z = 0; z < h; z++) for (let x = 0; x < w; x++) {
-    const t = map.get(x, z);
-    const m = t === T.HALF ? makeHalf(th, x, z) : t === T.FULL ? makeFull(th, x, z) : null;
-    if (m) { world.add(m); S.cellMesh.set(key(x, z), m); }
-  }
+  // 地面、掩體、隱蔽區、地圖外的景、燈光：照這張地圖的場景組（props.js、sites.js）
+  applyLighting(scene, hemi, sun, th);
+  buildSite(world, S);
+  const m4 = new THREE.Matrix4();
 
   // 迷霧（卡蜜拉的「迷香」）
   const fogTiles = [];
@@ -292,28 +266,6 @@ function buildWorld() {
       new THREE.MeshStandardMaterial({ color: 0xb8a0d8, transparent: true, opacity: 0.38, depthWrite: false, roughness: 1 }), fogTiles.length);
     fogTiles.forEach(([x, z], i) => fogMesh.setMatrixAt(i, m4.makeTranslation(x, 0.65, z)));
     world.add(fogMesh);
-  }
-
-  // 隱蔽區：草叢/瓦礫的細長突起
-  const cTiles = [];
-  for (let z = 0; z < h; z++) for (let x = 0; x < w; x++) if (map.isConceal(x, z)) cTiles.push([x, z]);
-  if (cTiles.length) {
-    const per = 7;
-    const tufts = new THREE.InstancedMesh(new THREE.ConeGeometry(0.07, 0.62, 4),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1 }), cTiles.length * per);
-    tufts.castShadow = true;
-    let i = 0;
-    const q = new THREE.Quaternion(), sc = new THREE.Vector3(), pos = new THREE.Vector3(), e = new THREE.Euler();
-    for (const [x, z] of cTiles) for (let j = 0; j < per; j++) {
-      const hgt = 0.7 + Math.random() * 0.6;
-      pos.set(x + (Math.random() - 0.5) * 0.85, 0.31 * hgt, z + (Math.random() - 0.5) * 0.85);
-      q.setFromEuler(e.set((Math.random() - 0.5) * 0.4, Math.random() * 6, (Math.random() - 0.5) * 0.4));
-      sc.set(1, hgt, 1);
-      tufts.setMatrixAt(i, m4.compose(pos, q, sc));
-      tufts.setColorAt(i, c.set(th.conceal).multiplyScalar(0.75 + Math.random() * 0.4));
-      i++;
-    }
-    world.add(tufts);
   }
 
   // 任務目標：終端機
@@ -360,48 +312,6 @@ function buildWorld() {
 
 function shadowed(m) { m.castShadow = true; m.receiveShadow = true; return m; }
 function tint(hex) { return new THREE.Color(hex).multiplyScalar(0.88 + Math.random() * 0.2); }
-
-function makeHalf(th, x, z) {
-  const mat = new THREE.MeshStandardMaterial({ color: tint(th.half), roughness: 0.85 });
-  let m;
-  if (th.halfStyle === 'rock') {
-    m = new THREE.Mesh(new THREE.DodecahedronGeometry(0.45), mat);
-    m.scale.set(1, 0.7, 1);
-    m.position.set(x, 0.28, z);
-    m.rotation.y = Math.random() * 6;
-  } else if (th.halfStyle === 'sandbag') {
-    m = new THREE.Mesh(new THREE.BoxGeometry(0.92, 0.55, 0.6), mat);
-    m.position.set(x, 0.27, z);
-    m.rotation.y = Math.random() < 0.5 ? 0 : Math.PI / 2;
-  } else {
-    m = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.65, 0.8), mat);
-    m.position.set(x, 0.32, z);
-    m.rotation.y = (Math.random() - 0.5) * 0.4;
-  }
-  return shadowed(m);
-}
-
-function makeFull(th, x, z) {
-  if (th.fullStyle === 'tree') {
-    const g = new THREE.Group();
-    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.14, 0.8, 8),
-      new THREE.MeshStandardMaterial({ color: 0x5a3e28 }));
-    trunk.position.y = 0.4;
-    const leafMat = new THREE.MeshStandardMaterial({ color: tint(th.full), roughness: 0.9 });
-    const c1 = new THREE.Mesh(new THREE.ConeGeometry(0.55, 1.2, 8), leafMat);
-    c1.position.y = 1.2;
-    const c2 = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.9, 8), leafMat);
-    c2.position.y = 1.75;
-    g.add(shadowed(trunk), shadowed(c1), shadowed(c2));
-    g.position.set(x, 0, z);
-    g.rotation.y = Math.random() * 6;
-    return g;
-  }
-  const m = new THREE.Mesh(new THREE.BoxGeometry(1, 1.5, 1),
-    new THREE.MeshStandardMaterial({ color: tint(th.full), roughness: 0.9 }));
-  m.position.set(x, 0.75, z);
-  return shadowed(m);
-}
 
 // ================= 單位 =================
 function meshFor(u) {
@@ -542,16 +452,20 @@ function spawnEnemy(type, x, z, zone, alerted = false) {
 // 地圖存進存檔用：typed array 轉成一般陣列、主題存索引
 function packGen(g) {
   const { map, theme, ...rest } = g;
-  return JSON.parse(JSON.stringify({ ...rest, theme: THEMES.indexOf(theme),
-    map: { w: map.w, h: map.h, tiles: Array.from(map.tiles), conceal: Array.from(map.conceal), zone: Array.from(map.zone) } }));
+  return JSON.parse(JSON.stringify({ ...rest, theme: undefined, site: { kit: theme.kit, place: theme.place, day: theme.day },
+    map: { w: map.w, h: map.h, tiles: Array.from(map.tiles), conceal: Array.from(map.conceal), zone: Array.from(map.zone),
+      tag: Array.from(map.tag), floor: Array.from(map.floor) } }));
 }
 function unpackGen(p) {
   const m = new GameMap(p.map.w, p.map.h);
   m.tiles.set(p.map.tiles);
   m.conceal.set(p.map.conceal);
   m.zone.set(p.map.zone);
+  if (p.map.tag) m.tag.set(p.map.tag);
+  if (p.map.floor) m.floor.set(p.map.floor);
   const g = JSON.parse(JSON.stringify(p));
-  return { ...g, map: m, theme: THEMES[p.theme] || THEMES[0], curse: g.curse || [], fog: g.fog || [] };
+  // 舊存檔只有主題編號：用野戰場景組
+  return { ...g, map: m, theme: themeOf(p.site || legacySite(p.theme)), curse: g.curse || [], fog: g.fog || [] };
 }
 
 function cloneGen(g) {
@@ -559,6 +473,8 @@ function cloneGen(g) {
   m.tiles.set(g.map.tiles);
   m.conceal.set(g.map.conceal);
   m.zone.set(g.map.zone);
+  m.tag.set(g.map.tag);
+  m.floor.set(g.map.floor);
   return { ...g, map: m, enemies: g.enemies.map(e => ({ ...e })), crates: g.crates.map(c => ({ x: c.x, z: c.z, type: c.type })),
     mission: JSON.parse(JSON.stringify(g.mission)), curse: [...(g.curse || [])] };
 }
@@ -636,7 +552,10 @@ function startMission() {
     } else if (op.kind === 'facility' && story && op.member && Math.random() < Camp.appearChance(op.member)) {
       extra.push([FAMILY_BY_ID[op.member].boss, 'gunman']); // 成員親自現身（天選者），帶 1 名護衛
     }
-    gen = generateMap(Camp.level(op), { type, extra, bonus: 2 * S.buffs.filter(b => b === 'book').length + Camp.mod('extra') + RULES.SQUAD_EXTRA });
+    // 地點：任務名稱決定場景組（夜市後巷 → 街巷、舊車站 → 場站＋鐵軌……），格局跟著場景組
+    const site = siteFor(op), th = themeOf(site);
+    gen = generateMap(Camp.level(op), { type, extra, layout: th.k.layout, params: th.k.params, bonus: 2 * S.buffs.filter(b => b === 'book').length + Camp.mod('extra') + RULES.SQUAD_EXTRA });
+    gen.theme = th;
     gen.curse = S.buffs.includes('sis') ? pickCurse(gen) : [];
     gen.fog = S.buffs.includes('perfume') ? pickFog(gen) : [];
     // 桃樂絲的「提線」：每張地圖至少 1 具人偶
@@ -645,7 +564,6 @@ function startMission() {
       const c = pref.length ? pref : gen.enemies.filter(p => !ENEMY_TYPES[p.type].boss && !['officer', 'scarecrow', 'crows'].includes(p.type));
       if (c.length) c[ri(0, c.length - 1)].type = 'doll';
     }
-    gen.theme = THEMES[ri(0, THEMES.length - 1)];
     gen.conds = ['facility', 'stop', 'growth'].includes(op.kind) ? facilityConds(gen, Camp.level(op)) : [];
     // 反制「重裝化」：每層把 1 名槍手換成重裝兵；「封鎖補給」：補給箱減半
     for (let i = 0; i < Camp.mod('armor'); i++) { const g = gen.enemies.find(p => p.type === 'gunman'); if (g) g.type = 'brute'; }
@@ -2405,7 +2323,7 @@ function degradeCell(x, z, to = null) {
   const k = key(x, z), old = S.cellMesh && S.cellMesh.get(k);
   if (old) { world.remove(old); disposeTree(old); S.cellMesh.delete(k); }
   S.map.set(x, z, next);
-  if (next === T.HALF) { const nm = makeHalf(S.theme, x, z); world.add(nm); S.cellMesh.set(k, nm); }
+  if (next === T.HALF) { S.map.setTag(x, z, 'rubble'); const nm = cellMesh(S.theme, S.map, x, z); world.add(nm); S.cellMesh.set(k, nm); }
   floatText({ mesh: { position: { x, z } } }, next === T.HALF ? '炸成半掩體' : '炸掉了', 'crit');
   updateVisibility();
   return true;
