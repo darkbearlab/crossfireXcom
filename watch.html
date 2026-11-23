@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>觀戰</title>
+<style>
+  :root { --bg: #0b1016; --card: #141c26; --line: #2c3a48; --fg: #e8f0f8; --dim: #9aa8b6; --why: #ffe9a8; --cmd: #8fd0ff; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, "Noto Sans TC", sans-serif; }
+  header { position: sticky; top: 0; z-index: 2; background: var(--bg); padding: 8px 16px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  header b { flex: 1; min-width: 8em; }
+  select, button { font: inherit; font-size: 13px; background: var(--card); color: var(--fg); border: 1px solid var(--line); border-radius: 6px; padding: 4px 8px; }
+  #status { font-size: 12px; color: var(--dim); }
+  main { max-width: 900px; margin: 0 auto; padding: 12px 16px 40px; }
+  #view img { width: 100%; border-radius: 8px; border: 1px solid var(--line); display: block; background: #000; }
+  #view .head { font-size: 13px; color: var(--dim); margin: 6px 0 2px; }
+  #view .why { color: var(--why); font-size: 17px; white-space: pre-wrap; }
+  #steps { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .st { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; cursor: pointer; }
+  .st.on { border-color: #6a9ac8; }
+  .st .why { color: var(--why); white-space: pre-wrap; }
+  .st .cmd { font: 13px Consolas, monospace; color: var(--cmd); }
+  .st .log { font-size: 12px; color: var(--dim); white-space: pre-wrap; margin-top: 4px; }
+  .st .meta { font-size: 11px; color: var(--dim); }
+  .empty { color: var(--dim); padding: 24px 0; text-align: center; }
+</style>
+</head>
+<body>
+<header>
+  <b>觀戰：代理在想什麼</b>
+  <select id="sid"></select>
+  <label style="font-size:13px"><input type="checkbox" id="follow" checked> 跟著最新</label>
+  <span id="status"></span>
+</header>
+<main>
+  <div id="view"><div class="empty">還沒有紀錄。遊戲網址加上 ?watch，代理開始操作後這裡會同步更新。</div></div>
+  <div id="steps"></div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let sid = new URLSearchParams(location.search).get('sid') || '', evs = [], cur = -1;
+const esc = t => String(t || '').replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const time = t => new Date(t).toLocaleTimeString('zh-TW', { hour12: false });
+
+async function sessions() {
+  try {
+    const ids = await (await fetch('/watch/sessions')).json();
+    const sel = $('#sid'), old = sel.value;
+    sel.innerHTML = ids.map(i => `<option>${i}</option>`).join('') || '<option value="">（沒有場次）</option>';
+    if (!sid && ids.length) sid = ids[0];
+    // 跟著最新時，有新場次就自動切過去
+    if ($('#follow').checked && ids.length && ids[0] !== sid && old === sid) { sid = ids[0]; evs = []; cur = -1; render(); }
+    sel.value = sid;
+  } catch { $('#status').textContent = '連不到伺服器'; }
+}
+async function poll() {
+  if (!sid) return;
+  try {
+    const next = evs.length ? evs[evs.length - 1].i + 1 : 0;
+    const add = await (await fetch(`/watch/feed?sid=${sid}&since=${next}`)).json();
+    $('#status').textContent = `更新 ${time(Date.now())}`;
+    if (!add.length) return;
+    evs.push(...add);
+    if ($('#follow').checked) cur = evs.length - 1;
+    render();
+  } catch { $('#status').textContent = '連不到伺服器'; }
+}
+function shotFor(i) { for (let j = i; j >= 0; j--) if (evs[j].shot) return evs[j]; return null; }
+function render() {
+  if (!evs.length) { $('#view').innerHTML = '<div class="empty">這個場次還沒有紀錄。</div>'; $('#steps').innerHTML = ''; return; }
+  const e = evs[Math.max(0, cur)], s = shotFor(Math.max(0, cur));
+  $('#view').innerHTML = (s ? `<img src="${s.shot}" alt="">` : '') +
+    `<div class="head">#${e.i}　${esc(e.head)}　${time(e.t)}</div><div class="why">${esc(e.why) || '（沒寫理由）'}</div>`;
+  $('#steps').innerHTML = evs.slice().reverse().map(e => `<div class="st${e === evs[cur] ? ' on' : ''}" data-i="${evs.indexOf(e)}">
+    <div class="meta">#${e.i}　${time(e.t)}　${esc(e.head)}</div>
+    ${e.why ? `<div class="why">${esc(e.why)}</div>` : ''}${e.cmd ? `<div class="cmd">▶ ${esc(e.cmd)}</div>` : ''}
+    ${e.log && e.log.length ? `<div class="log">${esc(e.log.slice(-12).join('\n'))}${e.log.length > 12 ? `\n…（共 ${e.log.length} 行）` : ''}</div>` : ''}</div>`).join('');
+}
+$('#steps').onclick = ev => {
+  const d = ev.target.closest('.st'); if (!d) return;
+  cur = +d.dataset.i; $('#follow').checked = false; render(); window.scrollTo({ top: 0, behavior: 'smooth' });
+};
+$('#sid').onchange = () => { sid = $('#sid').value; evs = []; cur = -1; render(); poll(); };
+$('#follow').onchange = () => { if ($('#follow').checked) { cur = evs.length - 1; render(); } };
+sessions().then(poll);
+setInterval(poll, 1500);
+setInterval(sessions, 5000);
+</script>
+</body>
+</html>

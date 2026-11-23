@@ -6,6 +6,8 @@
 // 網址加上 ?text 會在畫面右側顯示文字面板（含指令輸入框）。
 // 第一次呼叫 TXT.do（或網址有 ?text）就開啟「快速模式」：動畫瞬間完成，不受畫面是否顯示影響。
 // 一般玩家沒用到 TXT 時，動畫照常。
+// 觀戰模式（網址加 ?watch）：動畫照常速度，代理用 TXT.do(指令, 理由) 或 say 文字 寫出想法，
+// 畫面下方顯示理由與指令；每一步也送到本機伺服器（serve.py），watch.html 可以在另一個視窗或手機上同步看。
 import { ITEMS, COUNTERS, SLOTS, RULES, T, WEAPONS } from './config.js';
 import { GIRL, GIRLS, TREES, FAMILY_BY_ID } from './girls.js';
 import * as UI from './ui.js';
@@ -20,7 +22,8 @@ export function init(api) {
   G = api;
   UI.addLogListener((text, cls) => logBuf.push(cls ? `[${cls}] ${text}` : text));
   window.TXT = { do: run, look: () => look(), help: () => HELP, fast: on => { fastSet = true; G.setInstant(on !== false); } };
-  if (/[?&]text\b/.test(location.search)) { G.setInstant(true); fastSet = true; panel(); }
+  if (/[?&]watch\b/.test(location.search)) { watch = true; fastSet = true; G.setInstant(false); caption(); }
+  else if (/[?&]text\b/.test(location.search)) { G.setInstant(true); fastSet = true; panel(); }
 }
 
 const HELP = `指令（座標是 x z；角色用代號 A 朱音 / H 光 / Y 雪乃 / M 小桃 / C 千夏 / K 楓 / S 詩織；敵人用地圖上的編號）
@@ -52,7 +55,9 @@ const HELP = `指令（座標是 x z；角色用代號 A 朱音 / H 光 / Y 雪�
   magic [A] [x z] [N] 魔法：不給座標＝列出可用位置；光的變身不用座標；突進可用 N 指定近戰目標
   log [n]             最近 n 行戰鬥紀錄
   stats               這場的統計
-  fast on|off         快速模式（動畫瞬間完成；預設開）`;
+  fast on|off         快速模式（動畫瞬間完成；預設開；?watch 觀戰模式預設關）
+  say 文字            觀戰模式：只寫想法，不做事（例如評估這場的壓力）
+  觀戰模式下用 TXT.do('move A 5 3', '理由') 把理由一起顯示`;
 
 // ---------- 狀態 ----------
 const gKey = u => GIRL_KEY[u.girl] || '?';
@@ -221,8 +226,9 @@ function clickBtn(match) {
   return true;
 }
 
-async function run(line) {
+async function run(line, why) {
   const S = G.S;
+  if (watch) return watchRun(line, why);
   if (!fastSet) { fastSet = true; G.setInstant(true); }
   const from = logBuf.length;
   const args = String(line).trim().split(/\s+/);
@@ -406,6 +412,7 @@ async function run(line) {
         await G.execMagic(u, opt);
         break;
       }
+      case 'say': return '（想法已記下）';
       case 'log': return logBuf.slice(-(+args[0] || 20)).join('\n');
       case 'stats': return Rec.currentText().split('---- 完整紀錄')[0];
       case 'scene': G.Scene.demo(args[0] || 'all', {}); return '播放劇情演出預覽：' + (args[0] || 'all') + '（vn 文字冒險 / battle 戰鬥畫面 / radio 無線電）';
@@ -446,3 +453,61 @@ function panel() {
 }
 let lastOut = 0;
 function updatePanel(text) { if (pre) { lastOut = Date.now(); pre.textContent = text; } }
+
+// ---------- 觀戰模式（?watch）----------
+let watch = false, capEl = null, step = 0, wsid = '';
+const WATCH_DELAY = 1600; // 先顯示理由，再動手，讓人看得到
+function caption() {
+  capEl = document.createElement('div');
+  capEl.id = 'watch-cap';
+  capEl.innerHTML = '<div class="wc-why">觀戰模式：等代理開始操作…</div><div class="wc-cmd"></div><div class="wc-log"></div>';
+  document.body.appendChild(capEl);
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  // 遊戲分頁被藏起來時，瀏覽器會把動畫降到每秒一格（document.hidden 不一定會變），
+  // 這時改成瞬間完成；觀看頁（watch.html）還是看得到每一步的截圖。畫面回來就恢復正常速度。
+  const gaps = [];
+  let lastRaf = performance.now();
+  const loop = now => { gaps.push(now - lastRaf); if (gaps.length > 8) gaps.shift(); lastRaf = now; requestAnimationFrame(loop); };
+  requestAnimationFrame(loop);
+  setInterval(() => {
+    const slow = performance.now() - lastRaf > 400 || [...gaps].sort((a, b) => a - b)[gaps.length >> 1] > 200;
+    G.setInstant(slow);
+  }, 300);
+  wsid = `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+}
+function showCap(why, cmd, log) {
+  if (!capEl) return;
+  capEl.querySelector('.wc-why').textContent = why || '';
+  capEl.querySelector('.wc-cmd').textContent = cmd ? '▶ ' + cmd : '';
+  capEl.querySelector('.wc-log').textContent = (log || []).slice(-4).join('\n');
+}
+function snapshot() {
+  try {
+    const src = G.shot(); const w = Math.min(720, src.width), h = Math.round(src.height * w / src.width);
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    c.getContext('2d').drawImage(src, 0, 0, w, h);
+    return c.toDataURL('image/jpeg', 0.6);
+  } catch { return null; }
+}
+async function watchRun(line, why) {
+  const S = G.S;
+  const cmd = String(line).trim();
+  const isSay = /^say\b/i.test(cmd);
+  const thought = isSay ? cmd.replace(/^say\s*/i, '') : (why || '');
+  showCap(thought, isSay ? '' : cmd, []);
+  if (!isSay) await sleep(WATCH_DELAY);
+  watch = false; // 執行時走一般流程（不會再設快速模式）
+  let out;
+  const from = logBuf.length;
+  try { out = isSay ? '' : await run(line); } finally { watch = true; }
+  const lines = logBuf.slice(from);
+  showCap(thought, isSay ? '' : cmd, lines);
+  const side = { player: '我方', enemy: '敵方', deploy: '部署中' }[S.side] || S.side || '';
+  push({ i: step++, t: Date.now(), cmd: isSay ? '' : cmd, why: thought, log: lines,
+    head: S.map ? `${S.opName || ''}｜主動權：${side}（第 ${S.initNo} 次）${S.gameOver ? '｜戰鬥結束' : ''}` : '',
+    shot: isSay ? null : snapshot() });
+  return out || '（想法已記下）';
+}
+function push(ev) {
+  fetch('/watch/push?sid=' + wsid, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ev) }).catch(() => {});
+}

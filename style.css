@@ -280,3 +280,11 @@ html, body, button, #hud, #hud * { touch-action: manipulation; }
 .hq .market { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
 .hq .market button, .hq .market select { font-size: 12px; padding: 4px 8px; }
 .hq .market small { flex-basis: 100%; }
+/* 觀戰模式（?watch）：代理的想法字幕 */
+#watch-cap { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); width: min(720px, calc(100vw - 32px)); z-index: 60; pointer-events: none;
+  background: #0a0f16e8; border: 1px solid #4a6a8a; border-radius: 8px; padding: 8px 12px; color: #e8f0f8; font-size: 14px; line-height: 1.45; }
+#watch-cap .wc-why { font-size: 15px; color: #ffe9a8; white-space: pre-wrap; }
+#watch-cap .wc-cmd { font: 13px Consolas, monospace; color: #8fd0ff; margin-top: 2px; }
+#watch-cap .wc-log { font-size: 12px; color: #b8c4d0; white-space: pre-wrap; margin-top: 2px; }
+#watch-cap .wc-why:empty, #watch-cap .wc-cmd:empty, #watch-cap .wc-log:empty { display: none; }
+@media (max-width: 600px) { #watch-cap { bottom: auto; top: 56px; font-size: 13px; } #watch-cap .wc-why { font-size: 14px; } }

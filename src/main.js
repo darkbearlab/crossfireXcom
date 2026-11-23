@@ -3796,4 +3796,5 @@ window.__game = { frame, S, actions, camera, THREE, scene, zoneMesh, Camp, // �
 // 純文字介面（給代理測試用）：window.TXT
 TextUI.init({ S, actions, Camp, key, coverSides, players, enemies, weapon, visibleTargets, moveOptions, playerMove, selectUnit,
   enterTargetMode, cancelTarget, fire, magicOptions, execMagic, magicInfo, canAct, startBattle, deployTo, actChance,
-  planReactions, pathCells, moveRisk, reloadInfo, canTriple, canPlant, newGame, newEndless, continueGame, useItem, flashTargets, enterHQ, refreshHQ: () => HQ.refresh(), setInstant: on => { instant = on; Scene.setInstant(on); }, Scene });
+  planReactions, pathCells, moveRisk, reloadInfo, canTriple, canPlant, newGame, newEndless, continueGame, useItem, flashTargets, enterHQ, refreshHQ: () => HQ.refresh(), setInstant: on => { instant = on; Scene.setInstant(on); }, Scene,
+  shot: () => { renderer.render(scene, camera); return renderer.domElement; } });
