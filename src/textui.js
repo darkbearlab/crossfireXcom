@@ -505,8 +505,15 @@ async function watchRun(line, why) {
   const side = { player: '我方', enemy: '敵方', deploy: '部署中' }[S.side] || S.side || '';
   push({ i: step++, t: Date.now(), cmd: isSay ? '' : cmd, why: thought, log: lines,
     head: S.map ? `${S.opName || ''}｜主動權：${side}（第 ${S.initNo} 次）${S.gameOver ? '｜戰鬥結束' : ''}` : '',
-    shot: isSay ? null : snapshot() });
+    ...screenOrShot(isSay) });
   return out || '（想法已記下）';
+}
+// 作戰室、劇情、結算畫面蓋在 3D 畫面上：截 3D 畫面沒有意義，改送畫面上的文字
+function screenOrShot(isSay) {
+  if (isSay) return {};
+  const ov = document.getElementById('overlay');
+  if (ov && !ov.hidden) return { screen: ov.innerText.replace(/\n{2,}/g, '\n').trim().slice(0, 1200) };
+  return { shot: snapshot() };
 }
 function push(ev) {
   fetch('/watch/push?sid=' + wsid, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ev) }).catch(() => {});

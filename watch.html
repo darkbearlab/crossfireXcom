@@ -23,6 +23,8 @@
   .st .cmd { font: 13px Consolas, monospace; color: var(--cmd); }
   .st .log { font-size: 12px; color: var(--dim); white-space: pre-wrap; margin-top: 4px; }
   .st .meta { font-size: 11px; color: var(--dim); }
+  #view .screen { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; white-space: pre-wrap; font-size: 13px; max-height: 50vh; overflow: auto; }
+  #age { font-size: 12px; color: var(--dim); margin-left: 6px; }
   .empty { color: var(--dim); padding: 24px 0; text-align: center; }
 </style>
 </head>
@@ -66,12 +68,14 @@ async function poll() {
     render();
   } catch { $('#status').textContent = '連不到伺服器'; }
 }
-function shotFor(i) { for (let j = i; j >= 0; j--) if (evs[j].shot) return evs[j]; return null; }
+// 往回找最近一個有畫面的步驟（截圖或作戰室文字）
+function shotFor(i) { for (let j = i; j >= 0; j--) if (evs[j].shot || evs[j].screen) return evs[j]; return null; }
 function render() {
   if (!evs.length) { $('#view').innerHTML = '<div class="empty">這個場次還沒有紀錄。</div>'; $('#steps').innerHTML = ''; return; }
   const e = evs[Math.max(0, cur)], s = shotFor(Math.max(0, cur));
-  $('#view').innerHTML = (s ? `<img src="${s.shot}" alt="">` : '') +
-    `<div class="head">#${e.i}　${esc(e.head)}　${time(e.t)}</div><div class="why">${esc(e.why) || '（沒寫理由）'}</div>`;
+  $('#view').innerHTML = (s ? (s.screen ? `<div class="screen">【畫面】
+${esc(s.screen)}</div>` : `<img src="${s.shot}" alt="">`) : '') +
+    `<div class="head">#${e.i}　${esc(e.head)}　${time(e.t)}<span id="age"></span>${s && s !== e ? `　（畫面是 #${s.i} 的）` : ''}</div><div class="why">${esc(e.why) || '（沒寫理由）'}</div>`;
   $('#steps').innerHTML = evs.slice().reverse().map(e => `<div class="st${e === evs[cur] ? ' on' : ''}" data-i="${evs.indexOf(e)}">
     <div class="meta">#${e.i}　${time(e.t)}　${esc(e.head)}</div>
     ${e.why ? `<div class="why">${esc(e.why)}</div>` : ''}${e.cmd ? `<div class="cmd">▶ ${esc(e.cmd)}</div>` : ''}
@@ -85,6 +89,12 @@ $('#sid').onchange = () => { sid = $('#sid').value; evs = []; cur = -1; render()
 $('#follow').onchange = () => { if ($('#follow').checked) { cur = evs.length - 1; render(); } };
 sessions().then(poll);
 setInterval(poll, 1500);
+// 最新一步是幾秒前：看得出代理還在動、還是停下來了
+setInterval(() => {
+  const a = $('#age'); if (!a || !evs.length) return;
+  const sec = Math.round((Date.now() - evs[evs.length - 1].t) / 1000);
+  a.textContent = `　最新一步：${sec < 60 ? sec + ' 秒' : Math.floor(sec / 60) + ' 分'}前（共 ${evs.length} 步）`;
+}, 1000);
 setInterval(sessions, 5000);
 </script>
 </body>
